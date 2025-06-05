@@ -52,6 +52,12 @@ const createServerSetup = async (serverId, serverName, setupName, channels, lang
                 serverName,
                 setups: []
             });
+        } else {
+            // Update server name if it has changed, ensure serverUniqueId exists
+            server.serverName = serverName;
+            if (!server.serverUniqueId) {
+                server.serverUniqueId = uuidv4();
+            }
         }
 
         // Check if setup with same name already exists
@@ -79,9 +85,11 @@ const createServerSetup = async (serverId, serverName, setupName, channels, lang
         };
 
         server.setups.push(newSetup);
-        await server.save();
         
-        return { server, setup: newSetup };
+        // Save the server (this will create it if it's new)
+        const savedServer = await server.save();
+        
+        return { server: savedServer, setup: newSetup };
     } catch (error) {
         throw error;
     }
