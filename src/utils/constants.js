@@ -1,0 +1,13 @@
+const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || 't47ex2hXZAsnMGCc0IElgMhYNMjjjSrv';
+const DEFAULT_LANGUAGE = 'en';
+const SUPPORTED_LANGUAGES = ['en', 'fr', 'es', 'de', 'it', 'pt'];
+const MIN_CHANNELS_REQUIRED = 2;
+const MIN_LANGUAGES_REQUIRED = 2;
+
+module.exports = {
+    MISTRAL_API_KEY,
+    DEFAULT_LANGUAGE,
+    SUPPORTED_LANGUAGES,
+    MIN_CHANNELS_REQUIRED,
+    MIN_LANGUAGES_REQUIRED
+};
