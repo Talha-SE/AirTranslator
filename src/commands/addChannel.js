@@ -54,18 +54,6 @@ module.exports = {
                 });
             }
 
-            // Check if channel is used in any other setup
-            const channelInOtherSetup = server.setups.find(s => 
-                s.name !== setupName && s.channels.includes(channel.id)
-            );
-            
-            if (channelInOtherSetup) {
-                return interaction.reply({ 
-                    content: `Channel ${channel} is already used in setup "${channelInOtherSetup.name}". A channel can only be in one setup at a time.`,
-                    flags: 64 // MessageFlags.Ephemeral
-                });
-            }
-
             // Add channel and language to the setup
             setup.channels.push(channel.id);
             setup.languages.push(language);

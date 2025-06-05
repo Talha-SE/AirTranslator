@@ -6,6 +6,7 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('setup')
         .setDescription('Create a translation setup with auto-language detection')
+        // Required options must come first
         .addStringOption(option => 
             option.setName('name')
                 .setDescription('A unique name for this translation setup')
@@ -24,6 +25,19 @@ module.exports = {
             option.setName('language1')
                 .setDescription('Target language for translations (e.g., English, Spanish, French)')
                 .setRequired(true))
+        // Optional options must come after all required ones
+        .addStringOption(option =>
+            option.setName('language2')
+                .setDescription('Second target language (optional)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('language3')
+                .setDescription('Third target language (optional)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('language4')
+                .setDescription('Fourth target language (optional)')
+                .setRequired(false))
         .addChannelOption(option =>
             option.setName('channel3')
                 .setDescription('Third channel for translation (optional)')
@@ -38,18 +52,6 @@ module.exports = {
             option.setName('channel5')
                 .setDescription('Fifth channel for translation (optional)')
                 .addChannelTypes(ChannelType.GuildText)
-                .setRequired(false))
-        .addStringOption(option =>
-            option.setName('language2')
-                .setDescription('Second target language (optional)')
-                .setRequired(false))
-        .addStringOption(option =>
-            option.setName('language3')
-                .setDescription('Third target language (optional)')
-                .setRequired(false))
-        .addStringOption(option =>
-            option.setName('language4')
-                .setDescription('Fourth target language (optional)')
                 .setRequired(false)),
 
     async execute(interaction) {
@@ -95,7 +97,7 @@ module.exports = {
         const uniqueChannelIds = new Set(channels);
         if (uniqueChannelIds.size !== channels.length) {
             return interaction.reply({ 
-                content: '❌ **Channels Error:** All channels must be different. Please select unique channels.',
+                content: '❌ **Channels Error:** All channels must be different within the same setup. Please select unique channels.',
                 flags: 64 // MessageFlags.Ephemeral
             });
         }
@@ -105,10 +107,12 @@ module.exports = {
         const uniqueLanguages = new Set(lowerLanguages);
         if (uniqueLanguages.size !== lowerLanguages.length) {
             return interaction.reply({ 
-                content: '❌ **Languages Error:** All languages must be different. Please specify unique languages.',
+                content: '❌ **Languages Error:** All languages must be different within the same setup. Please specify unique languages.',
                 flags: 64 // MessageFlags.Ephemeral
             });
         }
+
+        // REMOVE any existing code that prevents channels from being used in multiple setups
 
         // Special case: If we have more than one channel but only one language,
         // we need to duplicate the language to match the channel count for auto-detection

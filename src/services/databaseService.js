@@ -66,10 +66,11 @@ const createServerSetup = async (serverId, serverName, setupName, channels, lang
             throw new Error('SETUP_NAME_EXISTS');
         }
 
-        // Check if same channels and languages combination exists
+        // Check if an identical setup already exists
+        // A setup is considered identical ONLY if it has exactly the same channels AND languages in the SAME order
         const duplicateSetup = server.setups.find(setup => 
-            JSON.stringify(setup.channels.sort()) === JSON.stringify(channels.sort()) &&
-            JSON.stringify(setup.languages.sort()) === JSON.stringify(languages.sort())
+            JSON.stringify(setup.channels) === JSON.stringify(channels) &&
+            JSON.stringify(setup.languages) === JSON.stringify(languages)
         );
         
         if (duplicateSetup) {
@@ -141,12 +142,19 @@ const deleteServerSetup = async (serverId, setupName) => {
     }
 };
 
-const getSetupByChannelId = async (serverId, channelId) => {
+const getSetupsByChannelId = async (serverId, channelId) => {
     const server = await Server.findOne({ serverId });
-    if (!server) return null;
+    if (!server) return [];
 
-    const setup = server.setups.find(setup => setup.channels.includes(channelId));
-    return setup || null;
+    // Find ALL setups that include this channel
+    const matchingSetups = server.setups.filter(setup => setup.channels.includes(channelId));
+    return matchingSetups;
+};
+
+// Keep the original function for backward compatibility
+const getSetupByChannelId = async (serverId, channelId) => {
+    const setups = await getSetupsByChannelId(serverId, channelId);
+    return setups.length > 0 ? setups[0] : null;
 };
 
 module.exports = {
@@ -158,5 +166,6 @@ module.exports = {
     createServerSetup,
     getServerSetups,
     deleteServerSetup,
-    getSetupByChannelId
+    getSetupByChannelId,
+    getSetupsByChannelId
 };
