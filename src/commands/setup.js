@@ -1,57 +1,130 @@
-const { SlashCommandBuilder, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ChannelType } = require('discord.js');
 const { createServerSetup } = require('../services/databaseService');
+const { SUPPORTED_LANGUAGES, MIN_CHANNELS_REQUIRED } = require('../utils/constants');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('setup')
-        .setDescription('Creates a new translation setup for the server.')
+        .setDescription('Create a translation setup with auto-language detection')
         .addStringOption(option => 
             option.setName('name')
                 .setDescription('A unique name for this translation setup')
                 .setRequired(true))
         .addChannelOption(option => 
             option.setName('channel1')
-                .setDescription('The first channel for translation')
+                .setDescription('First channel for translation (source will be auto-detected)')
                 .addChannelTypes(ChannelType.GuildText)
                 .setRequired(true))
         .addChannelOption(option => 
             option.setName('channel2')
-                .setDescription('The second channel for translation')
+                .setDescription('Second channel for translation')
                 .addChannelTypes(ChannelType.GuildText)
                 .setRequired(true))
         .addStringOption(option => 
             option.setName('language1')
-                .setDescription('The first language for translation (e.g., English, Spanish)')
+                .setDescription('Target language for translations (e.g., English, Spanish, French)')
                 .setRequired(true))
-        .addStringOption(option => 
+        .addChannelOption(option =>
+            option.setName('channel3')
+                .setDescription('Third channel for translation (optional)')
+                .addChannelTypes(ChannelType.GuildText)
+                .setRequired(false))
+        .addChannelOption(option =>
+            option.setName('channel4')
+                .setDescription('Fourth channel for translation (optional)')
+                .addChannelTypes(ChannelType.GuildText)
+                .setRequired(false))
+        .addChannelOption(option =>
+            option.setName('channel5')
+                .setDescription('Fifth channel for translation (optional)')
+                .addChannelTypes(ChannelType.GuildText)
+                .setRequired(false))
+        .addStringOption(option =>
             option.setName('language2')
-                .setDescription('The second language for translation (e.g., Korean, French)')
-                .setRequired(true)),
-    
+                .setDescription('Second target language (optional)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('language3')
+                .setDescription('Third target language (optional)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('language4')
+                .setDescription('Fourth target language (optional)')
+                .setRequired(false)),
+
     async execute(interaction) {
         const setupName = interaction.options.getString('name');
-        const channel1 = interaction.options.getChannel('channel1');
-        const channel2 = interaction.options.getChannel('channel2');
-        const language1 = interaction.options.getString('language1');
-        const language2 = interaction.options.getString('language2');
-
         const serverId = interaction.guild.id;
         const serverName = interaction.guild.name;
 
-        // Validate that channels are different
-        if (channel1.id === channel2.id) {
+        // Collect channels
+        const channels = [];
+        for (let i = 1; i <= 5; i++) {
+            const channel = interaction.options.getChannel(`channel${i}`);
+            if (channel) {
+                channels.push(channel.id);
+            }
+        }
+
+        // Collect languages
+        const languages = [];
+        for (let i = 1; i <= 4; i++) {
+            const language = interaction.options.getString(`language${i}`);
+            if (language) {
+                languages.push(language);
+            }
+        }
+
+        // Validate that we have at least 2 channels
+        if (channels.length < MIN_CHANNELS_REQUIRED) {
             return interaction.reply({ 
-                content: 'You must select two different channels for translation.',
+                content: `❌ **Channels Error:** You must provide at least ${MIN_CHANNELS_REQUIRED} channels for translation.`,
                 flags: 64 // MessageFlags.Ephemeral
             });
         }
 
-        // Validate that languages are different
-        if (language1.toLowerCase() === language2.toLowerCase()) {
+        // Validate that we have at least 1 language
+        if (languages.length < 1) {
             return interaction.reply({ 
-                content: 'You must specify two different languages for translation.',
+                content: '❌ **Languages Error:** You must provide at least 1 target language for translation.',
                 flags: 64 // MessageFlags.Ephemeral
             });
+        }
+
+        // Validate that all channels are different
+        const uniqueChannelIds = new Set(channels);
+        if (uniqueChannelIds.size !== channels.length) {
+            return interaction.reply({ 
+                content: '❌ **Channels Error:** All channels must be different. Please select unique channels.',
+                flags: 64 // MessageFlags.Ephemeral
+            });
+        }
+
+        // Validate that all languages are different
+        const lowerLanguages = languages.map(lang => lang.toLowerCase());
+        const uniqueLanguages = new Set(lowerLanguages);
+        if (uniqueLanguages.size !== lowerLanguages.length) {
+            return interaction.reply({ 
+                content: '❌ **Languages Error:** All languages must be different. Please specify unique languages.',
+                flags: 64 // MessageFlags.Ephemeral
+            });
+        }
+
+        // Special case: If we have more than one channel but only one language,
+        // we need to duplicate the language to match the channel count for auto-detection
+        if (channels.length > 1 && languages.length === 1) {
+            // Add "auto" as the first language (auto-detect)
+            const finalLanguages = ["auto"];
+            // Then add the single specified language for all other channels
+            for (let i = 1; i < channels.length; i++) {
+                finalLanguages.push(languages[0]);
+            }
+            languages.length = 0; // Clear the array
+            languages.push(...finalLanguages); // Push all the new values
+        } else if (languages.length < channels.length) {
+            // If we have fewer languages than channels, add "auto" as the first language
+            // and use the provided languages for the remaining channels
+            languages.unshift("auto");
         }
 
         try {
@@ -59,17 +132,51 @@ module.exports = {
                 serverId, 
                 serverName, 
                 setupName, 
-                [channel1.id, channel2.id], 
-                [language1, language2]
+                channels,
+                languages
             );
 
-            return interaction.reply({
-                content: `✅ **Setup "${setupName}" created successfully!**\n` +
-                        `📊 Server: ${serverName} (ID: ${result.server.serverUniqueId.slice(0, 8)}...)\n` +
-                        `🔄 Translations will occur between:\n` +
-                        `• ${channel1} (${language1})\n` +
-                        `• ${channel2} (${language2})`
-            });
+            // Format channel list for display
+            const channelList = channels.map((channelId, index) => {
+                const number = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'][index];
+                return `${number} <#${channelId}>`;
+            }).join('\n');
+
+            // Format language list for display
+            const languageList = languages.map((lang, index) => {
+                const number = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'][index];
+                const displayLang = lang === "auto" ? "Auto-detect" : lang;
+                return `${number} 🌐 **${displayLang}**`;
+            }).join('\n');
+
+            const embed = new EmbedBuilder()
+                .setColor(0x00ff88)
+                .setTitle('🎉 Translation Setup Complete!')
+                .setDescription(`✅ Setup "${setupName}" is now configured with auto language detection.\n🔍 Messages will be automatically detected and translated to your target language(s).`)
+                .addFields(
+                    {
+                        name: '📡 Configured Channels',
+                        value: channelList,
+                        inline: true
+                    },
+                    {
+                        name: '🌍 Language Settings',
+                        value: languageList,
+                        inline: true
+                    },
+                    {
+                        name: '🎯 How It Works',
+                        value: '✨ **Auto Detection:** The system will automatically detect the language of each message\n\n🔄 **Smart Translation:** Messages are only translated when needed\n\n👤 **Original Context:** Each translation includes the author\'s name',
+                        inline: false
+                    }
+                )
+                .setFooter({ 
+                    text: `Server: ${serverName} • ID: ${result.server.serverUniqueId.slice(0, 8)}...`,
+                    iconURL: interaction.client.user.displayAvatarURL()
+                })
+                .setTimestamp();
+
+            return interaction.reply({ embeds: [embed] });
 
         } catch (error) {
             console.error('Setup error:', error);

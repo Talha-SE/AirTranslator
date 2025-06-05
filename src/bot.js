@@ -15,12 +15,14 @@ client.commands = new Collection();
 
 // Load commands
 const setupCommand = require('./commands/setup');
+const quickSetupCommand = require('./commands/quickSetup');
 const addChannelCommand = require('./commands/addChannel');
 const removeChannelCommand = require('./commands/removeChannel');
 const listSetupsCommand = require('./commands/listSetups');
 const deleteSetupCommand = require('./commands/deleteSetup');
 
 client.commands.set('setup', setupCommand);
+client.commands.set('quicksetup', quickSetupCommand);
 client.commands.set('addchannel', addChannelCommand);
 client.commands.set('removechannel', removeChannelCommand);
 client.commands.set('listsetups', listSetupsCommand);

@@ -101,20 +101,44 @@ const getServerSetups = async (serverId) => {
 };
 
 const deleteServerSetup = async (serverId, setupName) => {
-    const server = await Server.findOne({ serverId });
-    if (!server) {
-        throw new Error('SERVER_NOT_FOUND');
-    }
+    try {
+        // First, find the server document
+        const server = await Server.findOne({ serverId });
+        
+        if (!server) {
+            throw new Error('SERVER_NOT_FOUND');
+        }
 
-    const setupIndex = server.setups.findIndex(setup => setup.name === setupName);
-    if (setupIndex === -1) {
-        throw new Error('SETUP_NOT_FOUND');
-    }
+        // Find the setup by name
+        const setupIndex = server.setups.findIndex(setup => setup.name === setupName);
+        
+        if (setupIndex === -1) {
+            throw new Error('SETUP_NOT_FOUND');
+        }
 
-    server.setups.splice(setupIndex, 1);
-    await server.save();
-    
-    return server;
+        // Store setup info for logging/response
+        const deletedSetup = server.setups[setupIndex];
+        
+        // Remove the setup from the array using MongoDB's $pull operator
+        const result = await Server.updateOne(
+            { serverId },
+            { $pull: { setups: { name: setupName } } }
+        );
+        
+        // Log the result for debugging
+        console.log(`MongoDB deletion result: ${JSON.stringify(result)}`);
+        
+        // Check if the operation was successful
+        if (result.modifiedCount === 0) {
+            throw new Error('DELETE_OPERATION_FAILED');
+        }
+        
+        // Return the updated server document
+        return await Server.findOne({ serverId });
+    } catch (error) {
+        console.error(`MongoDB deletion error for server ${serverId}, setup ${setupName}:`, error);
+        throw error;
+    }
 };
 
 const getSetupByChannelId = async (serverId, channelId) => {
