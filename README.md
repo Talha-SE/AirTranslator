@@ -61,6 +61,59 @@ A powerful Discord bot that provides real-time translation between multiple chan
    npm start
    ```
 
+## 🚀 Deployment on Render.com
+
+### Method 1: One-Click Deploy
+
+1. Fork this repository to your GitHub account
+2. Sign up at [Render.com](https://render.com)
+3. Click "New Web Service" and connect your GitHub repository
+4. Configure environment variables:
+   - `DISCORD_TOKEN` - Your Discord bot token
+   - `CLIENT_ID` - Your Discord application client ID
+   - `MISTRAL_API_KEY` - Your Mistral AI API key
+   - `MONGODB_URI` - Your MongoDB connection string
+   - `ADMIN_USERNAME` - Admin panel username (optional)
+   - `ADMIN_PASSWORD` - Admin panel password (optional)
+5. Set build command: `npm install && npm run deploy`
+6. Set start command: `npm start`
+7. Deploy!
+
+### Method 2: Manual Deploy
+
+1. Clone your repository locally
+2. Push to GitHub
+3. Connect to Render.com
+4. Configure as above
+
+### Environment Variables Setup
+
+In Render.com dashboard, add these environment variables:
+
+```
+DISCORD_TOKEN=your_discord_bot_token_here
+CLIENT_ID=your_discord_client_id_here
+MISTRAL_API_KEY=your_mistral_api_key_here
+MONGODB_URI=your_mongodb_connection_string_here
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=YourSecurePassword123!
+NODE_ENV=production
+PORT=3000
+```
+
+### Post-Deployment
+
+1. Your bot will be available at: `https://your-app-name.onrender.com`
+2. Health check endpoint: `https://your-app-name.onrender.com/health`
+3. Admin panel: `https://your-app-name.onrender.com/admin`
+4. The bot will automatically register slash commands on startup
+
+### Monitoring
+
+- Check logs in Render.com dashboard
+- Monitor health endpoint for uptime
+- Use admin panel for analytics and server messaging
+
 ## 🔧 Configuration
 
 ### Discord Bot Setup
