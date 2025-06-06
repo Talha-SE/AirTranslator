@@ -5,6 +5,7 @@
   "main": "src/bot.js",
   "scripts": {
     "start": "node src/bot.js",
+    "build": "node src/deploy-commands.js",
     "deploy": "node src/deploy-commands.js",
     "dev": "nodemon src/bot.js"
   },
