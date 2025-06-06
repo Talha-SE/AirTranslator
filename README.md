@@ -6,6 +6,7 @@ A powerful Discord bot that provides real-time translation between multiple chan
 
 - 🔄 **Real-time Translation**: Instantly translate messages between different channels
 - 🌍 **Multiple Languages**: Support for any language supported by Mistral AI
+- 🎭 **Tone Understanding**: Preserve tone, emotion, and cultural nuances in translations
 - ⚙️ **Multiple Setups**: Create multiple translation setups per server
 - 🎯 **Channel-specific**: Configure specific channels for each language
 - 💾 **Persistent Storage**: Server configurations saved in MongoDB Atlas
@@ -14,10 +15,12 @@ A powerful Discord bot that provides real-time translation between multiple chan
 ## 🚀 Commands
 
 - `/setup` - Create a new translation setup
+- `/quicksetup` - Fast setup for in-channel translations to multiple languages
 - `/listsetups` - View all translation setups for the server
 - `/addchannel` - Add a channel to an existing setup
 - `/removechannel` - Remove a channel from a setup
 - `/deletesetup` - Delete an entire translation setup
+- `/toggletone` - Enable/disable tone understanding for better translations
 
 ## 📋 Prerequisites
 

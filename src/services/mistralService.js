@@ -38,7 +38,7 @@ const detectLanguage = async (text) => {
     }
 };
 
-const translateText = async (text, targetLanguage, sourceLanguage = null) => {
+const translateText = async (text, targetLanguage, sourceLanguage = null, useToneUnderstanding = false) => {
     try {
         // If target language is "auto", we don't need to translate
         if (targetLanguage === AUTO_DETECT_LANGUAGE) {
@@ -55,12 +55,19 @@ const translateText = async (text, targetLanguage, sourceLanguage = null) => {
             return text;
         }
 
+        // Create appropriate system prompt based on tone understanding setting
+        let systemContent = 'You are a translator. Only provide the direct translation without any explanations, additional text, or formatting. Return only the translated text.';
+        
+        if (useToneUnderstanding) {
+            systemContent = 'You are a translator with advanced tone understanding. Preserve the original tone, emotion, formality, humor, sarcasm, and cultural nuances when translating. Only provide the direct translation without explanations or additional text.';
+        }
+
         const response = await axios.post(mistralAPIUrl, {
             model: 'mistral-small-latest',
             messages: [
                 {
                     role: 'system',
-                    content: 'You are a translator. Only provide the direct translation without any explanations, additional text, or formatting. Return only the translated text.'
+                    content: systemContent
                 },
                 {
                     role: 'user',

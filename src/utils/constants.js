@@ -4,6 +4,7 @@ const SUPPORTED_LANGUAGES = ['en', 'fr', 'es', 'de', 'it', 'pt', 'auto'];
 const MIN_CHANNELS_REQUIRED = 2;
 const MIN_LANGUAGES_REQUIRED = 1;
 const AUTO_DETECT_LANGUAGE = 'auto';
+const TONE_UNDERSTANDING_ENABLED = 'tone_enabled';
 
 module.exports = {
     MISTRAL_API_KEY,
@@ -11,5 +12,6 @@ module.exports = {
     SUPPORTED_LANGUAGES,
     MIN_CHANNELS_REQUIRED,
     MIN_LANGUAGES_REQUIRED,
-    AUTO_DETECT_LANGUAGE
+    AUTO_DETECT_LANGUAGE,
+    TONE_UNDERSTANDING_ENABLED
 };

@@ -1,6 +1,7 @@
-const { getSetupsByChannelId } = require('../services/databaseService');
+const { getSetupsByChannelId, getToneSettings } = require('../services/databaseService');
 const { translateText, detectLanguage } = require('../services/mistralService');
 const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
+const analyticsService = require('../services/analyticsService');
 
 module.exports = async (client, message) => {
     if (message.author.bot) return;
@@ -14,6 +15,9 @@ module.exports = async (client, message) => {
 
         // Skip if not enough content to translate
         if (!message.content || message.content.length < 2) return;
+        
+        // Check if tone understanding is enabled for this channel
+        const toneEnabled = await getToneSettings(message.guild.id, message.channel.id);
         
         // Detect the language only once for efficiency
         const detectedLanguage = await detectLanguage(message.content);
@@ -66,16 +70,20 @@ module.exports = async (client, message) => {
                 // Mark this language as translated
                 alreadyTranslatedTo.add(language.toLowerCase());
                 
-                // Translate the message
-                const translation = await translateText(message.content, language, detectedLanguage);
+                // Translate the message with tone understanding if enabled
+                const translation = await translateText(message.content, language, detectedLanguage, toneEnabled);
+                
+                // Record translation analytics
+                analyticsService.recordTranslation(detectedLanguage, language, message.channel.id, message.author.id);
                 
                 // Add to our collection of translations
                 translations.push({
                     language: language,
-                    text: translation
+                    text: translation,
+                    toneEnabled: toneEnabled
                 });
                 
-                console.log(`Translated to ${language} for setup ${setup.name}`);
+                console.log(`Translated to ${language} for setup ${setup.name}${toneEnabled ? ' with tone understanding' : ''}`);
             }
         }
         
@@ -88,12 +96,12 @@ module.exports = async (client, message) => {
             if (translations.length > 1) {
                 content += "```\n";
                 for (const translation of translations) {
-                    content += `[${translation.language.toUpperCase()}]: ${translation.text}\n`;
+                    content += `[${translation.language.toUpperCase()}${translation.toneEnabled ? ' 🎭' : ''}]: ${translation.text}\n`;
                 }
                 content += "```";
             } else {
                 // For a single translation, keep it simple
-                content += `[${translations[0].language.toUpperCase()}]: ${translations[0].text}`;
+                content += `[${translations[0].language.toUpperCase()}${translations[0].toneEnabled ? ' 🎭' : ''}]: ${translations[0].text}`;
             }
             
             // Send as a single reply

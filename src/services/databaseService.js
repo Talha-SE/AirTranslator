@@ -157,6 +157,66 @@ const getSetupByChannelId = async (serverId, channelId) => {
     return setups.length > 0 ? setups[0] : null;
 };
 
+/**
+ * Toggle tone understanding for a specific channel
+ * @param {String} serverId - The Discord server ID
+ * @param {String} channelId - The channel ID to toggle tone for
+ * @param {Boolean} enabled - Whether tone understanding should be enabled
+ * @returns {Promise<Boolean>} - True if successful, false otherwise
+ */
+const toggleToneUnderstanding = async (serverId, channelId, enabled) => {
+    try {
+        const server = await Server.findOne({ serverId });
+        
+        if (!server) {
+            return false;
+        }
+        
+        // Initialize toneEnabledChannels array if it doesn't exist
+        if (!server.toneEnabledChannels) {
+            server.toneEnabledChannels = [];
+        }
+        
+        // Add or remove channel from the toneEnabledChannels array
+        if (enabled) {
+            // Add channel if not already in the list
+            if (!server.toneEnabledChannels.includes(channelId)) {
+                server.toneEnabledChannels.push(channelId);
+            }
+        } else {
+            // Remove channel if it's in the list
+            server.toneEnabledChannels = server.toneEnabledChannels.filter(id => id !== channelId);
+        }
+        
+        await server.save();
+        return true;
+    } catch (error) {
+        console.error('Error toggling tone understanding:', error);
+        return false;
+    }
+};
+
+/**
+ * Check if tone understanding is enabled for a channel
+ * @param {String} serverId - The Discord server ID
+ * @param {String} channelId - The channel ID to check
+ * @returns {Promise<Boolean>} - True if tone is enabled, false otherwise
+ */
+const getToneSettings = async (serverId, channelId) => {
+    try {
+        const server = await Server.findOne({ serverId });
+        
+        if (!server || !server.toneEnabledChannels) {
+            return false;
+        }
+        
+        return server.toneEnabledChannels.includes(channelId);
+    } catch (error) {
+        console.error('Error getting tone settings:', error);
+        return false;
+    }
+};
+
 module.exports = {
     connectDB,
     saveServerConfig,
@@ -167,5 +227,7 @@ module.exports = {
     getServerSetups,
     deleteServerSetup,
     getSetupByChannelId,
-    getSetupsByChannelId
+    getSetupsByChannelId,
+    toggleToneUnderstanding,
+    getToneSettings
 };
