@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 const Server = require('../models/Server');
 const { v4: uuidv4 } = require('uuid');
-require('dotenv').config();
 
 const connectDB = async () => {
     try {

@@ -1,4 +1,4 @@
-const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || 't47ex2hXZAsnMGCc0IElgMhYNMjjjSrv';
+const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
 const DEFAULT_LANGUAGE = 'en';
 const SUPPORTED_LANGUAGES = ['en', 'fr', 'es', 'de', 'it', 'pt', 'auto'];
 const MIN_CHANNELS_REQUIRED = 2;

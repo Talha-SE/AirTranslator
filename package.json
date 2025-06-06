@@ -2,9 +2,10 @@
   "name": "discord-translator-bot",
   "version": "1.0.0",
   "description": "A Discord bot that translates messages in channels using Mistral AI.",
-  "main": "src/bot.js",
+  "main": "src/index.js",
   "scripts": {
-    "start": "node src/bot.js",
+    "start": "node src/index.js",
+    "dev": "node src/bot.js",
     "deploy": "node src/deploy-commands.js"
   },
   "dependencies": {
