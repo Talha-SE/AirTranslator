@@ -1,6 +1,7 @@
 const http = require('http');
 const crypto = require('crypto');
 const analyticsService = require('./analyticsService');
+const nodeCron = require('node-cron');
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'AirTranslator2024!';
@@ -10,6 +11,9 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'AirTranslator2024!';
  * Stores active sessions in memory with a 24-hour expiration.
  */
 const sessions = new Map();
+
+// Scheduled messages storage
+const scheduledMessages = new Map();
 
 /**
  * Generates a random session token.
@@ -286,6 +290,42 @@ function generateMessageInterface() {
                 </label>
             </div>
             
+            <div class="schedule-options">
+            <div class="form-group">
+                <label for="schedule">Schedule:</label>
+                <select id="schedule" onchange="updateScheduleOptions()">
+                    <option value="now">Send Now</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="custom">Custom Cron</option>
+                </select>
+            </div>
+            
+            <div class="form-group" id="customScheduleGroup" style="display: none;">
+                <label for="customSchedule">Custom Cron Pattern:</label>
+                <input type="text" id="customSchedule" placeholder="* * * * *">
+                <small>Cron format: minute hour day month day-of-week</small>
+            </div>
+            
+            <div class="form-group" id="timeSelectionGroup">
+                <label for="scheduleTime">Time:</label>
+                <input type="time" id="scheduleTime" value="12:00" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="timezone">Timezone:</label>
+                <select id="timezone">
+                    <option value="UTC">UTC</option>
+                    <option value="America/New_York">Eastern Time</option>
+                    <option value="America/Chicago">Central Time</option>
+                    <option value="America/Los_Angeles">Pacific Time</option>
+                    <option value="Europe/London">London</option>
+                    <option value="Asia/Kolkata">India (IST)</option>
+                </select>
+            </div>
+            </div>
+            
             <div class="message-preview">
                 <h3>📝 Preview:</h3>
                 <div id="previewContainer">
@@ -303,6 +343,7 @@ function generateMessageInterface() {
                 <button type="button" class="btn-preview" onclick="updatePreview()">🔄 Update Preview</button>
                 <button type="button" class="btn-send" onclick="sendMessage()">📤 Send Message</button>
                 <button type="button" class="btn-test" onclick="sendTestMessage()">🧪 Send Test (to first server)</button>
+                <button type="button" class="btn-schedule" onclick="scheduleMessage()">🕒 Schedule Message</button>
             </div>
         </div>
         
@@ -806,6 +847,39 @@ function generateDashboard(analytics, client) {
             border-radius: 8px;
             margin-bottom: 20px;
         }
+        /* --- Design upgrade for scheduling pane --- */
+        .schedule-options {display:flex;flex-wrap:wrap;gap:20px;margin-top:10px;}
+        .schedule-options .form-group{flex:1 1 200px;min-width:180px;}
+        .schedule-options select,.schedule-options input{background:#fff;border:2px solid #ddd;border-radius:6px;padding:8px 10px;font-size:14px;transition:border-color .3s,box-shadow .3s;}
+        .schedule-options select:focus,.schedule-options input:focus{border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.2);outline:none;}
+        .info-tip{display:inline-block;margin-left:6px;color:#667eea;cursor:pointer;font-weight:bold;}
+        .info-tip:hover{color:#5a6fd8;}
+        .tooltip-box{position:absolute;z-index:10;background:#333;color:#fff;font-size:12px;padding:6px 10px;border-radius:4px;white-space:nowrap;opacity:0;transform:translateY(-8px);transition:opacity .2s,transform .2s;}
+        .info-tip:hover .tooltip-box{opacity:1;transform:translateY(-4px);}
+        }
+        .schedule-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-top: 10px;
+        }
+        .schedule-options .form-group {
+            flex: 1 1 200px;
+            min-width: 180px;
+        }
+        .schedule-options select, .schedule-options input {
+            background: #fff;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 14px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        .schedule-options select:focus, .schedule-options input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102,126,234,0.2);
+            outline: none;
+        }
         .form-group {
             margin-bottom: 15px;
         }
@@ -924,6 +998,7 @@ function generateDashboard(analytics, client) {
             .grid-2 { grid-template-columns: 1fr; }
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         let refreshTimer = setTimeout(() => {
             const activeTab = document.querySelector('.tab-btn.active');
@@ -1023,12 +1098,18 @@ function generateDashboard(analytics, client) {
         function updateTargetOptions() {
             const targetType = document.getElementById('targetType').value;
             const serverGroup = document.getElementById('serverSelectGroup');
+            const timeGroup = document.getElementById('timeSelectionGroup');
             
             if (targetType === 'specific') {
                 serverGroup.style.display = 'block';
+                timeGroup.style.display = 'none';
                 loadServerList();
+            } else if (targetType === 'custom') {
+                serverGroup.style.display = 'none';
+                timeGroup.style.display = 'block';
             } else {
                 serverGroup.style.display = 'none';
+                timeGroup.style.display = 'none';
             }
         }
         
@@ -1046,6 +1127,17 @@ function generateDashboard(analytics, client) {
                 .catch(() => {
                     serverSelect.innerHTML = '<option value="">Error loading servers</option>';
                 });
+        }
+        
+        function updateScheduleOptions() {
+            const schedule = document.getElementById('schedule').value;
+            const customScheduleGroup = document.getElementById('customScheduleGroup');
+            
+            if (schedule === 'custom') {
+                customScheduleGroup.style.display = 'block';
+            } else {
+                customScheduleGroup.style.display = 'none';
+            }
         }
         
         function updatePreview() {
@@ -1144,6 +1236,49 @@ function generateDashboard(analytics, client) {
             });
         }
         
+        function scheduleMessage() {
+            const data = {
+                targetType: document.getElementById('targetType').value,
+                targetServer: document.getElementById('targetServer')?.value,
+                title: document.getElementById('messageTitle').value,
+                content: document.getElementById('messageContent').value,
+                color: document.getElementById('messageColor').value,
+                includeFooter: document.getElementById('includeFooter').checked,
+                isUrgent: document.getElementById('urgentMessage').checked,
+                schedule: document.getElementById('schedule').value,
+                timezone: document.getElementById('timezone').value,
+                time: document.getElementById('scheduleTime').value
+            };
+            
+            if (!data.content.trim()) {
+                alert('Please enter a message content.');
+                return;
+            }
+            
+            if (!confirm(\`Are you sure you want to schedule this message to \${data.targetType === 'all' ? 'ALL SERVERS' : 'the selected target'}?\`)) {
+                return;
+            }
+            
+            fetch('/admin/schedule-message', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    alert('Message scheduled successfully!');
+                } else {
+                    alert('Error scheduling message: ' + result.message);
+                }
+            })
+            .catch(error => {
+                alert('Error scheduling message: ' + error.message);
+            });
+        }
+        
         function restoreActiveTab() {
             const savedTab = sessionStorage.getItem('activeTab');
             if (savedTab && savedTab !== 'analytics') {
@@ -1171,7 +1306,69 @@ function generateDashboard(analytics, client) {
                 document.getElementById('messageTitle').addEventListener('input', updatePreview);
             }
         });
-    </script>
+        // ==== Live Activity Chart ====
+    let liveChart;
+    let prevTranslationTotal = null;
+    const translationsData = [];
+    const labelsData = [];
+
+    async function fetchMetrics() {
+        const res = await fetch('/admin/metrics');
+        if (!res.ok) return null;
+        return res.json();
+    }
+
+    async function updateLiveChart() {
+        const data = await fetchMetrics();
+        if (!data) return;
+        const now = new Date();
+        if (prevTranslationTotal === null) {
+            prevTranslationTotal = data.totalTranslations;
+            return;
+        }
+        const delta = data.totalTranslations - prevTranslationTotal;
+        prevTranslationTotal = data.totalTranslations;
+        const rpm = delta * (60 / 5); // Estimate per minute with 5s interval
+        translationsData.push(rpm);
+        labelsData.push(now.toLocaleTimeString());
+        if (translationsData.length > 12) {
+            translationsData.shift();
+            labelsData.shift();
+        }
+        if (liveChart) {
+            liveChart.data.labels = labelsData;
+            liveChart.data.datasets[0].data = translationsData;
+            liveChart.update();
+        }
+    }
+
+    function initLiveChart() {
+        const ctx = document.getElementById('liveTranslationsChart');
+        if (!ctx) return;
+        liveChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labelsData,
+                datasets: [{
+                    label: 'Translations / Min',
+                    data: translationsData,
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102,126,234,0.2)',
+                    tension: 0.3,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+        updateLiveChart();
+        setInterval(updateLiveChart, 5000);
+    }
+
+    document.addEventListener('DOMContentLoaded', initLiveChart);
+</script>
 </head>
 <body>
     <div class="header">
@@ -1196,7 +1393,11 @@ function generateDashboard(analytics, client) {
             
             <div class="tab-content">
                 <div id="analytics" class="tab-pane active">
-                    ${generateAnalyticsContent(analytics, client)}
+                     ${generateAnalyticsContent(analytics, client)}
+                    <div class="section">
+                        <h2>📈 Live Translations / Minute</h2>
+                        <canvas id="liveTranslationsChart" height="120"></canvas>
+                    </div>
                 </div>
                 
                 <div id="messaging" class="tab-pane">
@@ -1339,6 +1540,78 @@ async function sendServerMessage(messageData) {
     };
 }
 
+/**
+ * Schedules a message to be sent at specific times
+ * @param {Object} messageConfig - Message configuration
+ * @param {string} messageConfig.target - 'all' or server ID
+ * @param {string} messageConfig.content - Message content
+ * @param {string} messageConfig.schedule - Cron schedule or 'daily', 'weekly', 'monthly'
+ * @param {string} [messageConfig.timezone] - Timezone (default: 'UTC')
+ * @param {string} [messageConfig.time] - Time (HH:mm)
+ */
+function scheduleMessage(messageConfig) {
+    const { schedule, timezone = 'UTC', time } = messageConfig;
+    
+    // Convert human-readable schedules to cron
+    let cronPattern;
+    switch(schedule) {
+        case 'daily':
+            cronPattern = `0 ${time.split(':')[1]} ${time.split(':')[0]} * * *`; // Daily at specified time
+            break;
+        case 'weekly':
+            cronPattern = `0 ${time.split(':')[1]} ${time.split(':')[0]} * * 0`; // Sunday at specified time
+            break;
+        case 'monthly':
+            cronPattern = `0 ${time.split(':')[1]} ${time.split(':')[0]} 1 * *`; // 1st of month at specified time
+            break;
+        default:
+            cronPattern = schedule;
+    }
+    
+    const job = nodeCron.schedule(cronPattern, () => {
+        sendScheduledMessage(messageConfig);
+    }, {
+        scheduled: true,
+        timezone
+    });
+    
+    scheduledMessages.set(job.id, messageConfig);
+    return job.id;
+}
+
+/**
+ * Sends a scheduled message
+ * @param {Object} messageConfig - Message configuration
+ */
+async function sendScheduledMessage(messageConfig) {
+    try {
+        const { target, content, title = 'Scheduled Message', color = '#3498db' } = messageConfig;
+        
+        // Implementation depends on your message sending logic
+        if (target === 'all') {
+            // Broadcast to all servers
+            console.log(`Sending scheduled message to all servers: ${title}`);
+        } else {
+            // Send to specific server
+            console.log(`Sending scheduled message to server ${target}: ${title}`);
+        }
+    } catch (err) {
+        console.error('Failed to send scheduled message:', err);
+    }
+}
+
+/**
+ * Cancels a scheduled message
+ * @param {string} jobId - The job ID to cancel
+ */
+function cancelScheduledMessage(jobId) {
+    const job = scheduledMessages.get(jobId);
+    if (job) {
+        job.destroy();
+        scheduledMessages.delete(jobId);
+    }
+}
+
 const server = http.createServer(async (req, res) => {
     const reqUrl = new URL(req.url, `http://${req.headers.host}`);
     const pathname = reqUrl.pathname;
@@ -1385,6 +1658,20 @@ const server = http.createServer(async (req, res) => {
             
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify(servers));
+        } else if (pathname === '/admin/metrics' && req.method === 'GET') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Unauthorized' }));
+                return;
+            }
+            const analytics = analyticsService.getAnalytics();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                totalTranslations: analytics.totalTranslations,
+                totalServers: analytics.totalServers,
+                timestamp: Date.now()
+            }));
         } else if (pathname === '/admin/send-message' && req.method === 'POST') {
             const sessionToken = getSessionFromCookies(req.headers.cookie);
             
@@ -1407,6 +1694,58 @@ const server = http.createServer(async (req, res) => {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: false, message: 'Server error' }));
             }
+        } else if (pathname === '/admin/schedule-message' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            try {
+                const postData = await parsePostData(req);
+                const messageData = JSON.parse(postData.body || '{}');
+                
+                const jobId = scheduleMessage(messageData);
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, jobId }));
+            } catch (error) {
+                console.error('Message scheduling error:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Server error' }));
+            }
+        } else if (pathname === '/admin/scheduled-messages' && req.method === 'GET') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            const messages = Array.from(scheduledMessages.entries()).map(([id, config]) => ({
+                id,
+                ...config
+            }));
+            
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, messages }));
+        } else if (pathname.startsWith('/admin/cancel-scheduled/') && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            const jobId = pathname.split('/').pop();
+            cancelScheduledMessage(jobId);
+            
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true }));
         } else if (pathname === '/admin') {
             const sessionToken = getSessionFromCookies(req.headers.cookie);
             

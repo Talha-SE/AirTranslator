@@ -1,7 +1,22 @@
 const { getSetupsByChannelId, getToneSettings } = require('../services/databaseService');
 const { translateText, detectLanguage } = require('../services/mistralService');
+const fastq = require('fastq');
 const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const analyticsService = require('../services/analyticsService');
+
+// Global translation queue with controlled concurrency
+const translationQueue = fastq.promise(worker, 5); // 5 concurrent translations
+let translationsInLastMinute = 0;
+
+async function worker(task) {
+    // Rate limiting - max 50 translations per minute
+    if (translationsInLastMinute >= 50) {
+        await new Promise(resolve => setTimeout(resolve, 60000));
+        translationsInLastMinute = 0;
+    }
+    translationsInLastMinute++;
+    return task();
+}
 
 module.exports = async (client, message) => {
     if (message.author.bot) return;
@@ -60,7 +75,8 @@ module.exports = async (client, message) => {
             // Convert Set to Array for easier processing
             const targetLanguages = Array.from(uniqueLanguages);
             
-            // Translate for each target language
+            // Collect translation promises for each target language
+            const translationTasks = [];
             for (const language of targetLanguages) {
                 // Skip if the detected language matches the target language
                 if (detectedLanguage.toLowerCase() === language.toLowerCase()) {
@@ -77,8 +93,8 @@ module.exports = async (client, message) => {
                 alreadyTranslatedTo.add(language.toLowerCase());
                 
                 try {
-                    // Translate the message with tone understanding if enabled
-                    const translation = await translateText(message.content, language, detectedLanguage, toneEnabled);
+                    // Add translation to queue for parallel processing
+                    const translation = await translationQueue.push(() => translateText(message.content, language, detectedLanguage, toneEnabled));
                     
                     // Additional validation for translation quality
                     if (translation && translation.length > 0 && translation !== message.content) {
