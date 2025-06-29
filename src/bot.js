@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, EmbedBuilder } = require('discord.js');
 const { connectDB } = require('./services/databaseService');
 const analyticsService = require('./services/analyticsService');
 require('dotenv').config();
@@ -60,9 +60,26 @@ client.on('guildDelete', (guild) => {
     analyticsService.updateServerList(client);
 });
 
-client.on('guildCreate', (guild) => {
-    console.log(`Joined new server: ${guild.name} (${guild.memberCount} members)`);
-    // Update server list when bot joins a server
+client.on('guildCreate', async (guild) => {
+    console.log(`Joined new server: ${guild.name}`);
+    
+    try {
+        const channel = guild.systemChannel || guild.channels.cache.find(c => c.type === 0 && c.permissionsFor(guild.me).has('SEND_MESSAGES'));
+        if (!channel) return;
+        
+        const welcomeEmbed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('🌍 Translation Bot Ready!')
+            .setDescription('Use `/quicksetup` to configure translation between channels.')
+            .addFields(
+                { name: 'Example', value: '```/quicksetup source: #english target: #spanish language: Spanish```' }
+            );
+            
+        await channel.send({ embeds: [welcomeEmbed] });
+    } catch (error) {
+        console.error('Failed to send welcome message:', error);
+    }
+    
     analyticsService.updateServerList(client);
 });
 
