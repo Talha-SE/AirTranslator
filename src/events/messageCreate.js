@@ -3,6 +3,7 @@ const { translateText, detectLanguage } = require('../services/mistralService');
 const fastq = require('fastq');
 const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const analyticsService = require('../services/analyticsService');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 // Global translation queue with controlled concurrency
 const translationQueue = fastq.promise(worker, 1000); // High concurrency, effectively no cap
@@ -83,11 +84,76 @@ module.exports = async (client, message) => {
                 try {
                     // Queue translation promise but don't await yet
                     const promise = translationQueue.push(() => translateText(message.content, language, detectedLanguage, toneEnabled))
-                        .then(translation => ({ language, translation }));
+                        .then(translation => {
+                            if (!translation) {
+                                analyticsService.recordTranslationIssue(
+                                    'wrong_translation',
+                                    message.content,
+                                    '',
+                                    detectedLanguage,
+                                    language,
+                                    message.channel.id,
+                                    message.author.id,
+                                    'No translation returned'
+                                );
+                                return { language, translation: 'Translation failed' };
+                            }
+
+                            // Check for common issues
+                            if (translation.length < message.content.length * 0.3) {
+                                analyticsService.recordTranslationIssue(
+                                    'wrong_translation',
+                                    message.content,
+                                    translation,
+                                    detectedLanguage,
+                                    language,
+                                    message.channel.id,
+                                    message.author.id,
+                                    'Translation significantly shorter than original'
+                                );
+                            }
+                            
+                            if (translation.includes('undefined') || translation.includes('null')) {
+                                analyticsService.recordTranslationIssue(
+                                    'wrong_translation',
+                                    message.content,
+                                    translation,
+                                    detectedLanguage,
+                                    language,
+                                    message.channel.id,
+                                    message.author.id,
+                                    'Translation contains undefined/null values'
+                                );
+                            }
+                            
+                            if (translation === message.content) {
+                                analyticsService.recordTranslationIssue(
+                                    'wrong_translation',
+                                    message.content,
+                                    translation,
+                                    detectedLanguage,
+                                    language,
+                                    message.channel.id,
+                                    message.author.id,
+                                    'Translation identical to original'
+                                );
+                            }
+                            
+                            return { language, translation };
+                        });
                     translationTasks.push(promise);
                 } catch (translationError) {
                     console.error(`❌ Translation error for ${language}:`, translationError.message);
-                    // Continue with other languages even if one fails
+                    analyticsService.recordTranslationIssue(
+                        'language_issue',
+                        message.content,
+                        '',
+                        detectedLanguage,
+                        language,
+                        message.channel.id,
+                        message.author.id,
+                        `Translation error: ${translationError.message}`
+                    );
                 }
             }
             // Wait for all queued translations for this setup
@@ -108,6 +174,23 @@ module.exports = async (client, message) => {
         
         // If we have translations, send them as a single well-formatted message
         if (translations.length > 0) {
+            // Helper to split long content into Discord-sized chunks
+            const splitIntoChunks = (text, chunkSize = 1900) => {
+                const lines = text.split('\n');
+                const chunks = [];
+                let current = '';
+                for (const line of lines) {
+                    if ((current + '\n' + line).length > chunkSize) {
+                        chunks.push(current);
+                        current = line;
+                    } else {
+                        current += (current ? '\n' : '') + line;
+                    }
+                }
+                if (current) chunks.push(current);
+                return chunks;
+            };
+
             // Format the translations in a clean, organized way
             let content = `**${message.author.displayName}**\n`;
             
@@ -123,11 +206,30 @@ module.exports = async (client, message) => {
                 content += `[${translations[0].language.toUpperCase()}${translations[0].toneEnabled ? ' 🎭' : ''}]: ${translations[0].text}`;
             }
             
-            // Send as a single reply
-            await message.reply({
-                content: content,
-                allowedMentions: { repliedUser: false }
-            });
+            // Discord hard limit 4000; keep margin
+            const chunks = splitIntoChunks(content, 1900);
+            for (let i = 0; i < chunks.length; i++) {
+                const row = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setLabel('Vote')
+                            .setURL('https://top.gg/bot/1380177061032759416/vote')
+                            .setStyle(ButtonStyle.Link)
+                            .setEmoji('🗳️')
+                    );
+                
+                const options = {
+                    content: chunks[i],
+                    components: [row],
+                    allowedMentions: { repliedUser: false }
+                };
+                if (i === 0) {
+                    // reply to original message
+                    await message.reply(options);
+                } else {
+                    await message.channel.send(options);
+                }
+            }
         }
     } catch (error) {
         console.error('Error in messageCreate event:', error);

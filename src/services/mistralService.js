@@ -52,7 +52,7 @@ const detectLanguage = async (text) => {
         const normalizedText = normalizeElongatedText(text);
         
         const response = await postMistralWithRetry({
-            model: 'mistral-small-latest',
+            model: 'mistral-medium-latest',
             messages: [
                 {
                     role: 'system',
@@ -169,7 +169,10 @@ IMPORTANT RULES:
             translation = translation.slice(1, -1);
         }
         
-        // No length validation; return full translation
+                // Keep only the first meaningful line to avoid extra notes
+        translation = translation.split('\n').find(l => l.trim().length > 0)?.trim() || translation;
+        // Remove leading bracketed explanations like [text]:
+        translation = translation.replace(/^\[[^\]]+\]:?\s*/i, '').trim();
         return translation;
     } catch (error) {
         console.error('Error translating text:', error);

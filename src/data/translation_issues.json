@@ -1,0 +1,115 @@
+{
+  "wrongTranslations": [
+    {
+      "id": "b77d05b2-6cd5-4889-84ba-44a1bda2e010",
+      "timestamp": "2025-06-29T10:19:58.108Z",
+      "type": "wrong_translation",
+      "originalMessage": "😲",
+      "translatedMessage": "😲",
+      "sourceLanguage": "und",
+      "targetLanguage": "korean",
+      "channelId": "1356550352421388363",
+      "userId": "1314876570816745517",
+      "description": "Translation identical to original"
+    },
+    {
+      "id": "589eac63-da66-441f-9036-a00ceb700c24",
+      "timestamp": "2025-06-29T10:20:33.370Z",
+      "type": "wrong_translation",
+      "originalMessage": "Catkttkktktktkkkkk",
+      "translatedMessage": "고양이~",
+      "sourceLanguage": "en",
+      "targetLanguage": "korean",
+      "channelId": "1356550352421388363",
+      "userId": "1314876570816745517",
+      "description": "Translation significantly shorter than original"
+    },
+    {
+      "id": "0dcc84a1-ef23-41a5-a8a7-df0a76d28024",
+      "timestamp": "2025-06-29T10:22:09.727Z",
+      "type": "wrong_translation",
+      "originalMessage": "K",
+      "translatedMessage": "K",
+      "sourceLanguage": "fr",
+      "targetLanguage": "taiwanese",
+      "channelId": "1356550352421388363",
+      "userId": "1314876570816745517",
+      "description": "Translation identical to original"
+    },
+    {
+      "id": "e960e02a-f2bc-4880-8671-c987281a635e",
+      "timestamp": "2025-06-29T10:23:15.832Z",
+      "type": "wrong_translation",
+      "originalMessage": "K",
+      "translatedMessage": "K",
+      "sourceLanguage": "fr",
+      "targetLanguage": "taiwanese",
+      "channelId": "1356550352421388363",
+      "userId": "1314876570816745517",
+      "description": "Translation identical to original"
+    },
+    {
+      "id": "2881a917-9157-4745-895a-4950991b452c",
+      "timestamp": "2025-06-29T10:24:38.596Z",
+      "type": "wrong_translation",
+      "originalMessage": "Hmm",
+      "translatedMessage": "Hmm",
+      "sourceLanguage": "en",
+      "targetLanguage": "spanish",
+      "channelId": "1356550352421388363",
+      "userId": "1314876570816745517",
+      "description": "Translation identical to original"
+    },
+    {
+      "id": "d04732ee-29ff-4fd3-b4e2-ec80df158933",
+      "timestamp": "2025-06-29T10:47:07.043Z",
+      "type": "wrong_translation",
+      "originalMessage": "k",
+      "translatedMessage": "k",
+      "sourceLanguage": "fr",
+      "targetLanguage": "taiwanese",
+      "channelId": "1356550352421388363",
+      "userId": "1314876570816745517",
+      "description": "Translation identical to original"
+    },
+    {
+      "id": "69ad3388-c94a-4387-a080-65ccf8ac4494",
+      "timestamp": "2025-06-29T10:49:36.372Z",
+      "type": "wrong_translation",
+      "originalMessage": "+/*+",
+      "translatedMessage": "+/*+",
+      "sourceLanguage": "fr",
+      "targetLanguage": "korean",
+      "channelId": "1356550352421388363",
+      "userId": "1314876570816745517",
+      "description": "Translation identical to original"
+    },
+    {
+      "id": "9071ee03-93a6-46c9-a9b8-5aad8aaaed25",
+      "timestamp": "2025-06-29T10:49:38.740Z",
+      "type": "wrong_translation",
+      "originalMessage": "*/",
+      "translatedMessage": "*/",
+      "sourceLanguage": "it",
+      "targetLanguage": "korean",
+      "channelId": "1356550352421388363",
+      "userId": "1314876570816745517",
+      "description": "Translation identical to original"
+    },
+    {
+      "id": "6c85f2ee-d3a2-496b-b9e4-2fc75a68efd3",
+      "timestamp": "2025-06-29T10:49:39.862Z",
+      "type": "wrong_translation",
+      "originalMessage": "*/",
+      "translatedMessage": "*/",
+      "sourceLanguage": "it",
+      "targetLanguage": "taiwanese",
+      "channelId": "1356550352421388363",
+      "userId": "1314876570816745517",
+      "description": "Translation identical to original"
+    }
+  ],
+  "incorrectUsage": [],
+  "missingNotes": [],
+  "languageIssues": []
+}

@@ -1389,6 +1389,7 @@ function generateDashboard(analytics, client) {
             <div class="tab-nav">
                 <button class="tab-btn active" onclick="switchTab('analytics')">📊 Analytics</button>
                 <button class="tab-btn" onclick="switchTab('messaging')">📢 Server Messaging</button>
+                <button class="tab-btn" onclick="switchTab('translation-analytics')">📊 Translation Analytics</button>
             </div>
             
             <div class="tab-content">
@@ -1403,11 +1404,89 @@ function generateDashboard(analytics, client) {
                 <div id="messaging" class="tab-pane">
                     ${generateMessageInterface()}
                 </div>
+                
+                <div id="translation-analytics" class="tab-pane">
+                    ${generateTranslationAnalyticsContent(analytics, client)}
+                </div>
             </div>
         </div>
     </div>
 </body>
 </html>`;
+}
+
+function generateTranslationAnalyticsContent(analytics, client) {
+    // Convert template strings to properly escaped strings
+    const issueTableHTML = (issues) => {
+        if (!issues || issues.length === 0) {
+            return '<p>No issues found</p>';
+        }
+        
+        let tableHTML = '<table>';
+        tableHTML += '<thead><tr>';
+        tableHTML += '<th>Time</th>';
+        tableHTML += '<th>Source</th>';
+        tableHTML += '<th>Target</th>';
+        tableHTML += '<th>Original</th>';
+        tableHTML += '<th>Translated</th>';
+        tableHTML += '<th>Issue</th>';
+        tableHTML += '</tr></thead>';
+        tableHTML += '<tbody>';
+        
+        issues.forEach(issue => {
+            tableHTML += '<tr>';
+            tableHTML += `<td>${new Date(issue.timestamp).toLocaleString()}</td>`;
+            tableHTML += `<td>${issue.sourceLanguage}</td>`;
+            tableHTML += `<td>${issue.targetLanguage}</td>`;
+            tableHTML += `<td>${issue.originalMessage.substring(0, 50)}${issue.originalMessage.length > 50 ? '...' : ''}</td>`;
+            tableHTML += `<td>${issue.translatedMessage.substring(0, 50)}${issue.translatedMessage.length > 50 ? '...' : ''}</td>`;
+            tableHTML += `<td>${issue.description}</td>`;
+            tableHTML += '</tr>';
+        });
+        
+        tableHTML += '</tbody></table>';
+        return tableHTML;
+    };
+    
+    return `
+        <div class="tab-container">
+            <div class="tab active" onclick="showTab('overview')">Overview</div>
+            <div class="tab" onclick="showTab('translation-issues')">Translation Issues</div>
+        </div>
+        
+        <div id="overview" class="tab-content active">
+            <h2>Translation Overview</h2>
+            <p>Total translations: ${analytics.totalTranslations}</p>
+            <p>Translation issues detected: ${analytics.translationIssues.wrongTranslations.length + 
+                                          analytics.translationIssues.incorrectUsage.length + 
+                                          analytics.translationIssues.missingNotes.length + 
+                                          analytics.translationIssues.languageIssues.length}</p>
+        </div>
+        
+        <div id="translation-issues" class="tab-content">
+            <h2>Translation Issues</h2>
+            
+            <div class="issue-type">
+                <h3>Wrong Translations (${analytics.translationIssues.wrongTranslations.length})</h3>
+                ${issueTableHTML(analytics.translationIssues.wrongTranslations)}
+            </div>
+            
+            <div class="issue-type">
+                <h3>Incorrect Usage (${analytics.translationIssues.incorrectUsage.length})</h3>
+                ${issueTableHTML(analytics.translationIssues.incorrectUsage)}
+            </div>
+            
+            <div class="issue-type">
+                <h3>Missing Notes (${analytics.translationIssues.missingNotes.length})</h3>
+                ${issueTableHTML(analytics.translationIssues.missingNotes)}
+            </div>
+            
+            <div class="issue-type">
+                <h3>Language Issues (${analytics.translationIssues.languageIssues.length})</h3>
+                ${issueTableHTML(analytics.translationIssues.languageIssues)}
+            </div>
+        </div>
+    `;
 }
 
 /**
@@ -1658,6 +1737,18 @@ const server = http.createServer(async (req, res) => {
             
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify(servers));
+        } else if (pathname === '/admin/translation-issues' && req.method === 'GET') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Unauthorized' }));
+                return;
+            }
+            
+            const issues = analyticsService.getTranslationIssues();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(issues));
         } else if (pathname === '/admin/metrics' && req.method === 'GET') {
             const sessionToken = getSessionFromCookies(req.headers.cookie);
             if (!isValidSession(sessionToken)) {
@@ -1746,13 +1837,48 @@ const server = http.createServer(async (req, res) => {
             
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: true }));
+        } else if (pathname === '/admin/generate-test-issues' && req.method === 'GET') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Unauthorized' }));
+                return;
+            }
+            
+            // Generate test issues
+            const testMessages = [
+                { original: 'Hello world', translated: 'Hola mundo', desc: 'Correct translation' },
+                { original: 'Good morning', translated: 'undefined', desc: 'Undefined translation' },
+                { original: 'Long message here', translated: 'Short', desc: 'Too short translation' },
+                { original: 'Same text', translated: 'Same text', desc: 'Identical translation' }
+            ];
+            
+            testMessages.forEach(msg => {
+                analyticsService.recordTranslationIssue(
+                    'wrong_translation',
+                    msg.original,
+                    msg.translated,
+                    'en',
+                    'es',
+                    'test-channel',
+                    'test-user',
+                    msg.desc
+                );
+            });
+            
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, count: testMessages.length }));
         } else if (pathname === '/admin') {
             const sessionToken = getSessionFromCookies(req.headers.cookie);
             
             if (isValidSession(sessionToken)) {
                 const analytics = analyticsService.getAnalytics();
                 const client = global.discordClient;
-                const dashboard = generateDashboard(analytics, client);
+                const dashboard = generateDashboard({
+                    ...analytics,
+                    translationIssues: analyticsService.getTranslationIssues()
+                }, client);
                 
                 res.writeHead(200, { 'Content-Type': 'text/html' });
                 res.end(dashboard);
@@ -1798,6 +1924,22 @@ const server = http.createServer(async (req, res) => {
                 'Location': '/admin'
             });
             res.end();
+        } else if (pathname === '/admin/dashboard' && req.method === 'GET') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Unauthorized' }));
+                return;
+            }
+            
+            const analytics = {
+                ...analyticsService.getAnalytics(),
+                translationIssues: analyticsService.getTranslationIssues()
+            };
+            
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(generateDashboard(analytics, global.discordClient));
         } else {
             res.writeHead(404, { 'Content-Type': 'text/plain' });
             res.end('Not Found');
