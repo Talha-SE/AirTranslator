@@ -1,6 +1,7 @@
 const { Client, GatewayIntentBits, Collection, EmbedBuilder } = require('discord.js');
 const { connectDB } = require('./services/databaseService');
 const analyticsService = require('./services/analyticsService');
+const { AutoPoster } = require('topgg-autoposter');
 require('dotenv').config();
 
 const client = new Client({ 
@@ -114,6 +115,14 @@ async function startBot() {
     try {
         await connectDB();
         await client.login(process.env.DISCORD_TOKEN);
+        
+        // Initialize Top.gg AutoPoster if token exists
+        if (process.env.TOPGG_TOKEN) {
+            const poster = AutoPoster(process.env.TOPGG_TOKEN, client);
+            poster.on('posted', (stats) => {
+                console.log(`Posted stats to Top.gg | ${stats.serverCount} servers`);
+            });
+        }
         
         // Start admin server
         require('./services/adminServer');

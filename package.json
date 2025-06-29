@@ -28,6 +28,7 @@
     "geoip-lite": "^1.4.10",
     "mongoose": "^8.0.3",
     "node-cron": "^3.0.2",
+    "topgg-autoposter": "^2.0.2",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
