@@ -1,7 +1,4 @@
 const { getServerConfig } = require('./databaseService');
-const { v4: uuidv4 } = require('uuid');
-const fs = require('fs').promises;
-const path = require('path');
 
 class AnalyticsService {
     constructor() {
@@ -15,15 +12,7 @@ class AnalyticsService {
             serverList: [],
             botStartTime: Date.now()
         };
-        this.translationIssues = {
-            wrongTranslations: [],
-            incorrectUsage: [],
-            missingNotes: [],
-            languageIssues: []
-        };
-        this.ISSUES_FILE = path.join(__dirname, '../data/translation_issues.json');
         this.loadExistingData();
-        this.loadIssues();
     }
 
     loadExistingData() {
@@ -36,26 +25,7 @@ class AnalyticsService {
             };
         }
     }
-
-    async loadIssues() {
-        try {
-            const data = await fs.readFile(this.ISSUES_FILE, 'utf8');
-            Object.assign(this.translationIssues, JSON.parse(data));
-        } catch (err) {
-            if (err.code !== 'ENOENT') {
-                console.error('Error loading translation issues:', err);
-            }
-        }
-    }
-
-    async saveIssues() {
-        try {
-            await fs.mkdir(path.dirname(this.ISSUES_FILE), { recursive: true });
-            await fs.writeFile(this.ISSUES_FILE, JSON.stringify(this.translationIssues, null, 2));
-        } catch (err) {
-            console.error('Error saving translation issues:', err);
-        }
-    }
+    
 
     recordTranslation(sourceLanguage, targetLanguage, channelId, userId) {
         this.analytics.totalTranslations++;
@@ -158,64 +128,9 @@ class AnalyticsService {
             data: this.analytics.dailyStats[date] || { translations: 0, activeUsers: [], commands: 0 }
         }));
     }
-
-    recordTranslationIssue(type, originalMessage, translatedMessage, sourceLanguage, targetLanguage, channelId, userId, description) {
-        const issue = {
-            id: uuidv4(),
-            timestamp: new Date().toISOString(),
-            type,
-            originalMessage,
-            translatedMessage,
-            sourceLanguage,
-            targetLanguage,
-            channelId,
-            userId,
-            description
-        };
-
-        switch(type) {
-            case 'wrong_translation':
-                this.translationIssues.wrongTranslations.push(issue);
-                break;
-            case 'incorrect_usage':
-                this.translationIssues.incorrectUsage.push(issue);
-                break;
-            case 'missing_note':
-                this.translationIssues.missingNotes.push(issue);
-                break;
-            case 'language_issue':
-                this.translationIssues.languageIssues.push(issue);
-                break;
-        }
-
-        // Save to file in background
-        this.saveIssues().catch(console.error);
-    }
-
-    getTranslationIssues() {
-        return {
-            wrongTranslations: [...this.translationIssues.wrongTranslations],
-            incorrectUsage: [...this.translationIssues.incorrectUsage],
-            missingNotes: [...this.translationIssues.missingNotes],
-            languageIssues: [...this.translationIssues.languageIssues]
-        };
-    }
 }
 
 // Create singleton instance
 const analyticsService = new AnalyticsService();
 
-// Bind all methods to maintain 'this' context
-const boundService = {};
-Object.getOwnPropertyNames(AnalyticsService.prototype)
-    .filter(prop => typeof analyticsService[prop] === 'function' && prop !== 'constructor')
-    .forEach(method => {
-        boundService[method] = analyticsService[method].bind(analyticsService);
-    });
-
-// Add any additional properties
-Object.assign(boundService, {
-    // Add any non-method properties here if needed
-});
-
-module.exports = boundService;
+module.exports = analyticsService;

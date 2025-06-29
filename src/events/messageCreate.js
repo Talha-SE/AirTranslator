@@ -84,76 +84,11 @@ module.exports = async (client, message) => {
                 try {
                     // Queue translation promise but don't await yet
                     const promise = translationQueue.push(() => translateText(message.content, language, detectedLanguage, toneEnabled))
-                        .then(translation => {
-                            if (!translation) {
-                                analyticsService.recordTranslationIssue(
-                                    'wrong_translation',
-                                    message.content,
-                                    '',
-                                    detectedLanguage,
-                                    language,
-                                    message.channel.id,
-                                    message.author.id,
-                                    'No translation returned'
-                                );
-                                return { language, translation: 'Translation failed' };
-                            }
-
-                            // Check for common issues
-                            if (translation.length < message.content.length * 0.3) {
-                                analyticsService.recordTranslationIssue(
-                                    'wrong_translation',
-                                    message.content,
-                                    translation,
-                                    detectedLanguage,
-                                    language,
-                                    message.channel.id,
-                                    message.author.id,
-                                    'Translation significantly shorter than original'
-                                );
-                            }
-                            
-                            if (translation.includes('undefined') || translation.includes('null')) {
-                                analyticsService.recordTranslationIssue(
-                                    'wrong_translation',
-                                    message.content,
-                                    translation,
-                                    detectedLanguage,
-                                    language,
-                                    message.channel.id,
-                                    message.author.id,
-                                    'Translation contains undefined/null values'
-                                );
-                            }
-                            
-                            if (translation === message.content) {
-                                analyticsService.recordTranslationIssue(
-                                    'wrong_translation',
-                                    message.content,
-                                    translation,
-                                    detectedLanguage,
-                                    language,
-                                    message.channel.id,
-                                    message.author.id,
-                                    'Translation identical to original'
-                                );
-                            }
-                            
-                            return { language, translation };
-                        });
+                        .then(translation => ({ language, translation }));
                     translationTasks.push(promise);
                 } catch (translationError) {
                     console.error(`❌ Translation error for ${language}:`, translationError.message);
-                    analyticsService.recordTranslationIssue(
-                        'language_issue',
-                        message.content,
-                        '',
-                        detectedLanguage,
-                        language,
-                        message.channel.id,
-                        message.author.id,
-                        `Translation error: ${translationError.message}`
-                    );
+                    // Continue with other languages even if one fails
                 }
             }
             // Wait for all queued translations for this setup

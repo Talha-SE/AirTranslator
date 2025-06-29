@@ -40,13 +40,14 @@ const messageCreate = require('./events/messageCreate');
 const guildDelete = require('./events/guildDelete');
 
 client.once('ready', () => {
-    console.log(`Logged in as ${client.user.tag}!`);
-    
-    // Update server list in analytics
+    ready(client);
+    // Update server list for analytics
     analyticsService.updateServerList(client);
     
-    // Schedule periodic updates
-    setInterval(() => analyticsService.updateServerList(client), 60 * 60 * 1000); // Update every hour
+    // Update server list every 10 minutes
+    setInterval(() => {
+        analyticsService.updateServerList(client);
+    }, 10 * 60 * 1000);
 });
 
 client.on('messageCreate', (message) => {

@@ -40,7 +40,7 @@ const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
  */
 const normalizeElongatedText = (text) => {
     // Reduce excessive character repetition (more than 3 consecutive characters)
-    return text.replace(/(.)\1{3,}/g, (match, char) => {
+    return text.replace(/([a-zA-Z0-9])\1{3,}/g, (match, char) => {
         // Keep maximum 3 repetitions for emphasis
         return char.repeat(3);
     });
@@ -100,26 +100,31 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         }
 
         // Create appropriate system prompt based on tone understanding setting
-        let systemContent = `You are a professional translator. Translate text naturally while preserving the original meaning and style. 
+        let systemContent = `You are a professional translator. Translate text naturally while preserving ALL EMOJIS exactly as written. Never translate or modify emoji meanings.
 
-IMPORTANT RULES:
+IMPORTANT EMOJI RULES:
+- Preserve every emoji exactly as written (e.g. keep 😊 as 😊, ❤️ as ❤️)
+- Never translate emoji meanings (e.g. don't convert 😊 to 'smiling face')
+- Maintain original emoji positions in the text
+
+OTHER RULES:
+- Preserve punctuation and special characters
 - Keep translations concise and natural
-- If the original has elongated words (like "heyyyy"), translate to equivalent casual form in target language
-- Do NOT repeat characters excessively in the translation
-- Preserve informal tone but keep it readable
-- Maximum translation length should be reasonable relative to original
+- If the original has elongated words (like "heyyyy"), translate to equivalent casual form
 - Only provide the direct translation without explanations`;
-        
-        if (useToneUnderstanding) {
-            systemContent = `You are an advanced translator with tone understanding. Preserve the original tone, emotion, formality, humor, and cultural nuances when translating.
 
-IMPORTANT RULES:
-- Keep translations concise and natural
-- If the original has elongated words (like "heyyyy"), translate to equivalent casual form in target language
-- Do NOT repeat characters excessively in the translation - use normal amounts of repetition for emphasis
-- Preserve the casual/informal tone appropriately for the target language
-- Consider cultural context and slang equivalents
-- Maximum translation length should be proportional to original text
+        if (useToneUnderstanding) {
+            systemContent = `You are an advanced translator with tone understanding. Preserve ALL EMOJIS exactly as written while maintaining tone.
+
+IMPORTANT EMOJI RULES:
+- Preserve every emoji exactly as written (e.g. keep 😊 as 😊, ❤️ as ❤️)
+- Never translate emoji meanings (e.g. don't convert 😊 to 'smiling face')
+- Maintain original emoji positions
+
+OTHER RULES:
+- Preserve punctuation and special characters
+- Keep translations natural while maintaining tone
+- Consider cultural context for text (but never for emojis)
 - Only provide the direct translation without explanations`;
         }
 
