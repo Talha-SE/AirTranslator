@@ -99,6 +99,36 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
             return text;
         }
 
+        // --- Handle very long texts by translating in smaller chunks to avoid context/token limits ---
+        const MAX_CHUNK_LENGTH = 2500; // characters, chosen to stay comfortably within provider limits
+        if (normalizedText.length > MAX_CHUNK_LENGTH) {
+            // Split text on natural boundaries (newline or space) close to the limit
+            const chunks = [];
+            let remaining = normalizedText;
+            while (remaining.length > MAX_CHUNK_LENGTH) {
+                let splitIdx = remaining.lastIndexOf('\n', MAX_CHUNK_LENGTH);
+                if (splitIdx === -1) {
+                    splitIdx = remaining.lastIndexOf(' ', MAX_CHUNK_LENGTH);
+                }
+                if (splitIdx === -1 || splitIdx < MAX_CHUNK_LENGTH * 0.5) {
+                    splitIdx = MAX_CHUNK_LENGTH; // fallback to hard split
+                }
+                chunks.push(remaining.slice(0, splitIdx + 1));
+                remaining = remaining.slice(splitIdx + 1);
+            }
+            if (remaining.length) {
+                chunks.push(remaining);
+            }
+
+            // Translate each chunk individually and concatenate the results
+            const translatedChunks = [];
+            for (const chunk of chunks) {
+                const translatedChunk = await translateText(chunk, targetLanguage, sourceLanguage, useToneUnderstanding);
+                translatedChunks.push(translatedChunk);
+            }
+            return translatedChunks.join('');
+        }
+
         // Create appropriate system prompt based on tone understanding setting
         let systemContent = `You are a professional and native translator. Translate text naturally while preserving the original meaning, style, and special characters.
 
@@ -106,6 +136,7 @@ IMPORTANT EMOJI RULES:
 - Preserve every emoji exactly as written (e.g. keep 😊 as 😊, ❤️ as ❤️)
 - Never translate emoji meanings (e.g. don't convert 😊 to 'smiling face')
 - Maintain original emoji positions in the text
+- Preserve all original line breaks (including multiple blank lines) and spacing exactly as in the input
 
 OTHER RULES:
 - Preserve punctuation and special characters
@@ -120,6 +151,7 @@ IMPORTANT EMOJI RULES:
 - Preserve every emoji exactly as written (e.g. keep 😊 as 😊, ❤️ as ❤️)
 - Never translate emoji meanings (e.g. don't convert 😊 to 'smiling face')
 - Maintain original emoji positions
+- Preserve all original line breaks (including multiple blank lines) and spacing exactly as in the input
 
 OTHER RULES:
 - Preserve punctuation and special characters
@@ -159,11 +191,12 @@ OTHER RULES:
                 },
                 {
                     role: 'user',
-                    content: `Translate this text to ${targetLangName}. Keep it natural and concise: "${normalizedText}"`
+                    content: `Translate this text to ${targetLangName}. Preserve original line breaks and spacing. Keep it natural and concise: "${normalizedText}"`
                 }
             ],
             temperature: 0.2,
-            max_tokens: Math.max(200, normalizedText.length * 4) // Allow more tokens
+            // Dynamically set max_tokens but cap it to avoid hitting hard limits
+            max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2))) // Allow sufficient tokens while preventing truncation
         });
 
         let translation = response.data.choices[0].message.content.trim();
@@ -174,10 +207,7 @@ OTHER RULES:
             translation = translation.slice(1, -1);
         }
         
-                // Keep only the first meaningful line to avoid extra notes
-        translation = translation.split('\n').find(l => l.trim().length > 0)?.trim() || translation;
-        // Remove leading bracketed explanations like [text]:
-        translation = translation.replace(/^\[[^\]]+\]:?\s*/i, '').trim();
+        // Keep full translation lines
         return translation;
     } catch (error) {
         console.error('Error translating text:', error);
