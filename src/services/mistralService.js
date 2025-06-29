@@ -100,7 +100,7 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         }
 
         // Create appropriate system prompt based on tone understanding setting
-        let systemContent = `You are a professional translator. Translate text naturally while preserving ALL EMOJIS exactly as written. Never translate or modify emoji meanings.
+        let systemContent = `You are a professional and native translator. Translate text naturally while preserving the original meaning, style, and special characters.
 
 IMPORTANT EMOJI RULES:
 - Preserve every emoji exactly as written (e.g. keep 😊 as 😊, ❤️ as ❤️)
@@ -114,7 +114,7 @@ OTHER RULES:
 - Only provide the direct translation without explanations`;
 
         if (useToneUnderstanding) {
-            systemContent = `You are an advanced translator with tone understanding. Preserve ALL EMOJIS exactly as written while maintaining tone.
+            systemContent = `You are an advanced translator with tone understanding. Preserve the original tone, emotion, formality, humor, cultural nuances, and special characters when translating.
 
 IMPORTANT EMOJI RULES:
 - Preserve every emoji exactly as written (e.g. keep 😊 as 😊, ❤️ as ❤️)
