@@ -1,4 +1,34 @@
 const axios = require('axios');
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+/**
+ * Helper to POST to Mistral with automatic retries on 429 or network errors.
+ * @param {object} payload - JSON body for chat/completions
+ * @param {number} maxRetries - maximum retry attempts
+ */
+const postMistralWithRetry = async (payload, maxRetries = 5) => {
+    let attempt = 0;
+    while (true) {
+        try {
+            return await axios.post(mistralAPIUrl, payload, {
+                headers: {
+                    'Authorization': `Bearer ${MISTRAL_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+        } catch (err) {
+            const status = err.response?.status;
+            // Retry only on 429 or network errors
+            if (attempt >= maxRetries || (status && status !== 429)) {
+                throw err;
+            }
+            const backoff = Math.min(60000, (2 ** attempt) * 1000 + Math.random() * 500);
+            console.warn(`Mistral request failed (status ${status}). Retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})`);
+            await sleep(backoff);
+            attempt++;
+        }
+    }
+};
 const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
@@ -16,32 +46,12 @@ const normalizeElongatedText = (text) => {
     });
 };
 
-/**
- * Validates translation output to prevent excessive length
- * @param {string} original - Original text
- * @param {string} translation - Translated text
- * @returns {string} - Validated translation
- */
-const validateTranslationLength = (original, translation) => {
-    const originalLength = original.length;
-    const translationLength = translation.length;
-    
-    // If translation is more than 5x longer than original, it's likely an error
-    if (translationLength > originalLength * 5 && originalLength < 100) {
-        console.warn(`Translation unusually long: ${translationLength} chars vs ${originalLength} chars original`);
-        // Try to truncate at a reasonable point
-        return translation.substring(0, originalLength * 3) + '...';
-    }
-    
-    return translation;
-};
-
 const detectLanguage = async (text) => {
     try {
         // Normalize the text before detection
         const normalizedText = normalizeElongatedText(text);
         
-        const response = await axios.post(mistralAPIUrl, {
+        const response = await postMistralWithRetry({
             model: 'mistral-small-latest',
             messages: [
                 {
@@ -55,11 +65,6 @@ const detectLanguage = async (text) => {
             ],
             temperature: 0.1,
             max_tokens: 10
-        }, {
-            headers: {
-                'Authorization': `Bearer ${MISTRAL_API_KEY}`,
-                'Content-Type': 'application/json'
-            }
         });
 
         let langCode = response.data.choices[0].message.content.trim().toLowerCase();
@@ -140,7 +145,7 @@ IMPORTANT RULES:
 
         const targetLangName = getLanguageName(targetLanguage);
 
-        const response = await axios.post(mistralAPIUrl, {
+        const response = await postMistralWithRetry({
             model: 'mistral-small-latest',
             messages: [
                 {
@@ -153,12 +158,7 @@ IMPORTANT RULES:
                 }
             ],
             temperature: 0.2,
-            max_tokens: Math.min(500, Math.max(50, normalizedText.length * 3)) // Dynamic token limit
-        }, {
-            headers: {
-                'Authorization': `Bearer ${MISTRAL_API_KEY}`,
-                'Content-Type': 'application/json'
-            }
+            max_tokens: Math.max(200, normalizedText.length * 4) // Allow more tokens
         });
 
         let translation = response.data.choices[0].message.content.trim();
@@ -169,9 +169,7 @@ IMPORTANT RULES:
             translation = translation.slice(1, -1);
         }
         
-        // Validate translation length
-        translation = validateTranslationLength(normalizedText, translation);
-        
+        // No length validation; return full translation
         return translation;
     } catch (error) {
         console.error('Error translating text:', error);

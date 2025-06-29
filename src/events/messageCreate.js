@@ -5,16 +5,10 @@ const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const analyticsService = require('../services/analyticsService');
 
 // Global translation queue with controlled concurrency
-const translationQueue = fastq.promise(worker, 5); // 5 concurrent translations
-let translationsInLastMinute = 0;
+const translationQueue = fastq.promise(worker, 1000); // High concurrency, effectively no cap
 
 async function worker(task) {
-    // Rate limiting - max 50 translations per minute
-    if (translationsInLastMinute >= 50) {
-        await new Promise(resolve => setTimeout(resolve, 60000));
-        translationsInLastMinute = 0;
-    }
-    translationsInLastMinute++;
+    // No internal rate limiting; process task immediately
     return task();
 }
 
@@ -28,14 +22,8 @@ module.exports = async (client, message) => {
         const matchingSetups = await getSetupsByChannelId(message.guild.id, message.channel.id);
         if (!matchingSetups || matchingSetups.length === 0) return;
 
-        // Skip if not enough content to translate
-        if (!message.content || message.content.length < 2) return;
-        
-        // Skip very long messages to prevent API abuse
-        if (message.content.length > 1000) {
-            console.log(`Skipping very long message (${message.content.length} chars)`);
-            return;
-        }
+        // Skip if content is truly empty (all whitespace)
+        if (!message.content) return;
         
         // Check if tone understanding is enabled for this channel
         const toneEnabled = await getToneSettings(message.guild.id, message.channel.id);
@@ -93,28 +81,27 @@ module.exports = async (client, message) => {
                 alreadyTranslatedTo.add(language.toLowerCase());
                 
                 try {
-                    // Add translation to queue for parallel processing
-                    const translation = await translationQueue.push(() => translateText(message.content, language, detectedLanguage, toneEnabled));
-                    
-                    // Additional validation for translation quality
-                    if (translation && translation.length > 0 && translation !== message.content) {
-                        // Record translation analytics
-                        analyticsService.recordTranslation(detectedLanguage, language, message.channel.id, message.author.id);
-                        
-                        // Add to our collection of translations
-                        translations.push({
-                            language: language,
-                            text: translation,
-                            toneEnabled: toneEnabled
-                        });
-                        
-                        console.log(`✅ Translated to ${language} for setup ${setup.name}${toneEnabled ? ' with tone understanding' : ''}`);
-                    } else {
-                        console.log(`⚠️ Translation to ${language} was empty or same as original`);
-                    }
+                    // Queue translation promise but don't await yet
+                    const promise = translationQueue.push(() => translateText(message.content, language, detectedLanguage, toneEnabled))
+                        .then(translation => ({ language, translation }));
+                    translationTasks.push(promise);
                 } catch (translationError) {
                     console.error(`❌ Translation error for ${language}:`, translationError.message);
                     // Continue with other languages even if one fails
+                }
+            }
+            // Wait for all queued translations for this setup
+            const results = await Promise.allSettled(translationTasks);
+            for (const result of results) {
+                if (result.status === 'fulfilled') {
+                    const { language, translation } = result.value;
+                    if (translation && translation.length > 0 && translation !== message.content) {
+                        analyticsService.recordTranslation(detectedLanguage, language, message.channel.id, message.author.id);
+                        translations.push({ language, text: translation, toneEnabled });
+                        console.log(`✅ Translated to ${language} for setup ${setup.name}${toneEnabled ? ' with tone understanding' : ''}`);
+                    }
+                } else {
+                    console.error(`❌ Translation error for ${language}:`, result.reason?.message || result.reason);
                 }
             }
         }
@@ -134,11 +121,6 @@ module.exports = async (client, message) => {
             } else {
                 // For a single translation, keep it simple
                 content += `[${translations[0].language.toUpperCase()}${translations[0].toneEnabled ? ' 🎭' : ''}]: ${translations[0].text}`;
-            }
-            
-            // Ensure the reply isn't too long for Discord
-            if (content.length > 2000) {
-                content = content.substring(0, 1950) + '\n... (truncated)';
             }
             
             // Send as a single reply
