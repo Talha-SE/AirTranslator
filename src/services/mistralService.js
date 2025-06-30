@@ -275,7 +275,7 @@ OTHER RULES:
             translation = translation.slice(1, -1);
         }
         
-        // Keep full translation lines 
+        // Keep full translation lines
         return translation;
     } catch (error) {
         console.error('Error translating text:', error);
