@@ -132,7 +132,9 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         // Create appropriate system prompt based on tone understanding setting
         let systemContent = `You are a professional and native translator. Translate text naturally while preserving the original meaning, style, and special characters.
 
-IMPORTANT EMOJI RULES:
+IMPORTANT TRANSLATION RULES:
+- For elongated words (like "heyyyyy"), translate to equivalent casual form in target language
+- If target language doesn't use elongation, keep meaning but remove repetitions
 - Preserve every emoji exactly as written (e.g. keep 😊 as 😊, ❤️ as ❤️)
 - Never translate emoji meanings (e.g. don't convert 😊 to 'smiling face')
 - Maintain original emoji positions in the text
@@ -141,13 +143,14 @@ IMPORTANT EMOJI RULES:
 OTHER RULES:
 - Preserve punctuation and special characters
 - Keep translations concise and natural
-- If the original has elongated words (like "heyyyy"), translate to equivalent casual form
 - Only provide the direct translation without explanations`;
 
         if (useToneUnderstanding) {
             systemContent = `You are an advanced translator with tone understanding. Preserve the original tone, emotion, formality, humor, cultural nuances, and special characters when translating.
 
-IMPORTANT EMOJI RULES:
+IMPORTANT TRANSLATION RULES:
+- For elongated words (like "heyyyyy"), translate to equivalent casual form in target language
+- If target language doesn't use elongation, keep meaning but remove repetitions
 - Preserve every emoji exactly as written (e.g. keep 😊 as 😊, ❤️ as ❤️)
 - Never translate emoji meanings (e.g. don't convert 😊 to 'smiling face')
 - Maintain original emoji positions
@@ -169,14 +172,79 @@ OTHER RULES:
                 'de': 'German',
                 'it': 'Italian',
                 'pt': 'Portuguese',
+                'pt-BR': 'Portuguese (Brazil)',
                 'ko': 'Korean',
+                'ja': 'Japanese',
+                'zh': 'Chinese (Simplified)',
+                'zh-TW': 'Chinese (Traditional)',
+                'taiwanese': 'Chinese (Traditional)',
+                'tawaiese': 'Chinese (Traditional)',
+                'tawainese hoekin': 'Chinese (Traditional)',
+                'hi': 'Hindi',
+                'bn': 'Bengali',
+                'pa': 'Punjabi',
+                'ta': 'Tamil',
+                'te': 'Telugu',
+                'mr': 'Marathi',
                 'ur': 'Urdu',
                 'ar': 'Arabic',
-                'ja': 'Japanese',
-                'zh': 'Chinese',
-                'hi': 'Hindi',
-                'ru': 'Russian'
+                'fa': 'Persian',
+                'tr': 'Turkish',
+                'ru': 'Russian',
+                'uk': 'Ukrainian',
+                'pl': 'Polish',
+                'nl': 'Dutch',
+                'sv': 'Swedish',
+                'fi': 'Finnish',
+                'da': 'Danish',
+                'no': 'Norwegian',
+                'th': 'Thai',
+                'vi': 'Vietnamese',
+                'id': 'Indonesian',
+                'ms': 'Malay',
+                'fil': 'Filipino',
+                'he': 'Hebrew',
+                'el': 'Greek',
+                'hu': 'Hungarian',
+                'cs': 'Czech',
+                'ro': 'Romanian',
+                'bg': 'Bulgarian',
+                'sr': 'Serbian',
+                'hr': 'Croatian',
+                'sk': 'Slovak',
+                'sl': 'Slovenian',
+                'lt': 'Lithuanian',
+                'lv': 'Latvian',
+                'et': 'Estonian',
+                'sw': 'Swahili',
+                'af': 'Afrikaans',
+                'zu': 'Zulu',
+                'xh': 'Xhosa',
+                'ne': 'Nepali',
+                'si': 'Sinhala',
+                'my': 'Burmese',
+                'km': 'Khmer',
+                'lo': 'Lao',
+                'am': 'Amharic',
+                'ti': 'Tigrinya',
+                'or': 'Odia',
+                'as': 'Assamese',
+                'gu': 'Gujarati',
+                'kn': 'Kannada',
+                'ml': 'Malayalam',
+                'sd': 'Sindhi',
+                'ps': 'Pashto',
+                'ku': 'Kurdish',
+                'tk': 'Turkmen',
+                'uz': 'Uzbek',
+                'kk': 'Kazakh',
+                'ky': 'Kyrgyz',
+                'tg': 'Tajik',
+                'mn': 'Mongolian',
+                'bo': 'Tibetan'
             };
+       
+            
             return languages[code] || code;
         };
 
