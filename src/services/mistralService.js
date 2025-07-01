@@ -160,6 +160,7 @@ IMPORTANT TRANSLATION RULES:
 - Preserve all original line breaks (including multiple blank lines) and spacing exactly as in the input
 - Preserve punctuation and special characters
 - Give translation only, no explanations/notes
+- Give complete translation.
 
 OTHER RULES:
 
