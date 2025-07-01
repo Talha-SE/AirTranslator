@@ -140,7 +140,7 @@ IMPORTANT TRANSLATION RULES:
 - Maintain original emoji positions in the text
 - Preserve all original line breaks (including multiple blank lines) and spacing exactly as in the input
 - Preserve punctuation and special characters
-- Give translation only, no explanations/notes
+- Give translation only, no explanations/ any notes regarding anything.
 - Give complete translation.
 
 OTHER RULES:
@@ -159,7 +159,7 @@ IMPORTANT TRANSLATION RULES:
 - Maintain original emoji positions
 - Preserve all original line breaks (including multiple blank lines) and spacing exactly as in the input
 - Preserve punctuation and special characters
-- Give translation only, no explanations/notes
+- Give translation only, no explanations/notes regarding anything.
 - Give complete translation.
 
 OTHER RULES:
@@ -289,7 +289,16 @@ OTHER RULES:
     }
 };
 
+const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLanguage = null, useToneUnderstanding = false) => {
+    const translations = {};
+    for (const targetLanguage of targetLanguages) {
+        translations[targetLanguage] = await translateText(text, targetLanguage, sourceLanguage, useToneUnderstanding);
+    }
+    return translations;
+};
+
 module.exports = {
     translateText,
-    detectLanguage
+    detectLanguage,
+    translateTextToMultipleLanguages
 };

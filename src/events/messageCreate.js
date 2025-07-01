@@ -1,5 +1,5 @@
 const { getSetupsByChannelId, getToneSettings } = require('../services/databaseService');
-const { translateText, detectLanguage } = require('../services/mistralService');
+const { translateText, detectLanguage, translateTextToMultipleLanguages } = require('../services/mistralService');
 const fastq = require('fastq');
 const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const analyticsService = require('../services/analyticsService');
@@ -36,8 +36,8 @@ module.exports = async (client, message) => {
         // Track languages we've already translated to in this channel to avoid duplicates
         const alreadyTranslatedTo = new Set();
         
-        // Collect all translations before sending
-        const translations = [];
+        // Collect all target languages from all setups
+        const allTargetLanguages = new Set();
         
         // Process each setup that includes this channel
         for (const setup of matchingSetups) {
@@ -53,62 +53,36 @@ module.exports = async (client, message) => {
             if (channelIndices.length === 0) continue;
             
             // Find the unique languages for this channel in this setup
-            const uniqueLanguages = new Set();
             for (const index of channelIndices) {
                 const language = setup.languages[index];
-                if (language !== AUTO_DETECT_LANGUAGE) {
-                    uniqueLanguages.add(language);
-                }
-            }
-            
-            // Convert Set to Array for easier processing
-            const targetLanguages = Array.from(uniqueLanguages);
-            
-            // Collect translation promises for each target language
-            const translationTasks = [];
-            for (const language of targetLanguages) {
-                // Skip if the detected language matches the target language
-                if (detectedLanguage.toLowerCase() === language.toLowerCase()) {
-                    continue;
-                }
-                
-                // Skip if we've already translated to this language from another setup
-                if (alreadyTranslatedTo.has(language.toLowerCase())) {
-                    console.log(`Skipping duplicate translation to ${language} for setup ${setup.name}`);
-                    continue;
-                }
-                
-                // Mark this language as translated
-                alreadyTranslatedTo.add(language.toLowerCase());
-                
-                try {
-                    // Queue translation promise but don't await yet
-                    const promise = translationQueue.push(() => translateText(message.content, language, detectedLanguage, toneEnabled))
-                        .then(translation => ({ language, translation }));
-                    translationTasks.push(promise);
-                } catch (translationError) {
-                    console.error(`❌ Translation error for ${language}:`, translationError.message);
-                    // Continue with other languages even if one fails
-                }
-            }
-            // Wait for all queued translations for this setup
-            const results = await Promise.allSettled(translationTasks);
-            for (const result of results) {
-                if (result.status === 'fulfilled') {
-                    const { language, translation } = result.value;
-                    if (translation && translation.length > 0 && translation !== message.content) {
-                        analyticsService.recordTranslation(detectedLanguage, language, message.channel.id, message.author.id);
-                        translations.push({ language, text: translation, toneEnabled });
-                        console.log(`✅ Translated to ${language} for setup ${setup.name}${toneEnabled ? ' with tone understanding' : ''}`);
-                    }
-                } else {
-                    console.error(`❌ Translation error for ${language}:`, result.reason?.message || result.reason);
+                if (language !== AUTO_DETECT_LANGUAGE && 
+                    language.toLowerCase() !== detectedLanguage.toLowerCase() &&
+                    !alreadyTranslatedTo.has(language.toLowerCase())) {
+                    allTargetLanguages.add(language);
+                    alreadyTranslatedTo.add(language.toLowerCase());
                 }
             }
         }
         
+        // If no languages to translate to, return early
+        if (allTargetLanguages.size === 0) return;
+        
+        // Process all translations in parallel
+        const targetLanguagesArray = Array.from(allTargetLanguages);
+        const translations = await translationQueue.push(() => 
+            translateTextToMultipleLanguages(message.content, targetLanguagesArray, detectedLanguage, toneEnabled)
+        );
+        
+        // Record analytics for successful translations
+        for (const [language, translation] of Object.entries(translations)) {
+            if (translation && translation.length > 0 && translation !== message.content) {
+                analyticsService.recordTranslation(detectedLanguage, language, message.channel.id, message.author.id);
+                console.log(`✅ Translated to ${language} for message`);
+            }
+        }
+        
         // If we have translations, send them as a single well-formatted message
-        if (translations.length > 0) {
+        if (Object.keys(translations).length > 0) {
             // Helper to split long content into Discord-sized chunks
             const splitIntoChunks = (text, chunkSize = 1900) => {
                 const lines = text.split('\n');
@@ -130,15 +104,15 @@ module.exports = async (client, message) => {
             let content = `**${message.author.displayName}**\n`;
             
             // Add a divider if there are multiple translations
-            if (translations.length > 1) {
+            if (Object.keys(translations).length > 1) {
                 content += "```\n";
-                for (const translation of translations) {
-                    content += `[${translation.language.toUpperCase()}${translation.toneEnabled ? ' 🎭' : ''}]: ${translation.text}\n`;
+                for (const [language, translation] of Object.entries(translations)) {
+                    content += `[${language.toUpperCase()}${toneEnabled ? ' 🎭' : ''}]: ${translation}\n`;
                 }
                 content += "```";
             } else {
                 // For a single translation, keep it simple
-                content += `[${translations[0].language.toUpperCase()}${translations[0].toneEnabled ? ' 🎭' : ''}]: ${translations[0].text}`;
+                content += `[${Object.keys(translations)[0].toUpperCase()}${toneEnabled ? ' 🎭' : ''}]: ${translations[Object.keys(translations)[0]]}`;
             }
             
             // Discord hard limit 4000; keep margin
