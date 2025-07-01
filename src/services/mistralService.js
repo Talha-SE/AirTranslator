@@ -139,9 +139,12 @@ IMPORTANT TRANSLATION RULES:
 - Never translate emoji meanings (e.g. don't convert 😊 to 'smiling face')
 - Maintain original emoji positions in the text
 - Preserve all original line breaks (including multiple blank lines) and spacing exactly as in the input
+- Preserve punctuation and special characters
+- Give translation only, no explanations/notes
+- Give complete translation.
 
 OTHER RULES:
-- Preserve punctuation and special characters
+
 - Keep translations concise and natural
 - Only provide the direct translation without explanations`;
 
@@ -155,9 +158,11 @@ IMPORTANT TRANSLATION RULES:
 - Never translate emoji meanings (e.g. don't convert 😊 to 'smiling face')
 - Maintain original emoji positions
 - Preserve all original line breaks (including multiple blank lines) and spacing exactly as in the input
+- Preserve punctuation and special characters
+- Give translation only, no explanations/notes
 
 OTHER RULES:
-- Preserve punctuation and special characters
+
 - Keep translations natural while maintaining tone
 - Consider cultural context for text (but never for emojis)
 - Only provide the direct translation without explanations`;
