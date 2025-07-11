@@ -35,6 +35,18 @@ const serverSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    serverWideTranslation: {
+        type: Boolean,
+        default: false
+    },
+    serverWideLanguages: {
+        type: [String],
+        default: []
+    },
+    serverWideExcludedChannels: {
+        type: [String],
+        default: []
+    },
     setups: [setupSchema]
 }, { timestamps: true });
 

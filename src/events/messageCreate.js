@@ -1,9 +1,10 @@
-const { getSetupsByChannelId, getToneSettings } = require('../services/databaseService');
+const { getSetupsByChannelId, getToneSettings, updateServerConfig } = require('../services/databaseService');
 const { translateText, detectLanguage, translateTextToMultipleLanguages } = require('../services/mistralService');
 const fastq = require('fastq');
 const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const analyticsService = require('../services/analyticsService');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const Server = require('../models/Server');
 
 // Global translation queue with controlled concurrency
 const translationQueue = fastq.promise(worker, 1000); // High concurrency, effectively no cap
@@ -13,22 +14,8 @@ async function worker(task) {
     return task();
 }
 
-module.exports = async (client, message) => {
-    if (message.author.bot) return;
-    if (!message.guild) return;
-    if (!message.content.trim()) return; // Skip empty messages
-
+async function translateAndReply(message, languages) {
     try {
-        // Find ALL setups that include this channel
-        const matchingSetups = await getSetupsByChannelId(message.guild.id, message.channel.id);
-        if (!matchingSetups || matchingSetups.length === 0) return;
-
-        // Skip if content is truly empty (all whitespace)
-        if (!message.content) return;
-        
-        // Check if tone understanding is enabled for this channel
-        const toneEnabled = await getToneSettings(message.guild.id, message.channel.id);
-        
         // Detect the language only once for efficiency
         const detectedLanguage = await detectLanguage(message.content);
         console.log(`Detected language: ${detectedLanguage} for message: "${message.content.substring(0, 30)}${message.content.length > 30 ? '...' : ''}"`);
@@ -36,45 +23,19 @@ module.exports = async (client, message) => {
         // Track languages we've already translated to in this channel to avoid duplicates
         const alreadyTranslatedTo = new Set();
         
-        // Collect all target languages from all setups
-        const allTargetLanguages = new Set();
-        
-        // Process each setup that includes this channel
-        for (const setup of matchingSetups) {
-            // Get all occurrences of this channel in the setup
-            const channelIndices = setup.channels.reduce((indices, channelId, index) => {
-                if (channelId === message.channel.id) {
-                    indices.push(index);
-                }
-                return indices;
-            }, []);
-            
-            // If no indices found, skip this setup
-            if (channelIndices.length === 0) continue;
-            
-            // Find the unique languages for this channel in this setup
-            for (const index of channelIndices) {
-                const language = setup.languages[index];
-                if (language !== AUTO_DETECT_LANGUAGE && 
-                    language.toLowerCase() !== detectedLanguage.toLowerCase() &&
-                    !alreadyTranslatedTo.has(language.toLowerCase())) {
-                    allTargetLanguages.add(language);
-                    alreadyTranslatedTo.add(language.toLowerCase());
-                }
-            }
-        }
-        
-        // If no languages to translate to, return early
-        if (allTargetLanguages.size === 0) return;
-        
         // Process all translations in parallel
-        const targetLanguagesArray = Array.from(allTargetLanguages);
-        const translations = await translationQueue.push(() => 
-            translateTextToMultipleLanguages(message.content, targetLanguagesArray, detectedLanguage, toneEnabled)
+        const targetLanguagesArray = languages.filter(language => 
+            language !== AUTO_DETECT_LANGUAGE && 
+            language.toLowerCase() !== detectedLanguage.toLowerCase() &&
+            !alreadyTranslatedTo.has(language.toLowerCase())
         );
+        const translations = translationQueue.push(async () => {
+            const toneSettings = await getToneSettings(message.guild.id, message.channel.id);
+            return translateTextToMultipleLanguages(message.content, targetLanguagesArray, detectedLanguage, toneSettings);
+        });
         
         // Record analytics for successful translations
-        for (const [language, translation] of Object.entries(translations)) {
+        for (const [language, translation] of Object.entries(await translations)) {
             if (translation && translation.length > 0 && translation !== message.content) {
                 analyticsService.recordTranslation(detectedLanguage, language, message.channel.id, message.author.id);
                 console.log(`✅ Translated to ${language} for message`);
@@ -82,7 +43,7 @@ module.exports = async (client, message) => {
         }
         
         // If we have translations, send them as a single well-formatted message
-        if (Object.keys(translations).length > 0) {
+        if (Object.keys(await translations).length > 0) {
             // Helper to split long content into Discord-sized chunks
             const splitIntoChunks = (text, chunkSize = 1900) => {
                 const lines = text.split('\n');
@@ -104,15 +65,15 @@ module.exports = async (client, message) => {
             let content = `**${message.author.displayName}**\n`;
             
             // Add a divider if there are multiple translations
-            if (Object.keys(translations).length > 1) {
+            if (Object.keys(await translations).length > 1) {
                 content += "```\n";
-                for (const [language, translation] of Object.entries(translations)) {
-                    content += `[${language.toUpperCase()}${toneEnabled ? ' 🎭' : ''}]: ${translation}\n`;
+                for (const [language, translation] of Object.entries(await translations)) {
+                    content += `[${language.toUpperCase()}]: ${translation}\n`;
                 }
                 content += "```";
             } else {
                 // For a single translation, keep it simple
-                content += `[${Object.keys(translations)[0].toUpperCase()}${toneEnabled ? ' 🎭' : ''}]: ${translations[Object.keys(translations)[0]]}`;
+                content += `[${Object.keys(await translations)[0].toUpperCase()}]: ${await translations[Object.keys(await translations)[0]]}`;
             }
             
             // Discord hard limit 4000; keep margin
@@ -141,7 +102,60 @@ module.exports = async (client, message) => {
             }
         }
     } catch (error) {
-        console.error('Error in messageCreate event:', error);
-        // Don't send error messages to users to avoid spam
+        console.error('Error in translateAndReply:', error);
+    }
+}
+
+module.exports = async (client, message) => {
+    if (message.author.bot) return;
+    if (!message.guild) return;
+    if (!message.content.trim()) return;
+
+    try {
+        // First check if server-wide translation is enabled
+        const server = await Server.findOne({ serverId: message.guild.id });
+
+        if (server?.serverWideTranslation) {
+            // Skip if channel is excluded
+            if (server.serverWideExcludedChannels.includes(message.channel.id)) {
+                return;
+            }
+            
+            // Get all unique target languages from server setups (case-insensitive)
+            const allLanguages = [...new Set(
+                server.setups.flatMap(setup => 
+                    setup.languages.map(lang => lang.toLowerCase())
+                )
+            )];
+            
+            // Update server with aggregated languages if different
+            if (allLanguages.length > 0 && 
+                JSON.stringify(allLanguages) !== JSON.stringify(server.serverWideLanguages?.map(l => l.toLowerCase()))) {
+                await updateServerConfig(message.guild.id, {
+                    serverWideLanguages: allLanguages
+                });
+            }
+            
+            // Proceed with translation using server-wide languages
+            if (allLanguages.length > 0) {
+                await translateAndReply(message, allLanguages);
+                return;
+            }
+        }
+
+        // Fall back to channel-specific setups
+        const matchingSetups = await getSetupsByChannelId(message.guild.id, message.channel.id);
+        if (!matchingSetups || matchingSetups.length === 0) return;
+
+        // Combine languages from all matching setups (case-insensitive)
+        const languages = [...new Set(
+            matchingSetups.flatMap(setup => 
+                setup.languages.map(lang => lang.toLowerCase())
+            )
+        )];
+
+        await translateAndReply(message, languages);
+    } catch (error) {
+        console.error('Error processing message:', error);
     }
 };
