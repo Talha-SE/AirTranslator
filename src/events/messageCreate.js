@@ -177,6 +177,14 @@ async function translateAndReply(message, languages) {
             // Send the embed without footer
             await message.reply({
                 embeds: [embed],
+                components: [
+                    new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setLabel('👍 Vote for us!')
+                            .setURL('https://top.gg/bot/1380177061032759416/vote')
+                            .setStyle(ButtonStyle.Link)
+                    )
+                ],
                 allowedMentions: { repliedUser: false }
             });
         }

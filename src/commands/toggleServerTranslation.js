@@ -32,8 +32,9 @@ module.exports = {
             return interaction.reply({ embeds: [embed] });
         } catch (error) {
             console.error('Error toggling server-wide translation:', error);
-            return interaction.reply({ 
-                content: 'There was an error updating the server-wide translation setting. Please try again later.',
+            const responseMessage = 'There was an error updating the server-wide translation setting. Please try again later.';
+            await interaction.editReply({
+                content: responseMessage,
                 flags: 64 // MessageFlags.Ephemeral
             });
         }

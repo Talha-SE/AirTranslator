@@ -97,29 +97,27 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 
     try {
-        // Defer the reply first to prevent timeout
-        if (!interaction.deferred && !interaction.replied) {
-            await interaction.deferReply({ ephemeral: true });
-        }
-        
-        // Record command usage for analytics
-        analyticsService.recordCommand(interaction.commandName, interaction.user.id);
-        
+        // Defer reply first to prevent timeout
+        await interaction.deferReply({ ephemeral: true });
         await command.execute(interaction);
     } catch (error) {
-        console.error(`Error executing ${interaction.commandName}`, error);
-        
-        // Only reply with error if not already replied
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-                content: 'There was an error while executing this command!',
-                ephemeral: true
-            });
-        } else if (interaction.deferred) {
-            await interaction.followUp({
-                content: 'There was an error while executing this command!',
-                ephemeral: true
-            });
+        console.error(`Error executing ${interaction.commandName}`);
+        console.error(error);
+
+        try {
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({ 
+                    content: 'There was an error while executing this command!', 
+                    ephemeral: true 
+                });
+            } else {
+                await interaction.reply({ 
+                    content: 'There was an error while executing this command!', 
+                    ephemeral: true 
+                });
+            }
+        } catch (err) {
+            console.error('Error handling command error:', err);
         }
     }
 });

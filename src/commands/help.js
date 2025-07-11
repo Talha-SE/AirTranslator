@@ -47,9 +47,14 @@ module.exports = {
             )
             .setFooter({ text: 'Air Translator Bot • /help' });
 
-        return interaction.reply({ 
+        await interaction.reply({ 
             embeds: [embed], 
             flags: MessageFlags.Ephemeral 
+        });
+
+        await interaction.editReply({
+            embeds: [embed],
+            flags: MessageFlags.Ephemeral
         });
     }
 };
