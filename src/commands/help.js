@@ -49,7 +49,7 @@ module.exports = {
 
         return interaction.reply({ 
             embeds: [embed], 
-            flags: MessageFlags.FLAGS.EPHEMERAL 
+            flags: MessageFlags.Ephemeral 
         });
     }
 };
