@@ -44,149 +44,167 @@ async function translateAndReply(message, languages) {
         
         // If we have translations, send them as a single well-formatted message
         if (Object.keys(await translations).length > 0) {
-            // Format the translations in a blue embed like help command
-            const embed = new EmbedBuilder()
-                .setColor(0x3498db) // Clear blue color
-                .setAuthor({
-                    name: `${message.author.displayName}'s Translations`,
-                    iconURL: message.author.displayAvatarURL()
-                });
+            // Split long translations into chunks
+            const MAX_CHUNK_SIZE = 2000;
+            const chunks = [];
+            let currentChunk = '';
 
-            // Add translations with language flags
-            const languageFlags = {
-                'afrikaans': '🇿🇦',
-                'albanian': '🇦🇱',
-                'amharic': '🇪🇹',
-                'arabic': '🇸🇦',
-                'armenian': '🇦🇲',
-                'azerbaijani': '🇦🇿',
-                'basque': '🇪🇸',
-                'belarusian': '🇧🇾',
-                'bengali': '🇧🇩',
-                'bosnian': '🇧🇦',
-                'bulgarian': '🇧🇬',
-                'burmese': '🇲🇲',
-                'catalan': '🇪🇸',
-                'cebuano': '🇵🇭',
-                'chinese': '🇨🇳',
-                'corsican': '🇫🇷',
-                'croatian': '🇭🇷',
-                'czech': '🇨🇿',
-                'danish': '🇩🇰',
-                'dutch': '🇳🇱',
-                'english': '🇬🇧',
-                'esperanto': '🏳️',
-                'estonian': '🇪🇪',
-                'filipino': '🇵🇭',
-                'finnish': '🇫🇮',
-                'french': '🇫🇷',
-                'frisian': '🇳🇱',
-                'galician': '🇪🇸',
-                'georgian': '🇬🇪',
-                'german': '🇩🇪',
-                'greek': '🇬🇷',
-                'gujarati': '🇮🇳',
-                'haitian': '🇭🇹',
-                'hausa': '🇳🇬',
-                'hawaiian': '🇺🇸',
-                'hebrew': '🇮🇱',
-                'hindi': '🇮🇳',
-                'hmong': '🇨🇳',
-                'hungarian': '🇭🇺',
-                'icelandic': '🇮🇸',
-                'igbo': '🇳🇬',
-                'indonesian': '🇮🇩',
-                'irish': '🇮🇪',
-                'italian': '🇮🇹',
-                'japanese': '🇯🇵',
-                'javanese': '🇮🇩',
-                'kannada': '🇮🇳',
-                'kazakh': '🇰🇿',
-                'khmer': '🇰🇭',
-                'kinyarwanda': '🇷🇼',
-                'korean': '🇰🇷',
-                'kurdish': '🇮🇶',
-                'kyrgyz': '🇰🇬',
-                'lao': '🇱🇦',
-                'latin': '🏛️',
-                'latvian': '🇱🇻',
-                'lithuanian': '🇱🇹',
-                'luxembourgish': '🇱🇺',
-                'macedonian': '🇲🇰',
-                'malagasy': '🇲🇬',
-                'malay': '🇲🇾',
-                'malayalam': '🇮🇳',
-                'maltese': '🇲🇹',
-                'maori': '🇳🇿',
-                'marathi': '🇮🇳',
-                'mongolian': '🇲🇳',
-                'nepali': '🇳🇵',
-                'norwegian': '🇳🇴',
-                'nyanja': '🇲🇼',
-                'odia': '🇮🇳',
-                'pashto': '🇦🇫',
-                'persian': '🇮🇷',
-                'polish': '🇵🇱',
-                'portuguese': '🇵🇹',
-                'punjabi': '🇮🇳',
-                'romanian': '🇷🇴',
-                'russian': '🇷🇺',
-                'samoan': '🇼🇸',
-                'scots': '🏴',
-                'serbian': '🇷🇸',
-                'sesotho': '🇱🇸',
-                'shona': '🇿🇼',
-                'sindhi': '🇵🇰',
-                'sinhala': '🇱🇰',
-                'slovak': '🇸🇰',
-                'slovenian': '🇸🇮',
-                'somali': '🇸🇴',
-                'spanish': '🇪🇸',
-                'sundanese': '🇮🇩',
-                'swahili': '🇰🇪',
-                'swedish': '🇸🇪',
-                'tagalog': '🇵🇭',
-                'tajik': '🇹🇯',
-                'tamil': '🇮🇳',
-                'tatar': '🇷🇺',
-                'telugu': '🇮🇳',
-                'thai': '🇹🇭',
-                'turkish': '🇹🇷',
-                'turkmen': '🇹🇲',
-                'ukrainian': '🇺🇦',
-                'urdu': '🇵🇰',
-                'uyghur': '🇨🇳',
-                'uzbek': '🇺🇿',
-                'vietnamese': '🇻🇳',
-                'welsh': '🏴',
-                'xhosa': '🇿🇦',
-                'yiddish': '🇮🇱',
-                'yoruba': '🇳🇬',
-                'zulu': '🇿🇦'
-            };
-
-            let translationContent = '```\n';
             for (const [language, translation] of Object.entries(await translations)) {
-                const flag = languageFlags[language.toLowerCase()] || '🌐';
-                translationContent += `${flag} ${language.toUpperCase()}:  ${translation}\n`;
+                const flag = {
+                    'afrikaans': '🇿🇦',
+                    'albanian': '🇦🇱',
+                    'amharic': '🇪🇹',
+                    'arabic': '🇸🇦',
+                    'armenian': '🇦🇲',
+                    'azerbaijani': '🇦🇿',
+                    'basque': '🇪🇸',
+                    'belarusian': '🇧🇾',
+                    'bengali': '🇧🇩',
+                    'bosnian': '🇧🇦',
+                    'bulgarian': '🇧🇬',
+                    'burmese': '🇲🇲',
+                    'catalan': '🇪🇸',
+                    'cebuano': '🇵🇭',
+                    'chinese': '🇨🇳',
+                    'corsican': '🇫🇷',
+                    'croatian': '🇭🇷',
+                    'czech': '🇨🇿',
+                    'danish': '🇩🇰',
+                    'dutch': '🇳🇱',
+                    'english': '🇬🇧',
+                    'esperanto': '🏳️',
+                    'estonian': '🇪🇪',
+                    'filipino': '🇵🇭',
+                    'finnish': '🇫🇮',
+                    'french': '🇫🇷',
+                    'frisian': '🇳🇱',
+                    'galician': '🇪🇸',
+                    'georgian': '🇬🇪',
+                    'german': '🇩🇪',
+                    'greek': '🇬🇷',
+                    'gujarati': '🇮🇳',
+                    'haitian': '🇭🇹',
+                    'hausa': '🇳🇬',
+                    'hawaiian': '🇺🇸',
+                    'hebrew': '🇮🇱',
+                    'hindi': '🇮🇳',
+                    'hmong': '🇨🇳',
+                    'hungarian': '🇭🇺',
+                    'icelandic': '🇮🇸',
+                    'igbo': '🇳🇬',
+                    'indonesian': '🇮🇩',
+                    'irish': '🇮🇪',
+                    'italian': '🇮🇹',
+                    'japanese': '🇯🇵',
+                    'javanese': '🇮🇩',
+                    'kannada': '🇮🇳',
+                    'kazakh': '🇰🇿',
+                    'khmer': '🇰🇭',
+                    'kinyarwanda': '🇷🇼',
+                    'korean': '🇰🇷',
+                    'kurdish': '🇮🇶',
+                    'kyrgyz': '🇰🇬',
+                    'lao': '🇱🇦',
+                    'latin': '🏛️',
+                    'latvian': '🇱🇻',
+                    'lithuanian': '🇱🇹',
+                    'luxembourgish': '🇱🇺',
+                    'macedonian': '🇲🇰',
+                    'malagasy': '🇲🇬',
+                    'malay': '🇲🇾',
+                    'malayalam': '🇮🇳',
+                    'maltese': '🇲🇹',
+                    'maori': '🇳🇿',
+                    'marathi': '🇮🇳',
+                    'mongolian': '🇲🇳',
+                    'nepali': '🇳🇵',
+                    'norwegian': '🇳🇴',
+                    'nyanja': '🇲🇼',
+                    'odia': '🇮🇳',
+                    'pashto': '🇦🇫',
+                    'persian': '🇮🇷',
+                    'polish': '🇵🇱',
+                    'portuguese': '🇵🇹',
+                    'punjabi': '🇮🇳',
+                    'romanian': '🇷🇴',
+                    'russian': '🇷🇺',
+                    'samoan': '🇼🇸',
+                    'scots': '🏴',
+                    'serbian': '🇷🇸',
+                    'sesotho': '🇱🇸',
+                    'shona': '🇿🇼',
+                    'sindhi': '🇵🇰',
+                    'sinhala': '🇱🇰',
+                    'slovak': '🇸🇰',
+                    'slovenian': '🇸🇮',
+                    'somali': '🇸🇴',
+                    'spanish': '🇪🇸',
+                    'sundanese': '🇮🇩',
+                    'swahili': '🇰🇪',
+                    'swedish': '🇸🇪',
+                    'tagalog': '🇵🇭',
+                    'tajik': '🇹🇯',
+                    'tamil': '🇮🇳',
+                    'tatar': '🇷🇺',
+                    'telugu': '🇮🇳',
+                    'thai': '🇹🇭',
+                    'turkish': '🇹🇷',
+                    'turkmen': '🇹🇲',
+                    'ukrainian': '🇺🇦',
+                    'urdu': '🇵🇰',
+                    'uyghur': '🇨🇳',
+                    'uzbek': '🇺🇿',
+                    'vietnamese': '🇻🇳',
+                    'welsh': '🏴',
+                    'xhosa': '🇿🇦',
+                    'yiddish': '🇮🇱',
+                    'yoruba': '🇳🇬',
+                    'zulu': '🇿🇦'
+                }[language.toLowerCase()] || '🌐';
+                const line = `${flag} ${language.toUpperCase()}: ${translation}\n`;
+                
+                if (currentChunk.length + line.length > MAX_CHUNK_SIZE) {
+                    chunks.push(currentChunk);
+                    currentChunk = line;
+                } else {
+                    currentChunk += line;
+                }
             }
-            translationContent += '```';
 
-            embed.setDescription(translationContent);
+            if (currentChunk) chunks.push(currentChunk);
 
-            // Send the embed without footer
-            await message.reply({
-                embeds: [embed],
-                components: [
-                    new ActionRowBuilder().addComponents(
-                        new ButtonBuilder()
-                            .setLabel('👍 Vote for us!')
-                            .setURL('https://top.gg/bot/1380177061032759416/vote')
-                            .setStyle(ButtonStyle.Link)
-                    )
-                ],
-                allowedMentions: { repliedUser: false }
-            });
+            // Send each chunk as a separate embed
+            for (let i = 0; i < chunks.length; i++) {
+                const embed = new EmbedBuilder()
+                    .setColor(0x3498db)
+                    .setDescription(`\`\`\`\n${chunks[i]}\`\`\``);
+                    
+                if (i === 0) {
+                    embed.setAuthor({
+                        name: `${message.author.displayName}'s Translations`,
+                        iconURL: message.author.displayAvatarURL()
+                    });
+                }
+                
+                const replyOptions = {
+                    embeds: [embed],
+                    allowedMentions: { repliedUser: false }
+                };
+                
+                // Only add vote button to last message
+                if (i === chunks.length - 1) {
+                    replyOptions.components = [
+                        new ActionRowBuilder().addComponents(
+                            new ButtonBuilder()
+                                .setLabel('👍 Vote for us!')
+                                .setURL('https://top.gg/bot/1380177061032759416/vote')
+                                .setStyle(ButtonStyle.Link)
+                        )
+                    ];
+                }
+                
+                await message.reply(replyOptions);
+            }
         }
     } catch (error) {
         console.error('Error in translateAndReply:', error);
