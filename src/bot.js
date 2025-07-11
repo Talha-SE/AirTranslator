@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Collection, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events } = require('discord.js');
 const { connectDB } = require('./services/databaseService');
 const analyticsService = require('./services/analyticsService');
 const { AutoPoster } = require('topgg-autoposter');
@@ -86,28 +86,40 @@ client.on('guildCreate', async (guild) => {
     analyticsService.updateServerList(client);
 });
 
-client.on('interactionCreate', async (interaction) => {
+client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
-    const command = client.commands.get(interaction.commandName);
-    if (!command) return;
- 
+    const command = interaction.client.commands.get(interaction.commandName);
+
+    if (!command) {
+        console.error(`No command matching ${interaction.commandName} was found.`);
+        return;
+    }
+
     try {
+        // Defer the reply first to prevent timeout
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferReply({ ephemeral: true });
+        }
+        
         // Record command usage for analytics
         analyticsService.recordCommand(interaction.commandName, interaction.user.id);
         
         await command.execute(interaction);
     } catch (error) {
-        console.error(error);
-        const response = { 
-            content: 'There was an error while executing this command!',
-            flags: 64 // MessageFlags.Ephemeral
-        };
+        console.error(`Error executing ${interaction.commandName}`, error);
         
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp(response);
-        } else {
-            await interaction.reply(response);
+        // Only reply with error if not already replied
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({
+                content: 'There was an error while executing this command!',
+                ephemeral: true
+            });
+        } else if (interaction.deferred) {
+            await interaction.followUp({
+                content: 'There was an error while executing this command!',
+                ephemeral: true
+            });
         }
     }
 });

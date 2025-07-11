@@ -142,6 +142,12 @@ IMPORTANT TRANSLATION RULES:
 - Preserve punctuation and special characters
 - Give translation only, no explanations/ any notes regarding anything.
 - Give complete translation.
+- Never add disclaimers
+
+If input appears meaningless:
+- Convert letter-by-letter to target language sounds
+- Never comment on the input
+- Never add disclaimers
 
 OTHER RULES:
 
@@ -257,7 +263,7 @@ OTHER RULES:
         const targetLangName = getLanguageName(targetLanguage);
 
         const response = await postMistralWithRetry({
-            model: 'mistral-small-latest',
+            model: 'mistral-medium-latest',
             messages: [
                 {
                     role: 'system',

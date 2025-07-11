@@ -3,7 +3,7 @@ const { translateText, detectLanguage, translateTextToMultipleLanguages } = requ
 const fastq = require('fastq');
 const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const analyticsService = require('../services/analyticsService');
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const Server = require('../models/Server');
 
 // Global translation queue with controlled concurrency
@@ -44,62 +44,141 @@ async function translateAndReply(message, languages) {
         
         // If we have translations, send them as a single well-formatted message
         if (Object.keys(await translations).length > 0) {
-            // Helper to split long content into Discord-sized chunks
-            const splitIntoChunks = (text, chunkSize = 1900) => {
-                const lines = text.split('\n');
-                const chunks = [];
-                let current = '';
-                for (const line of lines) {
-                    if ((current + '\n' + line).length > chunkSize) {
-                        chunks.push(current);
-                        current = line;
-                    } else {
-                        current += (current ? '\n' : '') + line;
-                    }
-                }
-                if (current) chunks.push(current);
-                return chunks;
+            // Format the translations in a blue embed like help command
+            const embed = new EmbedBuilder()
+                .setColor(0x3498db) // Clear blue color
+                .setAuthor({
+                    name: `${message.author.displayName}'s Translations`,
+                    iconURL: message.author.displayAvatarURL()
+                });
+
+            // Add translations with language flags
+            const languageFlags = {
+                'afrikaans': '🇿🇦',
+                'albanian': '🇦🇱',
+                'amharic': '🇪🇹',
+                'arabic': '🇸🇦',
+                'armenian': '🇦🇲',
+                'azerbaijani': '🇦🇿',
+                'basque': '🇪🇸',
+                'belarusian': '🇧🇾',
+                'bengali': '🇧🇩',
+                'bosnian': '🇧🇦',
+                'bulgarian': '🇧🇬',
+                'burmese': '🇲🇲',
+                'catalan': '🇪🇸',
+                'cebuano': '🇵🇭',
+                'chinese': '🇨🇳',
+                'corsican': '🇫🇷',
+                'croatian': '🇭🇷',
+                'czech': '🇨🇿',
+                'danish': '🇩🇰',
+                'dutch': '🇳🇱',
+                'english': '🇬🇧',
+                'esperanto': '🏳️',
+                'estonian': '🇪🇪',
+                'filipino': '🇵🇭',
+                'finnish': '🇫🇮',
+                'french': '🇫🇷',
+                'frisian': '🇳🇱',
+                'galician': '🇪🇸',
+                'georgian': '🇬🇪',
+                'german': '🇩🇪',
+                'greek': '🇬🇷',
+                'gujarati': '🇮🇳',
+                'haitian': '🇭🇹',
+                'hausa': '🇳🇬',
+                'hawaiian': '🇺🇸',
+                'hebrew': '🇮🇱',
+                'hindi': '🇮🇳',
+                'hmong': '🇨🇳',
+                'hungarian': '🇭🇺',
+                'icelandic': '🇮🇸',
+                'igbo': '🇳🇬',
+                'indonesian': '🇮🇩',
+                'irish': '🇮🇪',
+                'italian': '🇮🇹',
+                'japanese': '🇯🇵',
+                'javanese': '🇮🇩',
+                'kannada': '🇮🇳',
+                'kazakh': '🇰🇿',
+                'khmer': '🇰🇭',
+                'kinyarwanda': '🇷🇼',
+                'korean': '🇰🇷',
+                'kurdish': '🇮🇶',
+                'kyrgyz': '🇰🇬',
+                'lao': '🇱🇦',
+                'latin': '🏛️',
+                'latvian': '🇱🇻',
+                'lithuanian': '🇱🇹',
+                'luxembourgish': '🇱🇺',
+                'macedonian': '🇲🇰',
+                'malagasy': '🇲🇬',
+                'malay': '🇲🇾',
+                'malayalam': '🇮🇳',
+                'maltese': '🇲🇹',
+                'maori': '🇳🇿',
+                'marathi': '🇮🇳',
+                'mongolian': '🇲🇳',
+                'nepali': '🇳🇵',
+                'norwegian': '🇳🇴',
+                'nyanja': '🇲🇼',
+                'odia': '🇮🇳',
+                'pashto': '🇦🇫',
+                'persian': '🇮🇷',
+                'polish': '🇵🇱',
+                'portuguese': '🇵🇹',
+                'punjabi': '🇮🇳',
+                'romanian': '🇷🇴',
+                'russian': '🇷🇺',
+                'samoan': '🇼🇸',
+                'scots': '🏴',
+                'serbian': '🇷🇸',
+                'sesotho': '🇱🇸',
+                'shona': '🇿🇼',
+                'sindhi': '🇵🇰',
+                'sinhala': '🇱🇰',
+                'slovak': '🇸🇰',
+                'slovenian': '🇸🇮',
+                'somali': '🇸🇴',
+                'spanish': '🇪🇸',
+                'sundanese': '🇮🇩',
+                'swahili': '🇰🇪',
+                'swedish': '🇸🇪',
+                'tagalog': '🇵🇭',
+                'tajik': '🇹🇯',
+                'tamil': '🇮🇳',
+                'tatar': '🇷🇺',
+                'telugu': '🇮🇳',
+                'thai': '🇹🇭',
+                'turkish': '🇹🇷',
+                'turkmen': '🇹🇲',
+                'ukrainian': '🇺🇦',
+                'urdu': '🇵🇰',
+                'uyghur': '🇨🇳',
+                'uzbek': '🇺🇿',
+                'vietnamese': '🇻🇳',
+                'welsh': '🏴',
+                'xhosa': '🇿🇦',
+                'yiddish': '🇮🇱',
+                'yoruba': '🇳🇬',
+                'zulu': '🇿🇦'
             };
 
-            // Format the translations in a clean, organized way
-            let content = `**${message.author.displayName}**\n`;
-            
-            // Add a divider if there are multiple translations
-            if (Object.keys(await translations).length > 1) {
-                content += "```\n";
-                for (const [language, translation] of Object.entries(await translations)) {
-                    content += `[${language.toUpperCase()}]: ${translation}\n`;
-                }
-                content += "```";
-            } else {
-                // For a single translation, keep it simple
-                content += `[${Object.keys(await translations)[0].toUpperCase()}]: ${await translations[Object.keys(await translations)[0]]}`;
+            let translationContent = '```\n';
+            for (const [language, translation] of Object.entries(await translations)) {
+                const flag = languageFlags[language.toLowerCase()] || '🌐';
+                translationContent += `${flag} ${language.toUpperCase()}:  ${translation}\n`;
             }
-            
-            // Discord hard limit 4000; keep margin
-            const chunks = splitIntoChunks(content, 1900);
-            for (let i = 0; i < chunks.length; i++) {
-                const row = new ActionRowBuilder()
-                    .addComponents(
-                        new ButtonBuilder()
-                            .setLabel('Vote')
-                            .setURL('https://top.gg/bot/1380177061032759416/vote')
-                            .setStyle(ButtonStyle.Link)
-                            .setEmoji('🗳️')
-                    );
-                
-                const options = {
-                    content: chunks[i],
-                    components: [row],
-                    allowedMentions: { repliedUser: false }
-                };
-                if (i === 0) {
-                    // reply to original message
-                    await message.reply(options);
-                } else {
-                    await message.channel.send(options);
-                }
-            }
+            translationContent += '```';
+
+            embed.setDescription(translationContent);
+
+            // Send the embed without footer
+            await message.reply({
+                embeds: [embed],
+                allowedMentions: { repliedUser: false }
+            });
         }
     } catch (error) {
         console.error('Error in translateAndReply:', error);
