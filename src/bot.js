@@ -19,7 +19,6 @@ global.discordClient = client;
 client.commands = new Collection();
 
 // Load commands
-const setupCommand = require('./commands/setup');
 const quickSetupCommand = require('./commands/quickSetup');
 const addChannelCommand = require('./commands/addChannel');
 const removeChannelCommand = require('./commands/removeChannel');
@@ -29,7 +28,6 @@ const toggleToneCommand = require('./commands/toggleTone');
 const toggleServerTranslationCommand = require('./commands/toggleServerTranslation');
 const helpCommand = require('./commands/help');
 
-client.commands.set('setup', setupCommand);
 client.commands.set('quicksetup', quickSetupCommand);
 client.commands.set('addchannel', addChannelCommand);
 client.commands.set('removechannel', removeChannelCommand);
