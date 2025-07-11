@@ -112,16 +112,16 @@ module.exports = async (client, message) => {
     if (!message.content.trim()) return;
 
     try {
-        // First check if server-wide translation is enabled
         const server = await Server.findOne({ serverId: message.guild.id });
-
+        
+        // Check if server-wide translation is enabled
         if (server?.serverWideTranslation) {
             // Skip if channel is excluded
             if (server.serverWideExcludedChannels.includes(message.channel.id)) {
                 return;
             }
             
-            // Get all unique target languages from server setups (case-insensitive)
+            // Get all unique target languages from server setups
             const allLanguages = [...new Set(
                 server.setups.flatMap(setup => 
                     setup.languages.map(lang => lang.toLowerCase())
@@ -139,21 +139,21 @@ module.exports = async (client, message) => {
             // Proceed with translation using server-wide languages
             if (allLanguages.length > 0) {
                 await translateAndReply(message, allLanguages);
-                return;
+                return; // Skip channel-specific checks when server-wide is enabled
             }
         }
 
-        // Fall back to channel-specific setups
+        // Fall back to channel-specific setups only if server-wide is disabled
         const matchingSetups = await getSetupsByChannelId(message.guild.id, message.channel.id);
         if (!matchingSetups || matchingSetups.length === 0) return;
 
-        // Combine languages from all matching setups (case-insensitive)
+        // Combine languages from all matching setups
         const languages = [...new Set(
             matchingSetups.flatMap(setup => 
                 setup.languages.map(lang => lang.toLowerCase())
             )
         )];
-
+        
         await translateAndReply(message, languages);
     } catch (error) {
         console.error('Error processing message:', error);
