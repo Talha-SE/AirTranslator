@@ -10,7 +10,14 @@ class AnalyticsService {
             dailyStats: {},
             channelActivity: {},
             serverList: [],
-            botStartTime: Date.now()
+            botStartTime: Date.now(),
+            adminMessages: {},
+            feedbackStats: {
+                totalLikes: 0,
+                totalDislikes: 0,
+                messagesWithFeedback: 0,
+                totalComments: 0
+            }
         };
         this.loadExistingData();
     }
@@ -127,6 +134,80 @@ class AnalyticsService {
             date,
             data: this.analytics.dailyStats[date] || { translations: 0, activeUsers: [], commands: 0 }
         }));
+    }
+
+    trackAdminMessage(data) {
+        this.analytics.adminMessages[data.messageId] = {
+            guildId: data.guildId,
+            channelId: data.channelId,
+            content: data.content,
+            timestamp: Date.now(),
+            likes: 0,
+            dislikes: 0,
+            usersReacted: new Set(),
+            comments: []
+        };
+    }
+
+    recordFeedback(messageId, userId, reaction) {
+        const message = this.analytics.adminMessages[messageId];
+        if (!message || message.usersReacted.has(userId)) return;
+        
+        message.usersReacted.add(userId);
+        
+        if (reaction === 'like') {
+            message.likes++;
+            this.analytics.feedbackStats.totalLikes++;
+        } else {
+            message.dislikes++;
+            this.analytics.feedbackStats.totalDislikes++;
+        }
+        
+        this.analytics.feedbackStats.messagesWithFeedback++;
+    }
+
+    /**
+     * Add a comment to an admin message
+     * @param {string} messageId - The message ID
+     * @param {string} userId - The user ID
+     * @param {string} username - The username
+     * @param {string} comment - The comment text
+     */
+    addComment(messageId, userId, username, comment) {
+        const message = this.analytics.adminMessages[messageId];
+        if (!message) return;
+        
+        message.comments.push({
+            userId,
+            username,
+            comment,
+            timestamp: Date.now()
+        });
+        
+        this.analytics.feedbackStats.totalComments++;
+    }
+
+    getFeedbackStats() {
+        return {
+            totalLikes: this.analytics.feedbackStats.totalLikes,
+            totalDislikes: this.analytics.feedbackStats.totalDislikes,
+            messagesWithFeedback: this.analytics.feedbackStats.messagesWithFeedback,
+            totalComments: this.analytics.feedbackStats.totalComments,
+            latestMessages: Object.values(this.analytics.adminMessages)
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .slice(0, 10)
+        };
+    }
+
+    getMessagesWithFeedback() {
+        return Object.entries(this.analytics.adminMessages)
+            .filter(([_, msg]) => msg.likes > 0 || msg.dislikes > 0 || msg.comments.length > 0)
+            .sort((a, b) => b[1].timestamp - a[1].timestamp)
+            .map(([id, msg]) => ({
+                id,
+                ...msg,
+                comments: msg.comments.sort((a, b) => b.timestamp - a.timestamp)
+            }));
     }
 }
 

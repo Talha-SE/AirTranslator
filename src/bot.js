@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require('discord.js');
 const { connectDB } = require('./services/databaseService');
 const analyticsService = require('./services/analyticsService');
 const { AutoPoster } = require('topgg-autoposter');
@@ -119,6 +119,86 @@ client.on(Events.InteractionCreate, async interaction => {
         } catch (err) {
             console.error('Error handling command error:', err);
         }
+    }
+});
+
+client.on(Events.InteractionCreate, async interaction => {
+    if (!interaction.isButton()) return;
+    
+    // Handle feedback buttons
+    if (interaction.customId.startsWith('feedback_')) {
+        const feedbackType = interaction.customId.split('_')[1]; // 'like', 'dislike', or 'comment'
+        
+        if (feedbackType === 'comment') {
+            // Show comment modal
+            const modal = new ModalBuilder()
+                .setCustomId(`commentModal_${interaction.message.id}`)
+                .setTitle('Provide Feedback');
+                
+            const commentInput = new TextInputBuilder()
+                .setCustomId('commentInput')
+                .setLabel('Your comment')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true)
+                .setMaxLength(500);
+                
+            const actionRow = new ActionRowBuilder().addComponents(commentInput);
+            modal.addComponents(actionRow);
+            
+            await interaction.showModal(modal);
+            return;
+        }
+        
+        // Handle like/dislike buttons
+        const reactionType = interaction.customId.split('_')[1]; // 'like' or 'dislike'
+        
+        // Record feedback in analytics
+        analyticsService.recordFeedback(
+            interaction.message.id,
+            interaction.user.id,
+            reactionType
+        );
+        
+        // Update button to show user has reacted
+        const buttons = interaction.message.components[0].components.map(btn => {
+            const button = new ButtonBuilder(btn.data);
+            if (btn.customId === interaction.customId) {
+                return button.setDisabled(true);
+            }
+            return button;
+        });
+        
+        await interaction.update({
+            components: [new ActionRowBuilder().addComponents(buttons)]
+        });
+        
+        await interaction.followUp({
+            content: `Thanks for your ${reactionType} feedback!`,
+            flags: MessageFlags.Ephemeral
+        });
+    }
+});
+
+// Handle comment modal submissions
+client.on(Events.InteractionCreate, async interaction => {
+    if (!interaction.isModalSubmit()) return;
+    
+    if (interaction.customId.startsWith('commentModal_')) {
+        const messageId = interaction.customId.split('_')[1];
+        const comment = interaction.fields.getTextInputValue('commentInput');
+        
+        // Record comment in analytics
+        analyticsService.addComment(
+            messageId,
+            interaction.user.id,
+            interaction.user.username,
+            comment
+        );
+        
+        await interaction.reply({
+            content: 'Thank you for your feedback!',
+            flags: MessageFlags.Ephemeral
+        });
     }
 });
 

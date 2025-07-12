@@ -387,8 +387,8 @@ function generateAnalyticsContent(analytics, client) {
     const activeChannels = Object.keys(analytics.channelActivity || {}).length;
     const avgTranslationsPerDay = recentDays.length > 0 ? 
         Math.round(recentDays.reduce((sum, [_, stats]) => sum + (stats.translations || 0), 0) / recentDays.length) : 0;
-    const peakDayTranslations = recentDays.length > 0 ? 
-        Math.max(...recentDays.map(([_, stats]) => stats.translations || 0)) : 0;
+    const peakDayTranslations = Object.values(analytics.dailyStats)
+        .reduce((max, day) => Math.max(max, day.translations || 0), 0);
 
     const topServers = (analytics.serverList || [])
         .sort((a, b) => b.memberCount - a.memberCount)
@@ -645,7 +645,8 @@ function generateAnalyticsContent(analytics, client) {
                     </tbody>
                 </table>
             </div>
-        </div>`;
+        </div>
+    </div>`;
 }
 
 /**
@@ -655,6 +656,10 @@ function generateAnalyticsContent(analytics, client) {
  * @returns {string} The HTML content for the dashboard.
  */
 function generateDashboard(analytics, client) {
+    const messagesWithFeedback = analyticsService.getMessagesWithFeedback();
+    const peakDayTranslations = Object.values(analytics.dailyStats)
+        .reduce((max, day) => Math.max(max, day.translations || 0), 0);
+    
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -996,6 +1001,81 @@ function generateDashboard(analytics, client) {
         @media (max-width: 768px) {
             .stats-grid { grid-template-columns: 1fr; }
             .grid-2 { grid-template-columns: 1fr; }
+        }
+        
+        /* Message Feedback Styles */
+        .message-item {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .message-item:hover {
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .message-preview {
+            color: #666;
+            margin-top: 8px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .feedback-stats {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .feedback-stat {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .feedback-details {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .message-item.expanded .feedback-details {
+            max-height: 1000px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        
+        .comment-item {
+            padding: 10px;
+            margin: 10px 0;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .comment-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        
+        .comment-user {
+            font-weight: bold;
+        }
+        
+        .comment-time {
+            color: #888;
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -1373,7 +1453,7 @@ function generateDashboard(analytics, client) {
 <body>
     <div class="header">
         <div style="position: relative;">
-            <h1>🤖 AirTranslator Admin Dashboard</h1>
+            <h1>AirTranslator Admin Dashboard</h1>
             <p>Complete Analytics & Server Management</p>
             <a href="/admin/logout" class="logout-btn">Logout</a>
         </div>
@@ -1389,20 +1469,122 @@ function generateDashboard(analytics, client) {
             <div class="tab-nav">
                 <button class="tab-btn active" onclick="switchTab('analytics')">📊 Analytics</button>
                 <button class="tab-btn" onclick="switchTab('messaging')">📢 Server Messaging</button>
+                <button class="tab-btn" onclick="switchTab('feedback')">📊 Feedback</button>
             </div>
             
             <div class="tab-content">
                 <div id="analytics" class="tab-pane active">
-                     ${generateAnalyticsContent(analytics, client)}
-                    <div class="section">
-                        <h2>📈 Live Translations / Minute</h2>
-                        <canvas id="liveTranslationsChart" height="120"></canvas>
-                    </div>
+                    
+                    ${generateAnalyticsContent(analytics, client)}
+                    
                 </div>
                 
                 <div id="messaging" class="tab-pane">
                     ${generateMessageInterface()}
                 </div>
+                
+                <div id="feedback" class="tab-pane">
+                    <h2>Message Feedback</h2>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>Total Messages</h3>
+                            <p class="stat-value">${messagesWithFeedback.length}</p>
+                        </div>
+                    </div>
+                    
+                    <h3>Messages with Feedback</h3>
+                    <div class="message-list">
+                        ${messagesWithFeedback.map(msg => `
+                            <div class="message-item" onclick="this.classList.toggle('expanded')">
+                                <div class="message-header">
+                                    <div>
+                                        <strong>${new Date(msg.timestamp).toLocaleString()}</strong>
+                                        <div class="message-preview">${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}</div>
+                                    </div>
+                                    <div class="feedback-stats">
+                                        <div class="feedback-stat">👍 ${msg.likes}</div>
+                                        <div class="feedback-stat">👎 ${msg.dislikes}</div>
+                                        <div class="feedback-stat">💬 ${msg.comments.length}</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="feedback-details">
+                                    ${msg.comments.length > 0 ? `
+                                        <h4>Comments (${msg.comments.length})</h4>
+                                        ${msg.comments.map(comment => `
+                                            <div class="comment-item">
+                                                <div class="comment-header">
+                                                    <span class="comment-user">${comment.username}</span>
+                                                    <span class="comment-time">${new Date(comment.timestamp).toLocaleString()}</span>
+                                                </div>
+                                                <p class="comment-text">${comment.comment}</p>
+                                            </div>
+                                        `).join('')}
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid-2">
+            <div class="section">
+                <h2>💻 System Information</h2>
+                <table class="table">
+                    <tbody>
+                        <tr>
+                            <td><strong>Memory Usage</strong></td>
+                            <td>${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB / ${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Bot Started</strong></td>
+                            <td>${analytics.botStartTime ? new Date(analytics.botStartTime).toLocaleString() : 'Unknown'}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Node.js Version</strong></td>
+                            <td>${process.version}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Platform</strong></td>
+                            <td>${process.platform} ${process.arch}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Environment</strong></td>
+                            <td>${process.env.NODE_ENV || 'development'}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>📈 Performance Metrics</h2>
+                <table class="table">
+                    <tbody>
+                        <tr>
+                            <td><strong>Total API Calls</strong></td>
+                            <td>${(analytics.totalTranslations || 0).toLocaleString()}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Success Rate</strong></td>
+                            <td>99.8% (estimated)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Avg Response Time</strong></td>
+                            <td>~1.2 seconds</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Peak Daily Usage</strong></td>
+                            <td>${peakDayTranslations.toLocaleString()} translations</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Data Retention</strong></td>
+                            <td>30 days rolling</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -1421,7 +1603,7 @@ async function sendServerMessage(messageData) {
         return { success: false, message: 'Bot not ready' };
     }
     
-    const { EmbedBuilder } = require('discord.js');
+    const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
     
     const embed = new EmbedBuilder()
         .setColor(messageData.color || '#3498db')
@@ -1439,6 +1621,22 @@ async function sendServerMessage(messageData) {
         })
         .setTimestamp();
     }
+    
+    // Add like/dislike/comment buttons
+    const buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('feedback_like')
+            .setLabel('👍 Like')
+            .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+            .setCustomId('feedback_dislike')
+            .setLabel('👎 Dislike')
+            .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+            .setCustomId('feedback_comment')
+            .setLabel('💬 Comment')
+            .setStyle(ButtonStyle.Primary)
+    );
     
     let targetGuilds = [];
     
@@ -1504,7 +1702,19 @@ async function sendServerMessage(messageData) {
             }
             
             if (targetChannel) {
-                await targetChannel.send({ embeds: [embed] });
+                const message = await targetChannel.send({ 
+                    embeds: [embed],
+                    components: [buttons] 
+                });
+                
+                // Track message for feedback collection
+                analyticsService.trackAdminMessage({
+                    messageId: message.id,
+                    guildId: guild.id,
+                    channelId: targetChannel.id,
+                    content: messageData.content
+                });
+                
                 results.push({
                     serverId: guild.id,
                     serverName: guild.name,
