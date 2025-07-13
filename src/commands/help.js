@@ -6,6 +6,9 @@ module.exports = {
         .setDescription('Get help with all bot commands'),
 
     async execute(interaction) {
+        // Defer reply first since we're building an embed
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        
         const embed = new EmbedBuilder()
             .setColor(0x0099FF)
             .setTitle('🌍 Air Translator Bot Help')
@@ -47,14 +50,8 @@ module.exports = {
             )
             .setFooter({ text: 'Air Translator Bot • /help' });
 
-        await interaction.reply({ 
-            embeds: [embed], 
-            flags: MessageFlags.Ephemeral 
-        });
-
-        await interaction.editReply({
-            embeds: [embed],
-            flags: MessageFlags.Ephemeral
+        await interaction.editReply({ 
+            embeds: [embed] 
         });
     }
 };

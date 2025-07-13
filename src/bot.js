@@ -87,118 +87,108 @@ client.on('guildCreate', async (guild) => {
 });
 
 client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isChatInputCommand()) return;
+    if (interaction.isChatInputCommand()) {
+        const command = interaction.client.commands.get(interaction.commandName);
 
-    const command = interaction.client.commands.get(interaction.commandName);
-
-    if (!command) {
-        console.error(`No command matching ${interaction.commandName} was found.`);
-        return;
-    }
-
-    try {
-        // Defer reply first to prevent timeout
-        await interaction.deferReply({ ephemeral: true });
-        await command.execute(interaction);
-    } catch (error) {
-        console.error(`Error executing ${interaction.commandName}`);
-        console.error(error);
-
-        try {
-            if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ 
-                    content: 'There was an error while executing this command!', 
-                    ephemeral: true 
-                });
-            } else {
-                await interaction.reply({ 
-                    content: 'There was an error while executing this command!', 
-                    ephemeral: true 
-                });
-            }
-        } catch (err) {
-            console.error('Error handling command error:', err);
-        }
-    }
-});
-
-client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isButton()) return;
-    
-    // Handle feedback buttons
-    if (interaction.customId.startsWith('feedback_')) {
-        const feedbackType = interaction.customId.split('_')[1]; // 'like', 'dislike', or 'comment'
-        
-        if (feedbackType === 'comment') {
-            // Show comment modal
-            const modal = new ModalBuilder()
-                .setCustomId(`commentModal_${interaction.message.id}`)
-                .setTitle('Provide Feedback');
-                
-            const commentInput = new TextInputBuilder()
-                .setCustomId('commentInput')
-                .setLabel('Your comment')
-                .setStyle(TextInputStyle.Paragraph)
-                .setRequired(true)
-                .setMaxLength(500);
-                
-            const actionRow = new ActionRowBuilder().addComponents(commentInput);
-            modal.addComponents(actionRow);
-            
-            await interaction.showModal(modal);
+        if (!command) {
+            console.error(`No command matching ${interaction.commandName} was found.`);
             return;
         }
-        
-        // Handle like/dislike buttons
-        const reactionType = interaction.customId.split('_')[1]; // 'like' or 'dislike'
-        
-        // Record feedback in analytics
-        analyticsService.recordFeedback(
-            interaction.message.id,
-            interaction.user.id,
-            reactionType
-        );
-        
-        // Update button to show user has reacted
-        const buttons = interaction.message.components[0].components.map(btn => {
-            const button = new ButtonBuilder(btn.data);
-            if (btn.customId === interaction.customId) {
-                return button.setDisabled(true);
-            }
-            return button;
-        });
-        
-        await interaction.update({
-            components: [new ActionRowBuilder().addComponents(buttons)]
-        });
-        
-        await interaction.followUp({
-            content: `Thanks for your ${reactionType} feedback!`,
-            flags: MessageFlags.Ephemeral
-        });
-    }
-});
 
-// Handle comment modal submissions
-client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isModalSubmit()) return;
-    
-    if (interaction.customId.startsWith('commentModal_')) {
-        const messageId = interaction.customId.split('_')[1];
-        const comment = interaction.fields.getTextInputValue('commentInput');
-        
-        // Record comment in analytics
-        analyticsService.addComment(
-            messageId,
-            interaction.user.id,
-            interaction.user.username,
-            comment
-        );
-        
-        await interaction.reply({
-            content: 'Thank you for your feedback!',
-            flags: MessageFlags.Ephemeral
-        });
+        try {
+            // Execute command directly without deferring
+            await command.execute(interaction);
+        } catch (error) {
+            console.error(`Error executing ${interaction.commandName}`);
+            console.error(error);
+
+            try {
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp({ 
+                        content: 'There was an error while executing this command!',
+                        flags: MessageFlags.Ephemeral
+                    });
+                } else {
+                    await interaction.reply({ 
+                        content: 'There was an error while executing this command!',
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+            } catch (err) {
+                console.error('Error handling command error:', err);
+            }
+        }
+    } else if (interaction.isButton()) {
+        // Handle feedback buttons
+        if (interaction.customId.startsWith('feedback_')) {
+            const feedbackType = interaction.customId.split('_')[1]; // 'like', 'dislike', or 'comment'
+            
+            if (feedbackType === 'comment') {
+                // Show comment modal
+                const modal = new ModalBuilder()
+                    .setCustomId(`commentModal_${interaction.message.id}`)
+                    .setTitle('Provide Feedback');
+                    
+                const commentInput = new TextInputBuilder()
+                    .setCustomId('commentInput')
+                    .setLabel('Your comment')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true)
+                    .setMaxLength(500);
+                    
+                const actionRow = new ActionRowBuilder().addComponents(commentInput);
+                modal.addComponents(actionRow);
+                
+                await interaction.showModal(modal);
+                return;
+            }
+            
+            // Handle like/dislike buttons
+            const reactionType = interaction.customId.split('_')[1]; // 'like' or 'dislike'
+            
+            // Record feedback in analytics
+            analyticsService.recordFeedback(
+                interaction.message.id,
+                interaction.user.id,
+                reactionType
+            );
+            
+            // Update button to show user has reacted
+            const buttons = interaction.message.components[0].components.map(btn => {
+                const button = new ButtonBuilder(btn.data);
+                if (btn.customId === interaction.customId) {
+                    return button.setDisabled(true);
+                }
+                return button;
+            });
+            
+            await interaction.update({
+                components: [new ActionRowBuilder().addComponents(buttons)]
+            });
+            
+            await interaction.followUp({
+                content: `Thanks for your ${reactionType} feedback!`,
+                flags: MessageFlags.Ephemeral
+            });
+        }
+    } else if (interaction.isModalSubmit()) {
+        if (interaction.customId.startsWith('commentModal_')) {
+            const messageId = interaction.customId.split('_')[1];
+            const comment = interaction.fields.getTextInputValue('commentInput');
+            
+            // Record comment in analytics
+            analyticsService.addComment(
+                messageId,
+                interaction.user.id,
+                interaction.user.username,
+                comment
+            );
+            
+            await interaction.reply({
+                content: 'Thank you for your feedback!',
+                flags: MessageFlags.Ephemeral
+            });
+        }
     }
 });
 
