@@ -5,14 +5,15 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
  * Helper to POST to Mistral with automatic retries on 429 or network errors.
  * @param {object} payload - JSON body for chat/completions
  * @param {number} maxRetries - maximum retry attempts
+ * @param {string} [apiKey] - Optional custom API key
  */
-const postMistralWithRetry = async (payload, maxRetries = 5) => {
+const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_API_KEY) => {
     let attempt = 0;
     while (true) {
         try {
             return await axios.post(mistralAPIUrl, payload, {
                 headers: {
-                    'Authorization': `Bearer ${MISTRAL_API_KEY}`,
+                    'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json'
                 }
             });
@@ -79,7 +80,7 @@ const detectLanguage = async (text) => {
     }
 };
 
-const translateText = async (text, targetLanguage, sourceLanguage = null, useToneUnderstanding = false) => {
+const translateText = async (text, targetLanguage, sourceLanguage = null, useToneUnderstanding = false, apiKey = MISTRAL_API_KEY) => {
     try {
         // If target language is "auto", we don't need to translate
         if (targetLanguage === AUTO_DETECT_LANGUAGE) {
@@ -123,7 +124,7 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
             // Translate each chunk individually and concatenate the results
             const translatedChunks = [];
             for (const chunk of chunks) {
-                const translatedChunk = await translateText(chunk, targetLanguage, sourceLanguage, useToneUnderstanding);
+                const translatedChunk = await translateText(chunk, targetLanguage, sourceLanguage, useToneUnderstanding, apiKey);
                 translatedChunks.push(translatedChunk);
             }
             return translatedChunks.join('');
@@ -277,7 +278,7 @@ OTHER RULES:
             temperature: 0.2,
             // Dynamically set max_tokens but cap it to avoid hitting hard limits
             max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2))) // Allow sufficient tokens while preventing truncation
-        });
+        }, apiKey);
 
         let translation = response.data.choices[0].message.content.trim();
         
@@ -295,10 +296,10 @@ OTHER RULES:
     }
 };
 
-const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLanguage = null, useToneUnderstanding = false) => {
+const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLanguage = null, useToneUnderstanding = false, apiKey = MISTRAL_API_KEY) => {
     const translations = {};
     for (const targetLanguage of targetLanguages) {
-        translations[targetLanguage] = await translateText(text, targetLanguage, sourceLanguage, useToneUnderstanding);
+        translations[targetLanguage] = await translateText(text, targetLanguage, sourceLanguage, useToneUnderstanding, apiKey);
     }
     return translations;
 };

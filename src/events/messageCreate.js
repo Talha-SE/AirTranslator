@@ -3,6 +3,7 @@ const { translateText, detectLanguage, translateTextToMultipleLanguages } = requ
 const fastq = require('fastq');
 const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const analyticsService = require('../services/analyticsService');
+const translationQueueService = require('../services/translationQueueService');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const Server = require('../models/Server');
 
@@ -29,13 +30,53 @@ async function translateAndReply(message, languages) {
             language.toLowerCase() !== detectedLanguage.toLowerCase() &&
             !alreadyTranslatedTo.has(language.toLowerCase())
         );
-        const translations = translationQueue.push(async () => {
+        
+        if (targetLanguagesArray.length === 0) return;
+        
+        // Use dual-API translation for real-time processing
+        const translations = await translationQueue.push(async () => {
             const toneSettings = await getToneSettings(message.guild.id, message.channel.id);
-            return translateTextToMultipleLanguages(message.content, targetLanguagesArray, detectedLanguage, toneSettings);
+            
+            // Split languages between APIs for parallel processing
+            const languagesPerApi = Math.ceil(targetLanguagesArray.length / 2);
+            const api1Languages = targetLanguagesArray.slice(0, languagesPerApi);
+            const api2Languages = targetLanguagesArray.slice(languagesPerApi);
+            
+            const translationPromises = [];
+            
+            if (api1Languages.length > 0) {
+                console.log(`🔄 API 1 processing: ${api1Languages.join(', ')}`);
+                translationPromises.push(
+                    translateTextToMultipleLanguages(
+                        message.content, 
+                        api1Languages, 
+                        detectedLanguage, 
+                        toneSettings,
+                        translationQueueService.apiKeys[0]
+                    )
+                );
+            }
+            
+            if (api2Languages.length > 0) {
+                console.log(`🔄 API 2 processing: ${api2Languages.join(', ')}`);
+                translationPromises.push(
+                    translateTextToMultipleLanguages(
+                        message.content, 
+                        api2Languages, 
+                        detectedLanguage, 
+                        toneSettings,
+                        translationQueueService.apiKeys[1]
+                    )
+                );
+            }
+            
+            // Wait for all translations and combine results
+            const results = await Promise.all(translationPromises);
+            return Object.assign({}, ...results);
         });
         
         // Record analytics for successful translations
-        for (const [language, translation] of Object.entries(await translations)) {
+        for (const [language, translation] of Object.entries(translations)) {
             if (translation && translation.length > 0 && translation !== message.content) {
                 analyticsService.recordTranslation(detectedLanguage, language, message.channel.id, message.author.id);
                 console.log(`✅ Translated to ${language} for message`);
@@ -43,13 +84,13 @@ async function translateAndReply(message, languages) {
         }
         
         // If we have translations, send them as a single well-formatted message
-        if (Object.keys(await translations).length > 0) {
+        if (Object.keys(translations).length > 0) {
             // Split long translations into chunks
             const MAX_CHUNK_SIZE = 2000;
             const chunks = [];
             let currentChunk = '';
 
-            for (const [language, translation] of Object.entries(await translations)) {
+            for (const [language, translation] of Object.entries(translations)) {
                 const flag = {
                     'afrikaans': '🇿🇦',
                     'albanian': '🇦🇱',
@@ -262,5 +303,18 @@ module.exports = async (client, message) => {
         await translateAndReply(message, languages);
     } catch (error) {
         console.error('Error processing message:', error);
+        
+        // Queue the message for later processing if translation failed
+        try {
+            await translationQueueService.queueMessage({
+                messageId: message.id,
+                channelId: message.channel.id,
+                serverId: message.guild.id,
+                content: message.content,
+                status: 'failed'
+            });
+        } catch (queueError) {
+            console.error('Failed to queue message for retry:', queueError);
+        }
     }
 };

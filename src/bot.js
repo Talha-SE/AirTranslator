@@ -1,6 +1,7 @@
 const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require('discord.js');
 const { connectDB } = require('./services/databaseService');
 const analyticsService = require('./services/analyticsService');
+const translationQueueService = require('./services/translationQueueService');
 const { AutoPoster } = require('topgg-autoposter');
 require('dotenv').config();
 
@@ -211,6 +212,20 @@ async function startBot() {
         
         console.log('Bot started successfully!');
         console.log('Admin panel will be available once the server starts');
+        
+        // Start processing queued translations
+        translationQueueService.startQueueProcessor((content, targetLanguage) => {
+            // Determine which API to use based on targetLanguage
+            const apiIndex = targetLanguage.charCodeAt(0) % 2; // Simple hash to distribute
+            console.log(`Using API ${apiIndex + 1} for ${targetLanguage}`);
+            return translateTextToMultipleLanguages(
+                content, 
+                [targetLanguage],
+                null, // auto-detect
+                null, // tone settings
+                translationQueueService.apiKeys[apiIndex]
+            );
+        });
     } catch (error) {
         console.error('Failed to start bot:', error);
         process.exit(1);
