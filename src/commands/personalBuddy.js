@@ -44,19 +44,19 @@ module.exports = {
                 });
             }
 
-            // Create response embed
+            // Create response embed with improved design
             const embed = new EmbedBuilder()
-                .setColor(enabled ? 0x00ff00 : 0xff0000)
-                .setTitle(`🤖 Personal Translation Buddy ${enabled ? 'Enabled' : 'Disabled'}`)
+                .setColor(enabled ? '#10b981' : '#ef4444')
+                .setTitle(`${enabled ? '✅' : '❌'} Personal Translation Buddy ${enabled ? 'Activated' : 'Deactivated'}`)
                 .setDescription(enabled ? 
-                    `Your personal translation buddy is now **enabled**! 🎉\n\nReact with flag emojis on any message to get instant translations in your DMs.` :
-                    `Your personal translation buddy has been **disabled**.`)
+                    `🎉 **Your personal translator is now active!**\n\n> React with any flag emoji on messages to get instant translations delivered to your DMs.` :
+                    `> Your personal translation buddy has been deactivated.`)
                 .addFields(
                     {
-                        name: '🌍 How It Works',
+                        name: `${enabled ? '🚀' : '💭'} How It Works`,
                         value: enabled ?
-                            '• React with flag emojis (🇰🇷 🇪🇸 🇫🇷 🇩🇪 🇯🇵 etc.) on any message\n• Get instant translation sent to your DMs\n• Works independently of server settings\n• Available in all servers where the bot is present' :
-                            'Personal translation buddy is now inactive.',
+                            '**🔹 React** with flag emojis (🇰🇷 🇪🇸 🇫🇷 🇩🇪 🇯🇵 etc.) on any message\n**🔹 Receive** instant translation sent privately to your DMs\n**🔹 Independent** of server settings - works everywhere\n**🔹 Private** - only you see your translations' :
+                            '> Personal translation feature is now inactive. Use `/personalbuddy enabled:true` to reactivate.',
                         inline: false
                     }
                 );
@@ -64,19 +64,19 @@ module.exports = {
             if (enabled) {
                 embed.addFields(
                     {
-                        name: '🎯 Your Languages',
-                        value: `**Target Languages:** ${targetLanguages.map(lang => 
-                            lang.charAt(0).toUpperCase() + lang.slice(1)).join(', ')}`,
+                        name: '🎯 Your Translation Languages',
+                        value: `> **${targetLanguages.map(lang => 
+                            `${lang.charAt(0).toUpperCase() + lang.slice(1)}`).join(' • ')}**`,
                         inline: false
                     },
                     {
-                        name: '🚀 Getting Started',
-                        value: '1. Find any message you want to translate\n2. React with a flag emoji (🇰🇷 for Korean, 🇪🇸 for Spanish, etc.)\n3. Check your DMs for the translation!\n\n*Tip: You can react to your own messages too!*',
+                        name: '� Quick Start Guide',
+                        value: '```\n1️⃣ Find any message you want to translate\n2️⃣ React with a flag emoji (🇰🇷 🇪🇸 🇫🇷 etc.)\n3️⃣ Check your DMs for instant translation!\n4️⃣ Works on old and new messages\n```',
                         inline: false
                     },
                     {
-                        name: '⚙️ Settings',
-                        value: '• **Privacy:** Only you receive the translations\n• **Independence:** Works regardless of server translation settings\n• **Flexibility:** Change languages anytime with `/personalbuddy`',
+                        name: '⚡ Features',
+                        value: '**🔒 Private** - Only you receive translations\n**🌐 Global** - Works in all servers with the bot\n**🎨 Smart** - Enhanced tone understanding\n**⚙️ Flexible** - Change languages anytime',
                         inline: false
                     }
                 );
@@ -84,10 +84,11 @@ module.exports = {
 
             embed
                 .setFooter({ 
-                    text: `Personal Translation Buddy • User: ${interaction.user.username}`,
-                    iconURL: interaction.client.user.displayAvatarURL()
+                    text: `Personal Translation Buddy • ${interaction.user.username}`,
+                    iconURL: interaction.user.displayAvatarURL()
                 })
-                .setTimestamp();
+                .setTimestamp()
+                .setThumbnail(enabled ? '🤖' : '💤');
 
             return interaction.reply({ embeds: [embed], ephemeral: true });
             

@@ -90,45 +90,47 @@ async function messageReactionAdd(client, reaction, user) {
                     }
                 }
 
-                // Create DM embed
+                // Create DM embed with improved design
                 const personalEmbed = new EmbedBuilder()
-                    .setTitle('🤖 Personal Translation Buddy')
-                    .setColor('#3498db')
+                    .setTitle(`${flagEmoji} Personal Translation Buddy`)
+                    .setColor('#6366f1')
+                    .setDescription(`✨ Your personal translation for **${getLanguageDisplayName(targetLanguage)}**`)
                     .addFields(
                         {
-                            name: `📝 Original Message ${detectedLang ? `(${getLanguageDisplayName(detectedLang)})` : ''}`,
-                            value: hasTextContent ? `\`\`\`${message.content}\`\`\`` : '_No text content_',
+                            name: `� Original Text ${detectedLang ? `• ${getLanguageDisplayName(detectedLang)}` : ''}`,
+                            value: hasTextContent ? `> ${message.content}` : '_No text content_',
                             inline: false
                         }
                     );
 
                 if (translation && translation !== message.content) {
                     personalEmbed.addFields({
-                        name: `🌍 Translation (${getLanguageDisplayName(targetLanguage)}) ${flagEmoji}`,
-                        value: `\`\`\`${translation}\`\`\``,
+                        name: `� Translation • ${getLanguageDisplayName(targetLanguage)} ${flagEmoji}`,
+                        value: `> **${translation}**`,
                         inline: false
                     });
                 } else if (detectedLang === targetLanguage) {
                     personalEmbed.addFields({
-                        name: '💡 Note',
-                        value: `This message is already in ${getLanguageDisplayName(targetLanguage)}`,
+                        name: '💡 Already Translated',
+                        value: `> This message is already in **${getLanguageDisplayName(targetLanguage)}**`,
                         inline: false
                     });
                 }
 
-                // Add message context
+                // Add message context with better formatting
                 personalEmbed.addFields({
-                    name: '📍 Message Context',
-                    value: `**Server:** ${message.guild.name}\n**Channel:** #${message.channel.name}\n**Author:** ${message.author.username}\n**Jump to message:** [Click here](${message.url})`,
+                    name: '🏠 Message Source',
+                    value: `**🏢 Server:** ${message.guild.name}\n**📢 Channel:** #${message.channel.name}\n**👤 Author:** ${message.author.username}\n**🔗 Link:** [Jump to message](${message.url})`,
                     inline: false
                 });
 
                 personalEmbed
                     .setFooter({
-                        text: `Personal Translation Buddy • React with flags for instant translations`,
+                        text: `Personal Translation Buddy • React with any flag emoji for instant translations`,
                         iconURL: client.user.displayAvatarURL()
                     })
-                    .setTimestamp();
+                    .setTimestamp()
+                    .setThumbnail(message.author.displayAvatarURL());
 
                 // Send to user's DM
                 await user.send({ embeds: [personalEmbed] });

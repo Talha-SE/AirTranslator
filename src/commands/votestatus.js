@@ -74,7 +74,7 @@ module.exports = {
             
             embed.addFields({
                 name: '📋 Available Commands',
-                value: '• `/quicksetup` - Quick translation setup\n• `/status` - Check vote status (this command)\n• `/help` - Get help and command list',
+                value: '• `/quicksetup` - Quick translation setup\n• `/votestatus` - Check vote status (this command)\n• `/help` - Get help and command list',
                 inline: false
             });
             

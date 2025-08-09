@@ -49,11 +49,11 @@ module.exports = {
                 {
                     name: '📊 Status & Voting',
                     value: '```' +
-                        '/status - Check vote status and earn bonus translations\n' +
+                        '/votestatus - Check vote status and earn bonus translations\n' +
                         '  • Shows your server\'s translation usage\n' +
                         '  • Provides voting link for 10 bonus translations\n' +
                         '  • Vote every 12 hours for automatic rewards!\n' +
-                        '  Example: /status\n\n' +
+                        '  Example: /votestatus\n\n' +
                         '/flags - Learn about flag reaction translations\n' +
                         '  Example: /flags\n' +
                         '```'
