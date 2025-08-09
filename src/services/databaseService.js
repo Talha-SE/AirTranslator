@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Server = require('../models/Server');
 const MonetizationSettings = require('../models/MonetizationSettings');
+const PersonalTranslation = require('../models/PersonalTranslation');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
@@ -367,6 +368,74 @@ const updateServerMonetization = async (serverId, monetizationSettings) => {
     }
 };
 
+/**
+ * Toggle personal translation for a user
+ * @param {String} userId - The Discord user ID
+ * @param {Boolean} enabled - Whether personal translation should be enabled
+ * @param {Array} targetLanguages - Array of target languages
+ * @returns {Promise<Boolean>} - True if successful, false otherwise
+ */
+const togglePersonalTranslation = async (userId, enabled, targetLanguages = []) => {
+    try {
+        if (enabled) {
+            const personalTranslation = await PersonalTranslation.findOneAndUpdate(
+                { userId },
+                { 
+                    enabled: true, 
+                    targetLanguages,
+                    lastUsed: new Date()
+                },
+                { upsert: true, new: true }
+            );
+            return !!personalTranslation;
+        } else {
+            const result = await PersonalTranslation.findOneAndUpdate(
+                { userId },
+                { enabled: false },
+                { new: true }
+            );
+            return !!result;
+        }
+    } catch (error) {
+        console.error('Error toggling personal translation:', error);
+        return false;
+    }
+};
+
+/**
+ * Get personal translation settings for a user
+ * @param {String} userId - The Discord user ID
+ * @returns {Promise<Object|null>} - Personal translation settings or null
+ */
+const getPersonalTranslationSettings = async (userId) => {
+    try {
+        const settings = await PersonalTranslation.findOne({ userId, enabled: true });
+        return settings;
+    } catch (error) {
+        console.error('Error getting personal translation settings:', error);
+        return null;
+    }
+};
+
+/**
+ * Record a personal translation usage
+ * @param {String} userId - The Discord user ID
+ * @returns {Promise<Boolean>} - True if successful, false otherwise
+ */
+const recordPersonalTranslation = async (userId) => {
+    try {
+        const settings = await PersonalTranslation.findOne({ userId, enabled: true });
+        if (settings) {
+            await settings.recordTranslation();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('Error recording personal translation:', error);
+        return false;
+    }
+};
+
 module.exports = {
     connectDB,
     saveServerConfig,
@@ -387,5 +456,8 @@ module.exports = {
     resetTranslationCount,
     updateServerTranslationCount,
     updateServerMonetization,
-    getAllServers
+    getAllServers,
+    togglePersonalTranslation,
+    getPersonalTranslationSettings,
+    recordPersonalTranslation
 };

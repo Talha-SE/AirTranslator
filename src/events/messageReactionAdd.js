@@ -1,6 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const { getFlagLanguage, getLanguageDisplayName } = require('../utils/flagMapping');
 const { translateText, detectLanguage, analyzeAndTranslateImage } = require('../services/mistralService');
+const { getPersonalTranslationSettings, recordPersonalTranslation } = require('../services/databaseService');
 const monetizationService = require('../services/monetizationService');
 const analyticsService = require('../services/analyticsService');
 
@@ -48,6 +49,112 @@ async function messageReactionAdd(client, reaction, user) {
         }
 
         console.log(`🏴 Flag reaction detected: ${flagEmoji} -> ${targetLanguage} by user ${user.username}`);
+
+        // Check for personal translation buddy settings
+        const personalSettings = await getPersonalTranslationSettings(user.id);
+        if (personalSettings) {
+            console.log(`👤 Personal translation buddy active for ${user.username}`);
+            
+            // Check if message has content or images to translate
+            const hasTextContent = message.content && message.content.trim().length > 0;
+            const hasImages = message.attachments && message.attachments.size > 0;
+            const imageAttachments = hasImages ? 
+                Array.from(message.attachments.values()).filter(att => 
+                    att.contentType && att.contentType.startsWith('image/')
+                ) : [];
+
+            if (!hasTextContent && imageAttachments.length === 0) {
+                console.log('⚠️ Message has no content or images to translate');
+                return;
+            }
+
+            // Skip if message is from a bot (unless it's the user's own message)
+            if (message.author.bot && message.author.id !== user.id) {
+                console.log('⚠️ Skipping bot message for personal translation');
+                return;
+            }
+
+            try {
+                let translation = null;
+                let detectedLang = null;
+
+                // Handle text translation
+                if (hasTextContent) {
+                    detectedLang = await detectLanguage(message.content);
+                    console.log(`🔍 Detected language: ${detectedLang}`);
+                    
+                    // Don't translate if already in target language
+                    if (detectedLang !== targetLanguage) {
+                        translation = await translateText(message.content, targetLanguage, detectedLang, true); // Use tone understanding for personal translations
+                        console.log(`✅ Personal translation completed: ${targetLanguage}`);
+                    }
+                }
+
+                // Create DM embed
+                const personalEmbed = new EmbedBuilder()
+                    .setTitle('🤖 Personal Translation Buddy')
+                    .setColor('#3498db')
+                    .addFields(
+                        {
+                            name: `📝 Original Message ${detectedLang ? `(${getLanguageDisplayName(detectedLang)})` : ''}`,
+                            value: hasTextContent ? `\`\`\`${message.content}\`\`\`` : '_No text content_',
+                            inline: false
+                        }
+                    );
+
+                if (translation && translation !== message.content) {
+                    personalEmbed.addFields({
+                        name: `🌍 Translation (${getLanguageDisplayName(targetLanguage)}) ${flagEmoji}`,
+                        value: `\`\`\`${translation}\`\`\``,
+                        inline: false
+                    });
+                } else if (detectedLang === targetLanguage) {
+                    personalEmbed.addFields({
+                        name: '💡 Note',
+                        value: `This message is already in ${getLanguageDisplayName(targetLanguage)}`,
+                        inline: false
+                    });
+                }
+
+                // Add message context
+                personalEmbed.addFields({
+                    name: '📍 Message Context',
+                    value: `**Server:** ${message.guild.name}\n**Channel:** #${message.channel.name}\n**Author:** ${message.author.username}\n**Jump to message:** [Click here](${message.url})`,
+                    inline: false
+                });
+
+                personalEmbed
+                    .setFooter({
+                        text: `Personal Translation Buddy • React with flags for instant translations`,
+                        iconURL: client.user.displayAvatarURL()
+                    })
+                    .setTimestamp();
+
+                // Send to user's DM
+                await user.send({ embeds: [personalEmbed] });
+                
+                // Record the personal translation
+                await recordPersonalTranslation(user.id);
+                
+                console.log(`✅ Personal translation sent to ${user.username}'s DM`);
+                return; // Exit early for personal translations
+                
+            } catch (error) {
+                console.error(`❌ Error in personal translation for ${user.username}:`, error);
+                
+                try {
+                    await user.send({
+                        content: '❌ Sorry, there was an error processing your personal translation. Please try again later.',
+                    });
+                } catch (dmError) {
+                    console.error('Could not send error message to user DM');
+                }
+                return;
+            }
+        }
+
+        // Continue with server-based translation logic if no personal buddy is active
+        console.log(`📋 Processing server-based translation for ${targetLanguage}`);
 
         // Check if message has content or images to translate
         const hasTextContent = message.content && message.content.trim().length > 0;

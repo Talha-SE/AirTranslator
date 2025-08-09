@@ -49,12 +49,23 @@ module.exports = {
                 {
                     name: '📊 Status & Voting',
                     value: '```' +
-                        '/status - Check translation usage and limits\n' +
+                        '/status - Check vote status and earn bonus translations\n' +
+                        '  • Shows your server\'s translation usage\n' +
+                        '  • Provides voting link for 10 bonus translations\n' +
+                        '  • Vote every 12 hours for automatic rewards!\n' +
                         '  Example: /status\n\n' +
-                        '/vote - Get server-specific voting link for bonus translations\n' +
-                        '  Example: /vote\n\n' +
                         '/flags - Learn about flag reaction translations\n' +
                         '  Example: /flags\n' +
+                        '```'
+                },
+                {
+                    name: '👤 Personal Translation',
+                    value: '```' +
+                        '/personalbuddy - Enable personal translation buddy for DMs\n' +
+                        '  • Get translations sent directly to your DMs\n' +
+                        '  • Independent of server settings\n' +
+                        '  • React with flags to get instant translations\n' +
+                        '  Example: /personalbuddy enabled:true languages:korean,spanish\n' +
                         '```'
                 },
                 {

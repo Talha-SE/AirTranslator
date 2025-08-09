@@ -37,9 +37,9 @@ const toggleToneCommand = require('./commands/toggleTone');
 const toggleServerTranslationCommand = require('./commands/toggleServerTranslation');
 const helpCommand = require('./commands/help');
 const statusCommand = require('./commands/status');
-const voteCommand = require('./commands/vote');
 const flagsCommand = require('./commands/flags');
 const autoCleanupCommand = require('./commands/autoCleanup');
+const personalBuddyCommand = require('./commands/personalBuddy');
 
 client.commands.set('quicksetup', quickSetupCommand);
 client.commands.set('addchannel', addChannelCommand);
@@ -50,9 +50,9 @@ client.commands.set('toggletone', toggleToneCommand);
 client.commands.set('toggleservertranslation', toggleServerTranslationCommand);
 client.commands.set('help', helpCommand);
 client.commands.set('status', statusCommand);
-client.commands.set('vote', voteCommand);
 client.commands.set('flags', flagsCommand);
 client.commands.set('autocleanup', autoCleanupCommand);
+client.commands.set('personalbuddy', personalBuddyCommand);
 
 // Load events
 const ready = require('./events/ready');

@@ -1,19 +1,22 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const monetizationService = require('../services/monetizationService');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('status')
-        .setDescription('Check your server\'s translation status and limits'),
+        .setDescription('Check your voting status and earn bonus translations'),
     
     async execute(interaction) {
         try {
             await interaction.deferReply();
             
             const serverId = interaction.guild.id;
+            const serverName = interaction.guild.name;
+            const userId = interaction.user.id;
             const settings = monetizationService.getSettings();
             const serverStats = await monetizationService.getServerStats(serverId);
             
+            // Determine server status
             let statusEmoji = '';
             let statusText = '';
             let statusColor = '';
@@ -34,62 +37,72 @@ module.exports = {
             
             const progressBar = createProgressBar(serverStats.translationCount, serverStats.freeTranslationLimit, 20);
             const percentage = Math.min((serverStats.translationCount / serverStats.freeTranslationLimit) * 100, 100).toFixed(1);
+            const remaining = Math.max(0, serverStats.freeTranslationLimit - serverStats.translationCount);
             
             const embed = new EmbedBuilder()
-                .setTitle(`${statusEmoji} Translation Status`)
+                .setTitle(`🗳️ Vote Status - ${serverName}`)
                 .setColor(statusColor)
-                .setDescription(`Server: **${interaction.guild.name}**`)
+                .setDescription(`Get **10 bonus translations** every 12 hours by voting!`)
                 .addFields(
                     {
-                        name: '📊 Usage Statistics',
-                        value: `**Translations Used:** ${serverStats.translationCount}/${serverStats.isExempt ? '∞' : serverStats.freeTranslationLimit}\\n**Status:** ${statusText}\\n**Progress:** ${progressBar} ${percentage}%`,
+                        name: `${statusEmoji} Current Translation Status`,
+                        value: `**Translations Used:** ${serverStats.translationCount}/${serverStats.isExempt ? '∞' : serverStats.freeTranslationLimit}\n**Status:** ${statusText}\n**Progress:** ${progressBar} ${percentage}%`,
                         inline: false
                     }
                 );
             
             if (!serverStats.isExempt) {
-                const remaining = Math.max(0, serverStats.freeTranslationLimit - serverStats.translationCount);
+                embed.addFields(
+                    {
+                        name: '� Vote Rewards',
+                        value: `**Remaining Translations:** ${remaining}\n**Vote Reward:** 10 bonus translations\n**Vote Cooldown:** Every 12 hours\n**Automatic:** Rewards credited instantly!`,
+                        inline: false
+                    },
+                    {
+                        name: '📋 How to Vote',
+                        value: '1️⃣ Click the **Vote on Top.gg** button below\n2️⃣ Complete the voting process on Top.gg\n3️⃣ Get 10 bonus translations within 5 minutes!\n4️⃣ No manual claiming needed - it\'s automatic!',
+                        inline: false
+                    }
+                );
+            } else {
                 embed.addFields({
-                    name: '🎯 Get More Translations',
-                    value: `**Remaining:** ${remaining} translations\\n\\n💡 **Get 10 more translations:**\\n• Click "Vote on Top.gg" button on any translation\\n• Vote every 12 hours for automatic rewards!\\n• No manual claiming needed - rewards are instant!`,
+                    name: '💎 Premium Status',
+                    value: 'You have unlimited translations! Voting helps support the bot and keeps it running for everyone.',
                     inline: false
                 });
             }
             
             embed.addFields({
                 name: '📋 Available Commands',
-                value: '• `/quicksetup` - Quick translation setup\\n• `/status` - Check this status again\\n• `/help` - Get help and command list',
+                value: '• `/quicksetup` - Quick translation setup\n• `/status` - Check vote status (this command)\n• `/help` - Get help and command list',
                 inline: false
             });
             
             embed.setFooter({
-                text: 'AirTranslator - Breaking Language Barriers',
+                text: 'AirTranslator - Thank you for your support!',
                 iconURL: interaction.client.user.displayAvatarURL()
             }).setTimestamp();
             
-            // Add vote button if server is not exempt
-            const replyOptions = { embeds: [embed] };
+            // Always include vote button (helps support the bot even for premium users)
+            const voteButton = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setLabel('Vote on Top.gg')
+                    .setEmoji('🗳️')
+                    .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${serverId}`)
+                    .setStyle(ButtonStyle.Link)
+            );
             
-            if (!serverStats.isExempt) {
-                const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-                const voteButton = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setLabel('Vote on Top.gg')
-                        .setEmoji('🗳️')
-                        .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${serverId}`)
-                        .setStyle(ButtonStyle.Link)
-                );
-                replyOptions.components = [voteButton];
-            }
-            
-            await interaction.editReply(replyOptions);
+            await interaction.editReply({
+                embeds: [embed],
+                components: [voteButton]
+            });
             
         } catch (error) {
-            console.error('Error in status command:', error);
+            console.error('Error in vote status command:', error);
             
             const errorEmbed = new EmbedBuilder()
                 .setTitle('❌ Error')
-                .setDescription('There was an error retrieving your server status. Please try again later.')
+                .setDescription('There was an error retrieving your vote status. Please try again later.')
                 .setColor('#e74c3c');
             
             if (interaction.deferred) {
