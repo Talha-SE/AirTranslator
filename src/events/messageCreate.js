@@ -375,17 +375,35 @@ async function translateAndReply(message, languages) {
                     
                     // Create new thread if none exists
                     if (!thread) {
-                        const threadName = `Translation: ${getLanguageDisplayName(targetLanguagesArray[0])}${targetLanguagesArray.length > 1 ? ` +${targetLanguagesArray.length - 1}` : ''}`;
+                        const threadName = targetLanguagesArray.length === 1 
+                            ? `� Translation: ${getLanguageDisplayName(targetLanguagesArray[0])}`
+                            : `🌐 Translation: ${getLanguageDisplayName(targetLanguagesArray[0])} +${targetLanguagesArray.length - 1} more`;
                         thread = await message.startThread({
                             name: threadName.substring(0, 100), // Discord thread name limit
+                            autoArchiveDuration: 60, // Auto-archive after 1 hour of inactivity
                             reason: 'Translation thread for automatic message translation'
                         });
+                        
                         console.log(`🧵 Created translation thread: ${thread.name}`);
                     }
                     
                     // Send translation to thread
                     await thread.send(replyOptions);
                     console.log(`🧵 Sent translation to thread: ${thread.name}`);
+                    
+                    // Auto-archive thread after 30 seconds to keep channel list tidy
+                    if (i === chunks.length - 1) { // Only set timeout on the last chunk
+                        setTimeout(async () => {
+                            try {
+                                if (thread && !thread.archived) {
+                                    await thread.setArchived(true, 'Auto-archiving translation thread to keep channel tidy');
+                                    console.log(`📦 Auto-archived thread: ${thread.name}`);
+                                }
+                            } catch (error) {
+                                console.error('Error auto-archiving thread:', error);
+                            }
+                        }, 30 * 1000); // 30 seconds
+                    }
                 } else {
                     // Text-based translation (original behavior)
                     await message.reply(replyOptions);
