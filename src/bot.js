@@ -1,7 +1,9 @@
-const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, Partials } = require('discord.js');
 const { connectDB } = require('./services/databaseService');
 const analyticsService = require('./services/analyticsService');
 const translationQueueService = require('./services/translationQueueService');
+const voteCheckService = require('./services/voteCheckService');
+const { translateTextToMultipleLanguages } = require('./services/mistralService');
 const { AutoPoster } = require('topgg-autoposter');
 require('dotenv').config();
 
@@ -9,8 +11,14 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ] 
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions
+    ],
+    partials: [
+        Partials.Message,
+        Partials.Channel, 
+        Partials.Reaction
+    ]
 });
 
 // Make client globally available for admin panel
@@ -28,6 +36,10 @@ const deleteSetupCommand = require('./commands/deleteSetup');
 const toggleToneCommand = require('./commands/toggleTone');
 const toggleServerTranslationCommand = require('./commands/toggleServerTranslation');
 const helpCommand = require('./commands/help');
+const statusCommand = require('./commands/status');
+const voteCommand = require('./commands/vote');
+const flagsCommand = require('./commands/flags');
+const autoCleanupCommand = require('./commands/autoCleanup');
 
 client.commands.set('quicksetup', quickSetupCommand);
 client.commands.set('addchannel', addChannelCommand);
@@ -37,11 +49,16 @@ client.commands.set('deletesetup', deleteSetupCommand);
 client.commands.set('toggletone', toggleToneCommand);
 client.commands.set('toggleservertranslation', toggleServerTranslationCommand);
 client.commands.set('help', helpCommand);
+client.commands.set('status', statusCommand);
+client.commands.set('vote', voteCommand);
+client.commands.set('flags', flagsCommand);
+client.commands.set('autocleanup', autoCleanupCommand);
 
 // Load events
 const ready = require('./events/ready');
 const messageCreate = require('./events/messageCreate');
 const guildDelete = require('./events/guildDelete');
+const messageReactionAdd = require('./events/messageReactionAdd');
 
 client.once('ready', () => {
     ready(client);
@@ -56,6 +73,10 @@ client.once('ready', () => {
 
 client.on('messageCreate', (message) => {
     messageCreate(client, message);
+});
+
+client.on('messageReactionAdd', (reaction, user) => {
+    messageReactionAdd(client, reaction, user);
 });
 
 client.on('guildDelete', (guild) => {
@@ -120,67 +141,11 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         }
     } else if (interaction.isButton()) {
-        // Handle vote claim button
-        if (interaction.customId === 'vote_claim') {
-            // Import monetization service
-            const monetizationService = require('./services/monetizationService');
-            
-            try {
-                await interaction.deferReply({ ephemeral: true });
-                
-                const userId = interaction.user.id;
-                const serverId = interaction.guild.id;
-                
-                // Check cooldown
-                const cooldownKey = `vote_claim_${userId}_${serverId}`;
-                const lastClaim = global.voteClaims?.get(cooldownKey);
-                const now = Date.now();
-                const COOLDOWN_HOURS = 12;
-                
-                if (!global.voteClaims) {
-                    global.voteClaims = new Map();
-                }
-                
-                if (lastClaim && (now - lastClaim) < (COOLDOWN_HOURS * 60 * 60 * 1000)) {
-                    const timeLeft = Math.ceil(((COOLDOWN_HOURS * 60 * 60 * 1000) - (now - lastClaim)) / (60 * 60 * 1000));
-                    
-                    await interaction.editReply({
-                        content: `⏰ You can claim your next vote reward in **${timeLeft} hours**. You can vote every 12 hours on Top.gg!`
-                    });
-                    return;
-                }
-                
-                // Grant vote reward
-                const result = await monetizationService.handleVoteReward(userId, serverId);
-                
-                if (result.success) {
-                    global.voteClaims.set(cooldownKey, now);
-                    
-                    await interaction.editReply({
-                        content: `🎉 **Vote reward claimed!** Your server has been granted **50 bonus translations**. Thank you for supporting AirTranslator!`
-                    });
-                    
-                    console.log(`✅ Vote reward claimed via button by ${interaction.user.tag} for server ${interaction.guild.name} (${serverId})`);
-                } else {
-                    await interaction.editReply({
-                        content: `❌ There was an error processing your vote reward. Please try again later.`
-                    });
-                }
-            } catch (error) {
-                console.error('Error handling vote claim button:', error);
-                
-                if (interaction.deferred) {
-                    await interaction.editReply({
-                        content: `❌ There was an error processing your request. Please try again later.`
-                    });
-                } else {
-                    await interaction.reply({
-                        content: `❌ There was an error processing your request. Please try again later.`,
-                        ephemeral: true
-                    });
-                }
-            }
-        }
+        // No button interactions currently handled
+        await interaction.reply({
+            content: 'This button interaction is not recognized.',
+            flags: MessageFlags.Ephemeral
+        });
     } else if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('commentModal_')) {
             const messageId = interaction.customId.split('_')[1];
@@ -208,12 +173,25 @@ async function startBot() {
         await connectDB();
         await client.login(process.env.DISCORD_TOKEN);
         
+        // Start vote checking service
+        voteCheckService.setClient(client);
+        voteCheckService.start();
+        console.log('Vote checking service started');
+        
         // Initialize Top.gg AutoPoster if token exists
         if (process.env.TOPGG_TOKEN) {
-            const poster = AutoPoster(process.env.TOPGG_TOKEN, client);
-            poster.on('posted', (stats) => {
-                console.log(`Posted stats to Top.gg | ${stats.serverCount} servers`);
-            });
+            try {
+                const poster = AutoPoster(process.env.TOPGG_TOKEN, client);
+                poster.on('posted', (stats) => {
+                    console.log(`Posted stats to Top.gg | ${stats.serverCount} servers`);
+                });
+                poster.on('error', (error) => {
+                    console.log('Top.gg API temporarily unavailable (this is normal)');
+                    // Don't log the full error to avoid spam
+                });
+            } catch (error) {
+                console.log('Top.gg AutoPoster initialization failed (API may be down)');
+            }
         }
         
         // Start admin server

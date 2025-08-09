@@ -6,13 +6,15 @@ class MonetizationService {
             defaultFreeTranslationLimit: 20,
             enableGlobalRestriction: false
         };
-        this.loadSettings();
+        this.settingsLoaded = false;
     }
 
     /**
-     * Load global monetization settings from database
+     * Load global monetization settings from database (lazy loading)
      */
     async loadSettings() {
+        if (this.settingsLoaded) return;
+        
         try {
             const settings = await databaseService.getMonetizationSettings();
             if (settings) {
@@ -21,8 +23,19 @@ class MonetizationService {
                     ...settings
                 };
             }
+            this.settingsLoaded = true;
         } catch (error) {
-            console.error('Failed to load monetization settings:', error);
+            console.error('Error getting monetization settings:', error);
+            // Don't set settingsLoaded to true on error, allow retry
+        }
+    }
+
+    /**
+     * Ensure settings are loaded before any operation
+     */
+    async ensureSettingsLoaded() {
+        if (!this.settingsLoaded) {
+            await this.loadSettings();
         }
     }
 
@@ -41,6 +54,7 @@ class MonetizationService {
      * Get or create server monetization settings
      */
     async getServerSettings(serverId) {
+        await this.ensureSettingsLoaded();
         try {
             const server = await databaseService.getServer(serverId);
             
@@ -283,9 +297,9 @@ class MonetizationService {
     /**
      * Handle vote reward - grant additional translations
      */
-    async handleVoteReward(userId, serverId = null) {
+    async handleVoteReward(userId, serverId = null, bonusAmount = 10) {
         try {
-            const VOTE_BONUS_TRANSLATIONS = 50;
+            const VOTE_BONUS_TRANSLATIONS = bonusAmount; // Use custom amount, default to 10
             
             // If serverId is provided, grant translations to that specific server
             if (serverId) {

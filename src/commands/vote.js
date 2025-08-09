@@ -1,77 +1,70 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const monetizationService = require('../services/monetizationService');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('vote')
-        .setDescription('Vote for AirTranslator and get bonus translations for your server!'),
+        .setDescription('Get the voting link for this server to earn bonus translations'),
     
     async execute(interaction) {
         try {
-            await interaction.deferReply();
-            
             const serverId = interaction.guild.id;
-            const settings = monetizationService.getSettings();
-            const serverStats = await monetizationService.getServerStats(serverId);
+            const serverName = interaction.guild.name;
             
             const embed = new EmbedBuilder()
                 .setTitle('🗳️ Vote for AirTranslator')
-                .setColor('#667eea')
-                .setDescription('Support AirTranslator by voting on Top.gg and get **50 bonus translations** for your server!')
+                .setDescription(`Vote for AirTranslator on Top.gg and get **10 bonus translations** for **${serverName}**!`)
+                .setColor('#5865F2')
                 .addFields(
                     {
-                        name: '📊 Current Server Status',
-                        value: `**Translations Used:** ${serverStats.translationCount}/${settings.freeTranslationLimit}\\n**Status:** ${serverStats.canTranslate ? '✅ Active' : '🚫 Limit Reached'}`,
+                        name: '🎁 Reward',
+                        value: '**10 bonus translations** will be added to this server',
                         inline: true
                     },
                     {
-                        name: '🎁 Vote Rewards',
-                        value: '• 50 bonus translations\\n• Instant activation\\n• Vote every 12 hours',
+                        name: '⏰ Cooldown',
+                        value: 'You can vote every **12 hours**',
                         inline: true
                     },
                     {
-                        name: '❓ How it works',
-                        value: '1. Click the vote button below\\n2. Vote on Top.gg\\n3. Return and use `/voteclaim` to claim your reward\\n4. Enjoy 50 bonus translations!',
-                        inline: false
+                        name: '⚡ Automatic',
+                        value: 'Rewards are credited **automatically**!',
+                        inline: true
                     }
                 )
+                .addFields({
+                    name: '📋 How it works',
+                    value: '1️⃣ Click the **Vote on Top.gg** button below\n2️⃣ Complete the voting process on Top.gg\n3️⃣ Your server gets 10 bonus translations within 5 minutes!\n4️⃣ No manual claiming needed - it\'s automatic!',
+                    inline: false
+                })
                 .setFooter({
                     text: 'Thank you for supporting AirTranslator!',
                     iconURL: interaction.client.user.displayAvatarURL()
                 })
                 .setTimestamp();
-            
-            const voteButton = new ButtonBuilder()
-                .setLabel('🗳️ Vote on Top.gg')
-                .setStyle(ButtonStyle.Link)
-                .setURL('https://top.gg/bot/1380177061032759416/vote');
-            
-            const claimButton = new ButtonBuilder()
-                .setCustomId('vote_claim')
-                .setLabel('🎁 Claim Vote Reward')
-                .setStyle(ButtonStyle.Success);
-            
-            const row = new ActionRowBuilder()
-                .addComponents(voteButton, claimButton);
-            
-            await interaction.editReply({
+
+            const voteButton = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setLabel('Vote on Top.gg')
+                    .setEmoji('🗳️')
+                    .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${serverId}`)
+                    .setStyle(ButtonStyle.Link)
+            );
+
+            await interaction.reply({
                 embeds: [embed],
-                components: [row]
+                components: [voteButton],
+                ephemeral: false // Make it visible to everyone
             });
-            
+
         } catch (error) {
             console.error('Error in vote command:', error);
             
             const errorEmbed = new EmbedBuilder()
                 .setTitle('❌ Error')
-                .setDescription('There was an error processing your request. Please try again later.')
+                .setDescription('There was an error generating your vote link. Please try again later.')
                 .setColor('#e74c3c');
-            
-            if (interaction.deferred) {
-                await interaction.editReply({ embeds: [errorEmbed] });
-            } else {
-                await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
-            }
+
+            await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         }
     }
 };

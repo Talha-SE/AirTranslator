@@ -47,6 +47,68 @@ function getLanguageDisplayName(language) {
 const recentLimitMessages = new Map();
 const LIMIT_MESSAGE_COOLDOWN = 5 * 60 * 1000; // 5 minutes cooldown
 
+// Auto-cleanup function for original messages
+async function scheduleAutoCleanup(message, serverId) {
+    try {
+        console.log(`🔧 DEBUG: Checking auto-cleanup for server ${serverId}, channel ${message.channel.name}`);
+        const { getServerConfig } = require('../services/databaseService');
+        const serverConfig = await getServerConfig(serverId);
+        
+        console.log(`🔧 DEBUG: Server config found:`, serverConfig ? 'YES' : 'NO');
+        if (serverConfig && serverConfig.autoCleanup) {
+            console.log(`🔧 DEBUG: Auto-cleanup config:`, JSON.stringify(serverConfig.autoCleanup, null, 2));
+        }
+        
+        if (!serverConfig || !serverConfig.autoCleanup) {
+            console.log(`🔧 DEBUG: No auto-cleanup configuration found for server ${serverId}`);
+            return;
+        }
+        
+        let cleanupDelay = null;
+        
+        // Check channel-specific configuration first
+        if (serverConfig.autoCleanup.channels && serverConfig.autoCleanup.channels[message.channel.id]?.enabled) {
+            cleanupDelay = serverConfig.autoCleanup.channels[message.channel.id].delay;
+            const delayText = cleanupDelay === 0 ? 'immediate' : `${cleanupDelay/1000}s`;
+            console.log(`🗑️ Using channel-specific cleanup (${delayText}) for #${message.channel.name}`);
+        }
+        // Fall back to server-wide configuration
+        else if (serverConfig.autoCleanup.serverWide?.enabled) {
+            cleanupDelay = serverConfig.autoCleanup.serverWide.delay;
+            const delayText = cleanupDelay === 0 ? 'immediate' : `${cleanupDelay/1000}s`;
+            console.log(`🗑️ Using server-wide cleanup (${delayText}) for original message`);
+        }
+        
+        if (!cleanupDelay && cleanupDelay !== 0) {
+            console.log(`🔧 DEBUG: No cleanup delay configured (cleanupDelay = ${cleanupDelay})`);
+            return;
+        }
+        
+        if (cleanupDelay === 0) {
+            // Immediate deletion
+            try {
+                await message.delete();
+                console.log(`✅ Auto-deleted original message immediately`);
+            } catch (deleteError) {
+                console.log('Could not delete original message (may already be deleted or no permissions)');
+            }
+        } else {
+            // Delayed deletion
+            setTimeout(async () => {
+                try {
+                    await message.delete();
+                    console.log(`✅ Auto-deleted original message after ${cleanupDelay/1000} seconds`);
+                } catch (deleteError) {
+                    console.log('Could not delete original message (may already be deleted or no permissions)');
+                }
+            }, cleanupDelay);
+        }
+        
+    } catch (error) {
+        console.error('Error in scheduleAutoCleanup:', error);
+    }
+}
+
 async function sendLimitReachedMessage(message) {
     try {
         const serverId = message.guild.id;
@@ -88,7 +150,7 @@ async function sendLimitReachedMessage(message) {
         const voteButton = new ButtonBuilder()
             .setLabel('🗳️ Vote on Top.gg')
             .setStyle(ButtonStyle.Link)
-            .setURL('https://top.gg/bot/1380177061032759416/vote'); // Your bot ID
+            .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${message.guild.id}`); // Server-specific vote tracking
 
         const supportButton = new ButtonBuilder()
             .setLabel('💎 Premium Plans')
@@ -285,13 +347,18 @@ async function translateAndReply(message, languages) {
                         new ButtonBuilder()
                             .setLabel('Vote on Top.gg')
                             .setEmoji('🗳️')
-                            .setURL('https://top.gg/bot/1380177061032759416/vote')
+                            .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${message.guild.id}`)
                             .setStyle(ButtonStyle.Link)
                     );
                     replyOptions.components = [buttons];
                 }
                 
                 await message.reply(replyOptions);
+                
+                // Check for auto-cleanup configuration and schedule deletion of original message
+                if (i === chunks.length - 1) { // Only check on the last chunk
+                    await scheduleAutoCleanup(message, message.guild.id);
+                }
             }
             
             // Increment translation count after successful translation
@@ -307,6 +374,19 @@ module.exports = async (client, message) => {
     if (message.author.bot) return;
     if (!message.guild) return;
     if (!message.content.trim()) return;
+
+    // Track user-server interaction for vote rewards
+    if (!global.userServerTracking) {
+        global.userServerTracking = new Map();
+    }
+    global.userServerTracking.set(message.author.id, message.guild.id);
+    
+    // Clean up old entries (keep only last 24 hours)
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    if (!global.lastCleanup || Date.now() - global.lastCleanup > oneDayMs) {
+        // Simple cleanup - in production you'd want more sophisticated tracking
+        global.lastCleanup = Date.now();
+    }
 
     try {
         // Check if server can translate (monetization check)

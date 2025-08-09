@@ -25,6 +25,7 @@
     "express": "^5.1.0",
     "express-basic-auth": "^1.2.1",
     "fastq": "^1.19.1",
+    "form-data": "^4.0.4",
     "geoip-lite": "^1.4.10",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.3",

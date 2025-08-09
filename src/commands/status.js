@@ -51,14 +51,14 @@ module.exports = {
                 const remaining = Math.max(0, serverStats.freeTranslationLimit - serverStats.translationCount);
                 embed.addFields({
                     name: '🎯 Get More Translations',
-                    value: `**Remaining:** ${remaining} translations\\n\\n💡 **Get 50 more translations:**\\n• Use \`/vote\` to vote on Top.gg\\n• Vote every 12 hours for more rewards!`,
+                    value: `**Remaining:** ${remaining} translations\\n\\n💡 **Get 10 more translations:**\\n• Click "Vote on Top.gg" button on any translation\\n• Vote every 12 hours for automatic rewards!\\n• No manual claiming needed - rewards are instant!`,
                     inline: false
                 });
             }
             
             embed.addFields({
-                name: '📋 Commands',
-                value: '• `/vote` - Vote and get bonus translations\\n• `/voteclaim` - Claim your vote rewards\\n• `/status` - Check this status again',
+                name: '📋 Available Commands',
+                value: '• `/quicksetup` - Quick translation setup\\n• `/status` - Check this status again\\n• `/help` - Get help and command list',
                 inline: false
             });
             
@@ -67,7 +67,22 @@ module.exports = {
                 iconURL: interaction.client.user.displayAvatarURL()
             }).setTimestamp();
             
-            await interaction.editReply({ embeds: [embed] });
+            // Add vote button if server is not exempt
+            const replyOptions = { embeds: [embed] };
+            
+            if (!serverStats.isExempt) {
+                const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+                const voteButton = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setLabel('Vote on Top.gg')
+                        .setEmoji('🗳️')
+                        .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${serverId}`)
+                        .setStyle(ButtonStyle.Link)
+                );
+                replyOptions.components = [voteButton];
+            }
+            
+            await interaction.editReply(replyOptions);
             
         } catch (error) {
             console.error('Error in status command:', error);

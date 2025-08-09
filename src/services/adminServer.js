@@ -3035,13 +3035,19 @@ const server = http.createServer(async (req, res) => {
         
         // Vote webhook endpoint for top.gg
         } else if (pathname === '/webhook/vote' && req.method === 'POST') {
+            console.log('🔔 Webhook received at /webhook/vote');
             try {
                 const data = await parsePostData(req);
                 const body = JSON.parse(data.body);
                 
+                console.log('📊 Webhook data received:', body);
+                
                 // Verify webhook if you have authorization setup
                 const authHeader = req.headers.authorization;
+                console.log('🔑 Auth header:', authHeader ? 'Present' : 'Missing');
+                
                 if (process.env.TOPGG_WEBHOOK_SECRET && authHeader !== process.env.TOPGG_WEBHOOK_SECRET) {
+                    console.log('❌ Unauthorized webhook attempt');
                     res.writeHead(401, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ error: 'Unauthorized' }));
                     return;
@@ -3052,12 +3058,55 @@ const server = http.createServer(async (req, res) => {
                 if (type === 'upvote') {
                     console.log(`📊 Received vote from user ${userId}${isWeekend ? ' (Weekend vote)' : ''}`);
                     
-                    // For now, we'll handle votes globally. In the future, you might want to 
-                    // implement server-specific vote rewards through a command or interaction
-                    const result = await monetizationService.handleVoteReward(userId);
+                    // Get the most recent server this user interacted with
+                    const recentServerId = global.userServerTracking?.get(userId);
                     
-                    if (result.success) {
-                        console.log(`✅ Vote reward processed for user ${userId}`);
+                    if (recentServerId) {
+                        // Give reward to the specific server (10 translations instead of 50)
+                        const result = await monetizationService.handleVoteReward(userId, recentServerId, 10);
+                        
+                        if (result.success) {
+                            console.log(`✅ Vote reward (10 translations) processed for user ${userId} in server ${recentServerId}`);
+                            
+                            // Send confirmation message to the user
+                            try {
+                                const client = global.discordClient;
+                                if (client) {
+                                    const guild = client.guilds.cache.get(recentServerId);
+                                    const user = await client.users.fetch(userId);
+                                    
+                                    if (guild && user) {
+                                        // Try to find a general channel to send the message
+                                        const channel = guild.channels.cache.find(ch => 
+                                            ch.name.includes('general') || 
+                                            ch.name.includes('chat') ||
+                                            ch.name.includes('main')
+                                        ) || guild.channels.cache.filter(ch => ch.type === 0 && ch.permissionsFor(guild.members.me)?.has('SendMessages')).first();
+                                        
+                                        if (channel) {
+                                            const { EmbedBuilder } = require('discord.js');
+                                            const confirmEmbed = new EmbedBuilder()
+                                                .setTitle('🎉 Vote Reward Received!')
+                                                .setDescription(`Thank you <@${userId}> for voting on Top.gg!\\n\\n**Your server has received 10 bonus translations!**`)
+                                                .setColor('#28a745')
+                                                .setFooter({
+                                                    text: 'You can vote again in 12 hours for more rewards!',
+                                                    iconURL: client.user.displayAvatarURL()
+                                                })
+                                                .setTimestamp();
+                                            
+                                            await channel.send({ embeds: [confirmEmbed] });
+                                            console.log(`📨 Confirmation message sent to ${guild.name} for ${user.tag}`);
+                                        }
+                                    }
+                                }
+                            } catch (msgError) {
+                                console.error('Error sending vote confirmation message:', msgError);
+                            }
+                        }
+                    } else {
+                        // Fallback: try to handle globally (though less ideal)
+                        console.log(`⚠️ No recent server found for user ${userId}, skipping vote reward`);
                     }
                 }
                 
@@ -3065,6 +3114,73 @@ const server = http.createServer(async (req, res) => {
                 res.end(JSON.stringify({ success: true }));
             } catch (error) {
                 console.error('Error processing vote webhook:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Internal server error' }));
+            }
+            
+        // Test vote webhook endpoint (for debugging)
+        } else if (pathname === '/test-vote' && req.method === 'POST') {
+            try {
+                const data = await parsePostData(req);
+                const body = JSON.parse(data.body);
+                const { userId, serverId } = body;
+                
+                console.log(`🧪 Test vote triggered for user ${userId} in server ${serverId}`);
+                
+                if (userId && serverId) {
+                    // Simulate a vote
+                    global.userServerTracking = global.userServerTracking || new Map();
+                    global.userServerTracking.set(userId, serverId);
+                    
+                    const result = await monetizationService.handleVoteReward(userId, serverId, 10);
+                    
+                    if (result.success) {
+                        console.log(`✅ Test vote reward (10 translations) processed for user ${userId} in server ${serverId}`);
+                        
+                        // Send confirmation message
+                        try {
+                            const client = global.discordClient;
+                            if (client) {
+                                const guild = client.guilds.cache.get(serverId);
+                                const user = await client.users.fetch(userId);
+                                
+                                if (guild && user) {
+                                    const channel = guild.channels.cache.find(ch => 
+                                        ch.name.includes('general') || 
+                                        ch.name.includes('chat') ||
+                                        ch.name.includes('main')
+                                    ) || guild.channels.cache.filter(ch => ch.type === 0 && ch.permissionsFor(guild.members.me)?.has('SendMessages')).first();
+                                    
+                                    if (channel) {
+                                        const { EmbedBuilder } = require('discord.js');
+                                        const confirmEmbed = new EmbedBuilder()
+                                            .setTitle('🧪 Test Vote Reward!')
+                                            .setDescription(`Test vote reward for <@${userId}>!\\n\\n**Your server has received 10 bonus translations!**`)
+                                            .setColor('#28a745')
+                                            .setFooter({
+                                                text: 'This was a test vote reward.',
+                                                iconURL: client.user.displayAvatarURL()
+                                            })
+                                            .setTimestamp();
+                                        
+                                        await channel.send({ embeds: [confirmEmbed] });
+                                        console.log(`📨 Test confirmation message sent to ${guild.name} for ${user.tag}`);
+                                    }
+                                }
+                            }
+                        } catch (msgError) {
+                            console.error('Error sending test vote confirmation message:', msgError);
+                        }
+                    }
+                    
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true, message: 'Test vote processed' }));
+                } else {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Missing userId or serverId' }));
+                }
+            } catch (error) {
+                console.error('Error processing test vote:', error);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'Internal server error' }));
             }

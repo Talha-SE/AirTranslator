@@ -48,8 +48,33 @@ const markNamesForTransliteration = (text) => {
 const restorePreservedItems = (translatedText, nameMap) => {
     let restoredText = translatedText;
     
+    // First try exact matching
     nameMap.forEach((originalItem, placeholder) => {
         restoredText = restoredText.replace(new RegExp(escapeRegExp(placeholder), 'g'), originalItem);
+    });
+    
+    // Then try fuzzy matching for common placeholder modifications
+    nameMap.forEach((originalItem, placeholder) => {
+        // Extract the pattern parts: __PRESERVE_0_1__ -> [0, 1]
+        const match = placeholder.match(/__PRESERVE_(\d+)_(\d+)__/);
+        if (match) {
+            const [, index, count] = match;
+            
+            // Try common variations that Mistral might generate
+            const variations = [
+                `PRESERVE_${index}_${count}`,  // Missing underscores
+                `__PRESERVE_${index}_${count}`, // Missing trailing underscores
+                `PRESERVE_${index}_${count}__`, // Missing leading underscores
+                `PRESERVE_X_X`,  // Generic X replacement
+                `__PRESERVE_X_X__`,  // Generic X with underscores
+                `PRESERVE_X_${count}`,  // Partial X replacement
+                `PRESERVE_${index}_X`,  // Partial X replacement
+            ];
+            
+            variations.forEach(variation => {
+                restoredText = restoredText.replace(new RegExp(escapeRegExp(variation), 'g'), originalItem);
+            });
+        }
     });
     
     return restoredText;
@@ -98,6 +123,86 @@ const removeUnwantedNotes = (translation) => {
     cleanTranslation = cleanTranslation.replace(/\n\s*\n/g, '\n').trim();
     
     return cleanTranslation;
+};
+
+/**
+ * Analyzes the tone and context of a message to provide better translation context
+ * @param {string} text - The text to analyze
+ * @returns {object} - Tone analysis results
+ */
+const analyzeToneContext = (text) => {
+    const analysis = {
+        emotions: [],
+        formality: 'neutral',
+        intensity: 'medium',
+        features: []
+    };
+
+    const lowerText = text.toLowerCase();
+
+    // Emotion detection patterns
+    const emotionPatterns = {
+        excited: /(!{2,}|wow|omg|amazing|awesome|great|love it|fantastic|incredible|yay|woohoo|🎉|🔥|💯)/i,
+        happy: /(😊|😄|😁|🙂|😍|❤️|♥️|💕|happy|joy|glad|pleased|thrilled|delighted|cheerful)/i,
+        sad: /(😢|😭|😞|💔|sad|cry|sorry|depressed|upset|disappointed|heartbroken|miserable)/i,
+        angry: /(😠|😡|angry|mad|furious|damn|hate|stupid|annoying|frustrated|irritated|pissed)/i,
+        sarcastic: /(oh sure|yeah right|totally|obviously|of course|wow such|so amazing|really\?|sure thing|how wonderful)/i,
+        worried: /(worried|concern|afraid|scared|nervous|anxiety|hope not|stressed|anxious|unsure)/i,
+        affectionate: /(dear|honey|love|sweetheart|darling|babe|cutie|❤️|😘|💕|💖|baby|sweetie|beloved)/i,
+        playful: /(hehe|haha|lol|lmao|😂|🤣|teasing|kidding|joking|playful|silly|fun)/i,
+        confident: /(definitely|absolutely|certainly|for sure|no doubt|obviously|clearly|of course)/i,
+        uncertain: /(maybe|perhaps|possibly|might|could be|not sure|i think|probably|dunno)/i,
+        grateful: /(thank you|thanks|grateful|appreciate|blessed|thankful|much appreciated)/i,
+        apologetic: /(sorry|apologize|my bad|oops|forgive me|excuse me|pardon)/i
+    };
+
+    // Check for emotions
+    Object.entries(emotionPatterns).forEach(([emotion, pattern]) => {
+        if (pattern.test(text)) {
+            analysis.emotions.push(emotion);
+        }
+    });
+
+    // Formality level detection
+    const formalPatterns = /\b(please|thank you|sir|madam|would you|could you|may I|sincerely|respectfully|kindly|regards|cordially|professionally|formally|officially)\b/i;
+    const casualPatterns = /\b(hey|hi|yo|sup|gonna|wanna|yeah|nah|lol|lmao|brb|tbh|omg|btw|fyi|idk|wtf|damn|shit|dude|bro|sis)\b/i;
+    const intimatePatterns = /\b(love|honey|babe|dear|sweetheart|miss you|xoxo|darling|baby|cutie|my heart|beloved|treasure)\b/i;
+    const professionalPatterns = /\b(meeting|deadline|project|report|analysis|proposal|regarding|furthermore|however|therefore|consequently)\b/i;
+
+    if (formalPatterns.test(text) || professionalPatterns.test(text)) {
+        analysis.formality = 'formal';
+    } else if (intimatePatterns.test(text)) {
+        analysis.formality = 'intimate';
+    } else if (casualPatterns.test(text)) {
+        analysis.formality = 'casual';
+    }
+
+    // Intensity detection
+    const highIntensityPatterns = /(!{3,}|\?{3,}|[A-Z]{4,}|CAPS|amazing|incredible|terrible|awful|fantastic|outstanding|catastrophic|devastating|brilliant|magnificent)/i;
+    const lowIntensityPatterns = /(maybe|perhaps|kinda|sorta|i guess|not sure|possibly|might be|could be|somewhat|slightly)/i;
+
+    if (highIntensityPatterns.test(text)) {
+        analysis.intensity = 'high';
+    } else if (lowIntensityPatterns.test(text)) {
+        analysis.intensity = 'low';
+    }
+
+    // Special features
+    if (/(.)\1{2,}/.test(text)) analysis.features.push('elongation');
+    if (/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(text)) analysis.features.push('emojis');
+    if (/[.]{3,}/.test(text)) analysis.features.push('ellipsis');
+    if (/[!]{2,}/.test(text)) analysis.features.push('emphasis');
+    if (/@\w+/.test(text)) analysis.features.push('mentions');
+    if (/#\w+/.test(text)) analysis.features.push('hashtags');
+    if (/\b[A-Z]{2,}\b/.test(text)) analysis.features.push('caps');
+    if (/\?\?+/.test(text)) analysis.features.push('multiple_questions');
+    if (/~+/.test(text)) analysis.features.push('tildes');
+    if (/\*\w+\*/.test(text)) analysis.features.push('asterisk_emphasis');
+    if (/\b(haha|hehe|lol|lmao|rofl)\b/i.test(text)) analysis.features.push('laughter');
+    if (/\b\w+(-\w+)+\b/.test(text)) analysis.features.push('hyphenated_words');
+    if (/\b\w*[0-9]+\w*\b/.test(text)) analysis.features.push('text_numbers');
+
+    return analysis;
 };
 
 /**
@@ -260,11 +365,14 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         let systemContent = `You are a professional translator. Translate text naturally while preserving meaning and style.
 
 CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
+- TRANSLATE ONLY THE INPUT TEXT - do not add, expand, or create additional content
 - NEVER add any notes, explanations, disclaimers, comments, or parenthetical remarks
 - NEVER write anything like "(Note: ...)", "(Translation: ...)", or "(The original...)"
 - NEVER explain ambiguities, difficulties, or interpretation choices
 - NEVER add context about the source language, translation process, or methodology
 - NEVER justify translation choices or mention alternative interpretations
+- NEVER create conversations, dialogues, or additional sentences not in the original
+- NEVER expand single words into full sentences or conversations
 - For elongated words (like "heyyyyy"), translate to equivalent casual form in target language
 - If target language doesn't use elongation, keep meaning but remove repetitions
 - Preserve every emoji exactly as written (😊 stays 😊, ❤️ stays ❤️)
@@ -298,31 +406,78 @@ If input appears meaningless:
 FINAL RULE: Return ONLY the translated text. Nothing else. No explanations whatsoever.`;
 
         if (useToneUnderstanding) {
-            systemContent = `You are an advanced translator with tone understanding. Preserve tone, emotion, formality, and cultural nuances.
+            systemContent = `You are an expert cultural translator with advanced emotional intelligence. Your role is to perfectly preserve the author's intent, emotional state, formality level, and cultural context while adapting the message naturally to the target language.
 
-CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
+CORE TRANSLATION PHILOSOPHY:
+- Understand the FEELING and INTENT behind each word, not just literal meaning
+- Preserve the author's emotional state: excitement, frustration, joy, sarcasm, worry, affection, etc.
+- Match the formality level: casual chat, professional, intimate, respectful, playful
+- Adapt cultural context while preserving the original meaning and impact
+- Maintain conversational flow and natural rhythm in the target language
+
+ADVANCED TONE PRESERVATION:
+- SARCASM/IRONY: Preserve the ironic undertone using target language's sarcastic patterns
+- HUMOR: Adapt jokes and wordplay to work in target culture while keeping the humor intent
+- EMOTION INTENSITY: Match emotional intensity (excited vs calm, angry vs annoyed)
+- AFFECTION LEVELS: Preserve intimacy levels in relationships (formal, friendly, romantic, familial)
+- FORMALITY SPECTRUM: Adapt from ultra-casual to highly formal based on original tone
+- CULTURAL IDIOMS: Replace idioms with equivalent expressions that carry same cultural weight
+- GENERATIONAL LANGUAGE: Match age-appropriate language patterns (teen slang, professional, elderly)
+
+CONTEXTUAL AWARENESS:
+- RELATIONSHIP DYNAMICS: Consider speaker-listener relationship (boss-employee, friends, strangers)
+- EMOTIONAL SUBTEXT: Detect underlying emotions (passive-aggressive, nervous, confident, flirty)
+- SITUATIONAL CONTEXT: Adapt to context (celebration, complaint, question, announcement)
+- PERSONALITY MARKERS: Preserve individual speech patterns and personality quirks
+
+CRITICAL TECHNICAL RULES - FOLLOW EXACTLY:
+- TRANSLATE ONLY THE INPUT TEXT - do not add, expand, or create additional content
 - NEVER add any notes, explanations, disclaimers, comments, or parenthetical remarks
 - NEVER write anything like "(Note: ...)", "(Translation: ...)", or "(The original...)"
 - NEVER explain ambiguities, difficulties, or interpretation choices
 - NEVER add context about the source language, translation process, or methodology
 - NEVER justify translation choices or mention alternative interpretations
-- For elongated words (like "heyyyyy"), translate to equivalent casual form in target language
-- If target language doesn't use elongation, keep meaning but remove repetitions
+- NEVER create conversations, dialogues, or additional sentences not in the original
+- NEVER expand single words into full sentences or conversations
+- For elongated words (like "heyyyyy"), translate to equivalent casual form with appropriate elongation in target language
+- If target language doesn't use elongation, use other casual markers (repeated punctuation, casual particles)
 - Preserve every emoji exactly as written (😊 stays 😊, ❤️ stays ❤️)
 - Never translate emoji meanings
 - Maintain original emoji positions
 - Preserve all line breaks and spacing exactly
-- Preserve punctuation and special characters
+- Preserve punctuation intensity (!! stays !!, ... stays ...)
 
-KOREAN TRANSLATION ACCURACY RULES:
-- 나 = I/me (NOT "you")
-- 저 = I/me (formal, NOT "you") 
-- 너 = you (informal)
-- 당신 = you (formal)
-- 우리 = we/us (NOT "I")
-- Pay special attention to Korean pronouns - they are often mistranslated
-- Korean sentence structure: Subject-Object-Verb order, translate meaning correctly
-- Consider Korean honorific levels (반말/존댓말) in context
+LANGUAGE-SPECIFIC EXPERTISE:
+KOREAN:
+- 나 = I/me (NOT "you"), 저 = I/me (formal), 너 = you (informal), 당신 = you (formal), 우리 = we/us
+- Match honorific levels perfectly (반말/존댓말) based on relationship and formality
+- Use appropriate particles (야/아, 이야/야) for casual tone
+- Preserve emotional particles (네, 어, 지) that convey speaker's feelings
+
+JAPANESE:
+- Match keigo (honorific) levels precisely
+- Use appropriate sentence endings for gender and relationship (だ/である vs です/ます)
+- Preserve emotional particles (ね, よ, な) that indicate speaker's intent
+
+ARABIC:
+- Adapt between formal Modern Standard Arabic and dialectical expressions based on tone
+- Preserve emotional intensity through appropriate verb forms and expressions
+- Use cultural greetings and closings that match the relationship level
+
+SPANISH:
+- Distinguish between tú/usted based on formality and relationship
+- Preserve regional emotional expressions and cultural markers
+- Match intensity through appropriate diminutives and augmentatives
+
+CHINESE:
+- Use appropriate measure words and particles that convey politeness level
+- Preserve emotional tone through particle usage (啊, 呢, 吧)
+- Adapt between formal and colloquial expressions based on context
+
+FRENCH:
+- Match vous/tu usage based on relationship formality
+- Preserve emotional undertones through appropriate subjunctive and conditional usage
+- Use cultural expressions that carry equivalent emotional weight
 
 TRANSLITERATION RULES:
 - For proper names (people, places, brands), transliterate them into the target language's writing system
@@ -331,7 +486,54 @@ TRANSLITERATION RULES:
 - Do NOT translate the meaning of names, only convert the sound/pronunciation
 - Keep the same pronunciation but write it in target language script
 
-FINAL RULE: Return ONLY the translated text. Nothing else. No explanations whatsoever.`;
+FINAL RULE: Return ONLY the translated text with perfect tone preservation. Nothing else. No explanations whatsoever.`;
+        }
+
+        // Add contextual tone analysis for enhanced understanding when tone mode is enabled
+        let toneContextPrompt = '';
+        if (useToneUnderstanding) {
+            const toneAnalysis = analyzeToneContext(normalizedText);
+            
+            const contextParts = [];
+            
+            if (toneAnalysis.emotions.length > 0) {
+                contextParts.push(`Emotions detected: ${toneAnalysis.emotions.join(', ')}`);
+            }
+            
+            if (toneAnalysis.formality !== 'neutral') {
+                contextParts.push(`Formality level: ${toneAnalysis.formality}`);
+            }
+            
+            if (toneAnalysis.intensity !== 'medium') {
+                contextParts.push(`Message intensity: ${toneAnalysis.intensity}`);
+            }
+            
+            if (toneAnalysis.features.length > 0) {
+                const featureDescriptions = {
+                    'elongation': 'text has elongated words (showing emphasis/emotion)',
+                    'emojis': 'contains emojis (preserve their emotional context)',
+                    'ellipsis': 'uses ellipsis (indicating pause, uncertainty, or continuation)',
+                    'emphasis': 'uses multiple exclamation marks (high emotional emphasis)',
+                    'mentions': 'contains @mentions (preserve exactly)',
+                    'hashtags': 'contains #hashtags (preserve exactly)',
+                    'caps': 'uses CAPS for emphasis (preserve intensity)',
+                    'multiple_questions': 'uses multiple question marks (showing confusion/urgency)',
+                    'tildes': 'uses tildes for playful/cute tone',
+                    'asterisk_emphasis': 'uses *asterisks* for emphasis',
+                    'laughter': 'contains laughter expressions (preserve humor)',
+                    'hyphenated_words': 'uses hyphenated expressions',
+                    'text_numbers': 'mixes numbers with text (preserve style)'
+                };
+                
+                const featureDetails = toneAnalysis.features
+                    .map(feature => featureDescriptions[feature] || feature)
+                    .join('; ');
+                contextParts.push(`Special features: ${featureDetails}`);
+            }
+            
+            if (contextParts.length > 0) {
+                toneContextPrompt = `\n\nIMPORTANT CONTEXT FOR THIS SPECIFIC MESSAGE: ${contextParts.join('. ')}. Use this context to ensure your translation perfectly captures these nuances in the target language's cultural and linguistic patterns.`;
+            }
         }
 
         // Get language names for better context
@@ -424,19 +626,27 @@ FINAL RULE: Return ONLY the translated text. Nothing else. No explanations whats
         // Only preserve technical items (URLs, mentions, etc.) that shouldn't be changed at all
         const { processedText, nameMap } = markNamesForTransliteration(normalizedText);
 
+        // Prepare system content without placeholder instructions if no placeholders are needed
+        let finalSystemContent = systemContent + toneContextPrompt;
+        if (nameMap.size > 0) {
+            finalSystemContent += '\n\nCRITICAL: You will see placeholder text that looks like "__PRESERVE_0_1__" or "__PRESERVE_1_2__" etc. These are special markers for technical content. Keep these placeholders EXACTLY as they appear - do not modify the numbers, underscores, or any part of them. Do not create your own placeholders.';
+        } else {
+            finalSystemContent += '\n\nIMPORTANT: Do not create any placeholder text or markers. Translate the text directly and naturally.';
+        }
+
         const response = await postMistralWithRetry({
             model: 'mistral-medium-latest',
             messages: [
                 {
                     role: 'system',
-                    content: systemContent + '\n\nIMPORTANT: Do NOT change placeholder text that looks like "__PRESERVE_X_X__" - keep these placeholders exactly as they are.'
+                    content: finalSystemContent
                 },
                 {
                     role: 'user',
-                    content: `Translate this text to ${targetLangName}. Preserve original line breaks and spacing. Transliterate proper names into the target language script. Keep it natural and concise: "${processedText}"`
+                    content: `Translate to ${targetLangName}: "${processedText}"`
                 }
             ],
-            temperature: 0.2,
+            temperature: 0.1,  // Lower temperature for more precise, less creative translations
             // Dynamically set max_tokens but cap it to avoid hitting hard limits
             max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2))) // Allow sufficient tokens while preventing truncation
         }, apiKey);
@@ -455,6 +665,22 @@ FINAL RULE: Return ONLY the translated text. Nothing else. No explanations whats
         // Restore the preserved technical items (URLs, mentions, etc.)
         translation = restorePreservedItems(translation, nameMap);
         
+        // Clean up any rogue placeholders that Mistral created on its own
+        if (nameMap.size === 0) {
+            // If we had no original placeholders, remove any that Mistral created
+            translation = translation.replace(/__PRESERVE_\d+_\d+__/g, '');
+            translation = translation.replace(/PRESERVE_\d+_\d+/g, '');
+            translation = translation.replace(/PRESERVE_X_X/g, '');
+        }
+        
+        // Debug: Check if any placeholders remain
+        if (translation.includes('PRESERVE_')) {
+            console.log('⚠️ DEBUG: Found remaining placeholder in translation:', translation);
+            console.log('⚠️ DEBUG: nameMap keys:', Array.from(nameMap.keys()));
+            console.log('⚠️ DEBUG: nameMap size:', nameMap.size);
+            console.log('⚠️ DEBUG: Original text:', normalizedText);
+        }
+        
         // Keep full translation lines
         return translation;
     } catch (error) {
@@ -471,8 +697,135 @@ const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLan
     return translations;
 };
 
+/**
+ * Analyzes an image and describes what it sees, then translates the description
+ * @param {string} imageUrl - URL of the image to analyze
+ * @param {string} targetLanguage - Target language for translation
+ * @param {string} apiKey - Mistral API key to use
+ * @returns {Promise<object>} - Object containing image description and translation
+ */
+const analyzeAndTranslateImage = async (imageUrl, targetLanguage, apiKey = MISTRAL_API_KEY) => {
+    try {
+        console.log(`🖼️ Analyzing image content and translating description to ${targetLanguage}`);
+        
+        const response = await axios.post(
+            'https://api.mistral.ai/v1/chat/completions',
+            {
+                model: 'mistral-medium-latest', // Using Mistral Medium model
+                messages: [
+                    {
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'text',
+                                text: `Look at this image and describe what you see in detail. Include any text, objects, people, scenes, or anything notable. Then translate your description to ${targetLanguage}.
+
+Respond in this JSON format:
+{
+  "hasContent": true,
+  "originalDescription": "detailed description of what you see in the image",
+  "detectedLanguage": "en",
+  "translation": "your description translated to ${targetLanguage}",
+  "confidence": "high"
+}
+
+If the image is unclear or you cannot see anything, respond with:
+{
+  "hasContent": false,
+  "originalDescription": "",
+  "detectedLanguage": "",
+  "translation": "",
+  "confidence": "high"
+}`
+                            },
+                            {
+                                type: 'image_url',
+                                image_url: {
+                                    url: imageUrl
+                                }
+                            }
+                        ]
+                    }
+                ],
+                max_tokens: 1000,
+                temperature: 0.3 // Slightly higher for more creative descriptions
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        const result = response.data.choices[0].message.content;
+        console.log('🔍 Mistral vision response:', result);
+
+        // Try to parse JSON response
+        try {
+            // Clean the result string - remove markdown code blocks if present
+            let cleanResult = result.trim();
+            
+            if (cleanResult.startsWith('```json')) {
+                cleanResult = cleanResult.replace(/```json\n/, '').replace(/\n```$/, '');
+            } else if (cleanResult.startsWith('```')) {
+                cleanResult = cleanResult.replace(/```\n/, '').replace(/\n```$/, '');
+            }
+            
+            const parsedResult = JSON.parse(cleanResult);
+            console.log('✅ Successfully parsed vision response:', parsedResult);
+            
+            // Convert new format to expected format for backward compatibility
+            if (typeof parsedResult.hasContent !== 'undefined') {
+                return {
+                    hasText: parsedResult.hasContent,
+                    extractedText: parsedResult.originalDescription,
+                    detectedLanguage: parsedResult.detectedLanguage,
+                    translation: parsedResult.translation,
+                    confidence: parsedResult.confidence
+                };
+            } else if (typeof parsedResult.hasText !== 'undefined') {
+                // Handle old format if still returned
+                return parsedResult;
+            } else {
+                throw new Error('Invalid response structure');
+            }
+            
+        } catch (parseError) {
+            console.log('⚠️ Could not parse JSON, treating as direct description');
+            
+            // If parsing fails, treat the entire response as a description
+            const detectedLang = await detectLanguage(result);
+            let translation = result;
+            
+            if (detectedLang.toLowerCase() !== targetLanguage.toLowerCase()) {
+                translation = await translateText(result, targetLanguage, detectedLang);
+            }
+            
+            return {
+                hasText: true,
+                extractedText: result,
+                detectedLanguage: detectedLang,
+                translation: translation,
+                confidence: 'medium'
+            };
+        }
+
+    } catch (error) {
+        console.error('❌ Error analyzing image:', error.response?.data || error.message);
+        
+        // If it's a rate limit error, throw a specific error
+        if (error.response?.status === 429) {
+            throw new Error('RATE_LIMITED');
+        }
+        
+        throw new Error('Image analysis failed');
+    }
+};
+
 module.exports = {
     translateText,
     detectLanguage,
-    translateTextToMultipleLanguages
+    translateTextToMultipleLanguages,
+    analyzeAndTranslateImage
 };

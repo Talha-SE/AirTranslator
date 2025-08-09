@@ -50,15 +50,22 @@ module.exports = {
                     {
                         name: '📝 What This Means',
                         value: enabled ? 
-                            'Translations will now preserve tone, emotion, formality, humor, and cultural nuances.' :
+                            'Translations will now intelligently preserve:\n• **Emotions** (excitement, sarcasm, affection, etc.)\n• **Formality levels** (casual, professional, intimate)\n• **Cultural context** and idiomatic expressions\n• **Personality markers** and speech patterns\n• **Message intensity** and emotional undertones' :
                             'Translations will return to standard mode without advanced tone preservation.',
                         inline: false
                     },
                     {
-                        name: '💡 Tips',
+                        name: '💡 Enhanced Features',
                         value: enabled ?
-                            'Tone understanding works best with longer messages and may use slightly more API resources.' :
+                            '✨ **Smart Context Analysis**: Automatically detects emotions, formality, and special features\n🌍 **Cultural Adaptation**: Adapts expressions to target language culture\n🎯 **Relationship Awareness**: Considers speaker-listener dynamics\n⚡ **Improved Accuracy**: Better handling of slang, humor, and subtle meanings' :
                             'Standard translations are efficient and work well for most common communication.',
+                        inline: false
+                    },
+                    {
+                        name: '🔧 Performance Notes',
+                        value: enabled ?
+                            'Enhanced tone understanding may use slightly more processing time for superior translation quality.' :
+                            'Standard mode provides fast, reliable translations.',
                         inline: false
                     }
                 )
