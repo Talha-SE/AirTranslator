@@ -1,4 +1,4 @@
-const { getSetupsByChannelId, getToneSettings, updateServerConfig } = require('../services/databaseService');
+const { getSetupsByChannelId, getToneSettings, updateServerConfig, shouldUseThreadTranslation } = require('../services/databaseService');
 const { translateText, detectLanguage, translateTextToMultipleLanguages } = require('../services/mistralService');
 const monetizationService = require('../services/monetizationService');
 const fastq = require('fastq');
@@ -193,6 +193,9 @@ async function worker(task) {
 
 async function translateAndReply(message, languages) {
     try {
+        // Check if this channel should use thread-based translation
+        const useThreadTranslation = await shouldUseThreadTranslation(message.guild.id, message.channel.id);
+        
         // Detect the language only once for efficiency
         const detectedLanguage = await detectLanguage(message.content);
         console.log(`Detected language: ${detectedLanguage} for message: "${message.content.substring(0, 30)}${message.content.length > 30 ? '...' : ''}"`);
@@ -353,7 +356,40 @@ async function translateAndReply(message, languages) {
                     replyOptions.components = [buttons];
                 }
                 
-                await message.reply(replyOptions);
+                // Handle thread-based or text-based translation
+                if (useThreadTranslation) {
+                    // Thread-based translation
+                    let thread = null;
+                    
+                    // Check if message already has a thread with our translation pattern
+                    if (message.hasThread) {
+                        // Look for existing translation thread
+                        const existingThread = message.channel.threads.cache.find(t => 
+                            t.ownerId === message.client.user.id && 
+                            t.name.startsWith('Translation:')
+                        );
+                        if (existingThread) {
+                            thread = existingThread;
+                        }
+                    }
+                    
+                    // Create new thread if none exists
+                    if (!thread) {
+                        const threadName = `Translation: ${getLanguageDisplayName(targetLanguagesArray[0])}${targetLanguagesArray.length > 1 ? ` +${targetLanguagesArray.length - 1}` : ''}`;
+                        thread = await message.startThread({
+                            name: threadName.substring(0, 100), // Discord thread name limit
+                            reason: 'Translation thread for automatic message translation'
+                        });
+                        console.log(`🧵 Created translation thread: ${thread.name}`);
+                    }
+                    
+                    // Send translation to thread
+                    await thread.send(replyOptions);
+                    console.log(`🧵 Sent translation to thread: ${thread.name}`);
+                } else {
+                    // Text-based translation (original behavior)
+                    await message.reply(replyOptions);
+                }
                 
                 // Check for auto-cleanup configuration and schedule deletion of original message
                 if (i === chunks.length - 1) { // Only check on the last chunk

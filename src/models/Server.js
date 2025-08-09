@@ -55,6 +55,14 @@ const serverSchema = new mongoose.Schema({
         type: [String],
         default: []
     },
+    threadStyleEnabled: {
+        type: Boolean,
+        default: false
+    },
+    threadStyleChannels: {
+        type: [String],
+        default: []
+    },
     monetization: {
         freeTranslationLimit: {
             type: Number,

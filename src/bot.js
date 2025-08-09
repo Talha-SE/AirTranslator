@@ -40,6 +40,7 @@ const voteStatusCommand = require('./commands/votestatus');
 const flagsCommand = require('./commands/flags');
 const autoCleanupCommand = require('./commands/autoCleanup');
 const personalBuddyCommand = require('./commands/personalBuddy');
+const styleCommand = require('./commands/style');
 
 client.commands.set('quicksetup', quickSetupCommand);
 client.commands.set('addchannel', addChannelCommand);
@@ -53,6 +54,7 @@ client.commands.set('votestatus', voteStatusCommand);
 client.commands.set('flags', flagsCommand);
 client.commands.set('autocleanup', autoCleanupCommand);
 client.commands.set('personalbuddy', personalBuddyCommand);
+client.commands.set('style', styleCommand);
 
 // Load events
 const ready = require('./events/ready');

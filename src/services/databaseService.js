@@ -436,6 +436,74 @@ const recordPersonalTranslation = async (userId) => {
     }
 };
 
+/**
+ * Toggle translation style (thread-based or text-based) for server or specific channel
+ * @param {string} serverId - Server ID
+ * @param {string} channelId - Channel ID (null for server-wide)
+ * @param {boolean} isThreadBased - Whether to use thread-based translation
+ * @returns {boolean} Success status
+ */
+const toggleTranslationStyle = async (serverId, channelId = null, isThreadBased = false) => {
+    try {
+        const server = await Server.findOne({ serverId });
+        if (!server) {
+            console.log(`Server ${serverId} not found for translation style toggle`);
+            return false;
+        }
+
+        if (channelId) {
+            // Channel-specific setting
+            if (!server.threadStyleChannels) {
+                server.threadStyleChannels = [];
+            }
+
+            if (isThreadBased) {
+                // Add channel to thread style list if not already present
+                if (!server.threadStyleChannels.includes(channelId)) {
+                    server.threadStyleChannels.push(channelId);
+                }
+            } else {
+                // Remove channel from thread style list
+                server.threadStyleChannels = server.threadStyleChannels.filter(id => id !== channelId);
+            }
+        } else {
+            // Server-wide setting
+            server.threadStyleEnabled = isThreadBased;
+        }
+
+        await server.save();
+        console.log(`Translation style updated for server ${serverId}, channel ${channelId || 'server-wide'}: ${isThreadBased ? 'thread' : 'text'}`);
+        return true;
+    } catch (error) {
+        console.error('Error toggling translation style:', error);
+        return false;
+    }
+};
+
+/**
+ * Check if a channel should use thread-based translation
+ * @param {string} serverId - Server ID
+ * @param {string} channelId - Channel ID
+ * @returns {boolean} Whether to use thread-based translation
+ */
+const shouldUseThreadTranslation = async (serverId, channelId) => {
+    try {
+        const server = await Server.findOne({ serverId });
+        if (!server) return false;
+
+        // Check channel-specific setting first
+        if (server.threadStyleChannels && server.threadStyleChannels.includes(channelId)) {
+            return true;
+        }
+
+        // Fall back to server-wide setting
+        return server.threadStyleEnabled || false;
+    } catch (error) {
+        console.error('Error checking thread translation setting:', error);
+        return false;
+    }
+};
+
 module.exports = {
     connectDB,
     saveServerConfig,
@@ -459,5 +527,7 @@ module.exports = {
     getAllServers,
     togglePersonalTranslation,
     getPersonalTranslationSettings,
-    recordPersonalTranslation
+    recordPersonalTranslation,
+    toggleTranslationStyle,
+    shouldUseThreadTranslation
 };

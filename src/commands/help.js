@@ -43,7 +43,10 @@ module.exports = {
                         '/toggleservertranslation - Enable/disable translation across all channels\n' +
                         '  Example: /toggleservertranslation enabled:true\n\n' +
                         '/toggletone - Toggle tone understanding feature\n' +
-                        '  Example: /toggletone enabled:true\n' +
+                        '  Example: /toggletone enabled:true\n\n' +
+                        '/style - Configure translation display style (thread/text-based)\n' +
+                        '  Example: /style type:thread\n' +
+                        '  Example: /style type:text channel:#general\n' +
                         '```'
                 },
                 {
