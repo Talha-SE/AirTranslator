@@ -97,22 +97,22 @@ async function messageReactionAdd(client, reaction, user) {
                     .setDescription(`✨ Your personal translation for **${getLanguageDisplayName(targetLanguage)}**`)
                     .addFields(
                         {
-                            name: `� Original Text ${detectedLang ? `• ${getLanguageDisplayName(detectedLang)}` : ''}`,
-                            value: hasTextContent ? `> ${message.content}` : '_No text content_',
+                            name: `📄 Original Text ${detectedLang ? `• ${getLanguageDisplayName(detectedLang)}` : ''}`,
+                            value: hasTextContent ? `🔹 ${message.content}` : '_No text content_',
                             inline: false
                         }
                     );
 
                 if (translation && translation !== message.content) {
                     personalEmbed.addFields({
-                        name: `� Translation • ${getLanguageDisplayName(targetLanguage)} ${flagEmoji}`,
-                        value: `> **${translation}**`,
+                        name: `🎯 Translation • ${getLanguageDisplayName(targetLanguage)} ${flagEmoji}`,
+                        value: `🔸 **${translation}**`,
                         inline: false
                     });
                 } else if (detectedLang === targetLanguage) {
                     personalEmbed.addFields({
                         name: '💡 Already Translated',
-                        value: `> This message is already in **${getLanguageDisplayName(targetLanguage)}**`,
+                        value: `🔸 This message is already in **${getLanguageDisplayName(targetLanguage)}**`,
                         inline: false
                     });
                 }
@@ -305,7 +305,7 @@ async function messageReactionAdd(client, reaction, user) {
             })
             .setTimestamp()
             .setFooter({
-                text: 'React with 🏴 flags to translate messages • Auto-deletes in 15s • AirTranslator',
+                text: 'React with 🏴 flags to translate messages • Auto-deletes in 30s • AirTranslator',
                 iconURL: client.user.displayAvatarURL()
             });
 
@@ -380,15 +380,15 @@ async function messageReactionAdd(client, reaction, user) {
             allowedMentions: { repliedUser: false }
         });
 
-        // Auto-delete flag translation after 15 seconds
+        // Auto-delete flag translation after 30 seconds
         setTimeout(async () => {
             try {
                 await translationReply.delete();
-                console.log(`🗑️ Auto-deleted flag translation after 15 seconds`);
+                console.log(`🗑️ Auto-deleted flag translation after 30 seconds`);
             } catch (deleteError) {
                 console.log('Could not delete flag translation (message may already be deleted)');
             }
-        }, 15000); // 15 seconds
+        }, 30000); // 30 seconds
 
         // Update user-server tracking for vote rewards
         if (!global.userServerTracking) {

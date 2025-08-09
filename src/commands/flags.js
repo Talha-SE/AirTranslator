@@ -35,7 +35,7 @@ module.exports = {
                     },
                     {
                         name: '💡 Smart Features',
-                        value: '• Auto-detects source language\n• Skips if already in target language\n• Respects server translation limits\n• **Works on old and new messages**\n• Auto-deletes after 15 seconds',
+                        value: '• Auto-detects source language\n• Skips if already in target language\n• Respects server translation limits\n• **Works on old and new messages**\n• Auto-deletes after 30 seconds',
                         inline: true
                     }
                 )

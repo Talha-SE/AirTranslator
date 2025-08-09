@@ -40,7 +40,7 @@ module.exports = {
             if (!result) {
                 return interaction.reply({
                     content: '❌ There was an error updating your personal translation buddy settings.',
-                    ephemeral: true
+                    flags: ['Ephemeral']
                 });
             }
 
@@ -87,16 +87,18 @@ module.exports = {
                     text: `Personal Translation Buddy • ${interaction.user.username}`,
                     iconURL: interaction.user.displayAvatarURL()
                 })
-                .setTimestamp()
-                .setThumbnail(enabled ? '🤖' : '💤');
+                .setTimestamp();
 
-            return interaction.reply({ embeds: [embed], ephemeral: true });
+            return interaction.reply({ 
+                embeds: [embed], 
+                flags: ['Ephemeral'] 
+            });
             
         } catch (error) {
             console.error('Error in personal buddy command:', error);
             return interaction.reply({
                 content: '❌ There was an error processing your personal translation buddy settings.',
-                ephemeral: true
+                flags: ['Ephemeral']
             });
         }
     }
