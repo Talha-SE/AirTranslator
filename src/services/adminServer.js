@@ -1,6 +1,7 @@
 const http = require('http');
 const crypto = require('crypto');
 const analyticsService = require('./analyticsService');
+const monetizationService = require('./monetizationService');
 const nodeCron = require('node-cron');
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
@@ -651,12 +652,621 @@ function generateAnalyticsContent(analytics, client) {
 }
 
 /**
+ * Generates the HTML content for the monetization tab.
+ * @param {Object} client - The Discord client instance.
+ * @returns {Promise<string>} The HTML content for the monetization interface.
+ */
+async function generateMonetizationContent(client) {
+    try {
+        const settings = monetizationService.getSettings();
+        const serversStatus = await monetizationService.getAllServersStatus(client);
+        
+        // Calculate global statistics
+        const totalServers = serversStatus.length;
+        const totalTranslations = serversStatus.reduce((sum, server) => sum + server.translationCount, 0);
+        const exemptServers = serversStatus.filter(server => server.isExempt).length;
+        const restrictedServers = serversStatus.filter(server => server.isRestricted).length;
+        const overLimitServers = serversStatus.filter(server => !server.canTranslate && !server.isExempt).length;
+        const activeServers = serversStatus.filter(server => server.canTranslate || server.isExempt).length;
+        
+        return `
+            <div class="monetization-container">
+                <h2 style="margin-bottom: 20px; color: #333; display: flex; align-items: center; gap: 10px;">
+                    <span>💰</span> Monetization Management
+                </h2>
+                
+                <!-- Global Statistics Section -->
+                <div class="stats-section">
+                    <h3>Global Statistics</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">🏢</div>
+                            <div class="stat-info">
+                                <div class="stat-value">${totalServers}</div>
+                                <div class="stat-label">Total Servers</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🔄</div>
+                            <div class="stat-info">
+                                <div class="stat-value">${totalTranslations.toLocaleString()}</div>
+                                <div class="stat-label">Total Translations</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">✅</div>
+                            <div class="stat-info">
+                                <div class="stat-value">${activeServers}</div>
+                                <div class="stat-label">Active Servers</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💎</div>
+                            <div class="stat-info">
+                                <div class="stat-value">${exemptServers}</div>
+                                <div class="stat-label">Exempt Servers</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🚫</div>
+                            <div class="stat-info">
+                                <div class="stat-value">${overLimitServers}</div>
+                                <div class="stat-label">Over Limit</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">⚠️</div>
+                            <div class="stat-info">
+                                <div class="stat-value">${restrictedServers}</div>
+                                <div class="stat-label">Restricted Servers</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Global Settings Section -->
+                <div class="settings-section">
+                    <h3>Global Settings</h3>
+                    <div class="settings-card">
+                        <div class="setting-group">
+                            <label for="freeLimit">Default Free Translation Limit:</label>
+                            <input type="number" id="freeLimit" value="${settings.defaultFreeTranslationLimit}" min="1" max="1000">
+                            <small>Default number of free translations for new servers</small>
+                        </div>
+                        
+                        <div class="setting-group">
+                            <label class="toggle-container">
+                                <input type="checkbox" id="globalRestriction" ${settings.enableGlobalRestriction ? 'checked' : ''}>
+                                <span class="toggle-slider"></span>
+                                Apply restriction to all servers
+                            </label>
+                            <small>When enabled, all servers will be restricted unless specifically exempted</small>
+                        </div>
+                        
+                        <button class="save-btn" onclick="saveGlobalSettings()">Save Global Settings</button>
+                    </div>
+                </div>
+                
+                <!-- Quick Actions Section -->
+                <div class="quick-actions-section">
+                    <h3>Quick Actions</h3>
+                    <div class="actions-card">
+                        <div class="action-group">
+                            <input type="text" id="serverIdInput" placeholder="Enter Server ID" class="server-input">
+                            <div class="action-buttons">
+                                <button class="action-btn exempt-btn" onclick="addExemptServer()">Add to Exempt List</button>
+                                <button class="action-btn restrict-btn" onclick="addRestrictedServer()">Add to Restricted List</button>
+                                <button class="action-btn reset-btn" onclick="resetServerCount()">Reset Translation Count</button>
+                            </div>
+                        </div>
+                        <div class="action-group" style="margin-top: 15px;">
+                            <input type="number" id="customLimitInput" placeholder="Custom Limit (optional)" class="server-input" min="1" max="10000">
+                            <div class="action-buttons">
+                                <button class="action-btn limit-btn" onclick="setCustomLimit()">Set Custom Limit</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Servers Status Section -->
+                <div class="servers-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="margin: 0;">Servers Management</h3>
+                        <div class="servers-count-badge">
+                            <span style="font-size: 14px; font-weight: 600; color: #667eea;">
+                                ${serversStatus.length} servers total
+                            </span>
+                        </div>
+                    </div>
+                    <div class="filters">
+                        <button class="filter-btn active" onclick="filterServers('all')">All Servers</button>
+                        <button class="filter-btn" onclick="filterServers('restricted')">Restricted</button>
+                        <button class="filter-btn" onclick="filterServers('exempt')">Exempt</button>
+                        <button class="filter-btn" onclick="filterServers('over-limit')">Over Limit</button>
+                    </div>
+                    
+                    <div class="servers-table-container">
+                        <table class="servers-table">
+                            <thead>
+                                <tr>
+                                    <th>Server Name</th>
+                                    <th>Server ID</th>
+                                    <th>Members</th>
+                                    <th>Translations</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${serversStatus.map(server => `
+                                    <tr class="server-row" data-status="${getServerStatusClass(server)}">
+                                        <td class="server-name">${server.name}</td>
+                                        <td class="server-id">${server.id}</td>
+                                        <td class="member-count">${server.memberCount || 'N/A'}</td>
+                                        <td class="translation-count">
+                                            <span class="${server.translationCount >= server.freeTranslationLimit ? 'over-limit' : ''}">${server.translationCount}/${server.freeTranslationLimit}</span>
+                                        </td>
+                                        <td class="server-status">
+                                            <span class="status-badge ${getServerStatusClass(server)}">
+                                                ${getServerStatusText(server)}
+                                            </span>
+                                        </td>
+                                        <td class="server-actions">
+                                            ${generateServerActions(server)}
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <style>
+                .monetization-container {
+                    padding: 20px;
+                }
+                
+                .stats-section, .settings-section, .quick-actions-section, .servers-section {
+                    margin-bottom: 30px;
+                }
+                
+                .stats-section h3, .settings-section h3, .quick-actions-section h3, .servers-section h3 {
+                    color: #333;
+                    margin-bottom: 15px;
+                    padding-bottom: 8px;
+                    border-bottom: 2px solid #667eea;
+                }
+                
+                /* Global Stats Grid */
+                .stats-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 20px;
+                    margin-bottom: 20px;
+                }
+                
+                .stat-card {
+                    background: white;
+                    padding: 20px;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.07);
+                    border: 1px solid #e1e8ed;
+                    display: flex;
+                    align-items: center;
+                    gap: 15px;
+                    transition: transform 0.2s ease, box-shadow 0.2s ease;
+                }
+                
+                .stat-card:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+                }
+                
+                .stat-icon {
+                    font-size: 2.5rem;
+                    opacity: 0.8;
+                }
+                
+                .stat-info {
+                    flex: 1;
+                }
+                
+                .stat-value {
+                    font-size: 2rem;
+                    font-weight: bold;
+                    color: #333;
+                    line-height: 1;
+                }
+                
+                .stat-label {
+                    font-size: 0.875rem;
+                    color: #666;
+                    margin-top: 4px;
+                    font-weight: 500;
+                }
+                
+                .settings-card, .actions-card {
+                    background: white;
+                    padding: 25px;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.07);
+                    border: 1px solid #e1e8ed;
+                }
+                
+                .setting-group {
+                    margin-bottom: 20px;
+                }
+                
+                .setting-group label {
+                    display: block;
+                    font-weight: 600;
+                    margin-bottom: 8px;
+                    color: #333;
+                }
+                
+                .setting-group input[type="number"] {
+                    width: 200px;
+                    padding: 10px 15px;
+                    border: 2px solid #e1e8ed;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    transition: border-color 0.3s ease;
+                }
+                
+                .setting-group input[type="number"]:focus {
+                    outline: none;
+                    border-color: #667eea;
+                    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+                }
+                
+                .setting-group small {
+                    display: block;
+                    color: #666;
+                    margin-top: 5px;
+                    font-size: 12px;
+                }
+                
+                /* Toggle Switch Styles */
+                .toggle-container {
+                    display: flex;
+                    align-items: center;
+                    cursor: pointer;
+                    user-select: none;
+                }
+                
+                .toggle-container input[type="checkbox"] {
+                    display: none;
+                }
+                
+                .toggle-slider {
+                    position: relative;
+                    display: inline-block;
+                    width: 50px;
+                    height: 24px;
+                    background-color: #ccc;
+                    border-radius: 24px;
+                    margin-right: 10px;
+                    transition: background-color 0.3s ease;
+                }
+                
+                .toggle-slider:before {
+                    content: "";
+                    position: absolute;
+                    height: 20px;
+                    width: 20px;
+                    left: 2px;
+                    bottom: 2px;
+                    background-color: white;
+                    border-radius: 50%;
+                    transition: transform 0.3s ease;
+                }
+                
+                .toggle-container input:checked + .toggle-slider {
+                    background-color: #667eea;
+                }
+                
+                .toggle-container input:checked + .toggle-slider:before {
+                    transform: translateX(26px);
+                }
+                
+                /* Button Styles */
+                .save-btn, .action-btn {
+                    padding: 12px 24px;
+                    border: none;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    font-size: 14px;
+                }
+                
+                .save-btn {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                }
+                
+                .save-btn:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+                }
+                
+                .action-group {
+                    display: flex;
+                    gap: 15px;
+                    align-items: center;
+                    flex-wrap: wrap;
+                }
+                
+                .server-input {
+                    flex: 1;
+                    min-width: 200px;
+                    padding: 10px 15px;
+                    border: 2px solid #e1e8ed;
+                    border-radius: 8px;
+                    font-size: 14px;
+                }
+                
+                .action-buttons {
+                    display: flex;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                }
+                
+                .exempt-btn {
+                    background: #28a745;
+                    color: white;
+                }
+                
+                .restrict-btn {
+                    background: #dc3545;
+                    color: white;
+                }
+                
+                .reset-btn {
+                    background: #ffc107;
+                    color: #333;
+                }
+                
+                .limit-btn {
+                    background: #17a2b8;
+                    color: white;
+                }
+                
+                .action-btn:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                }
+                
+                /* Filters */
+                .filters {
+                    margin-bottom: 20px;
+                    display: flex;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                }
+                
+                .servers-count-badge {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 8px 16px;
+                    border-radius: 20px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+                }
+                
+                .filter-btn {
+                    padding: 8px 16px;
+                    border: 2px solid #e1e8ed;
+                    background: white;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    font-size: 14px;
+                    font-weight: 500;
+                }
+                
+                .filter-btn.active,
+                .filter-btn:hover {
+                    background: #667eea;
+                    color: white;
+                    border-color: #667eea;
+                }
+                
+                /* Table Styles */
+                .servers-table-container {
+                    background: white;
+                    border-radius: 12px;
+                    overflow: hidden;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.07);
+                    border: 1px solid #e1e8ed;
+                }
+                
+                .servers-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                
+                .servers-table th {
+                    background: #f8f9fa;
+                    padding: 15px 12px;
+                    text-align: left;
+                    font-weight: 600;
+                    color: #333;
+                    border-bottom: 2px solid #e1e8ed;
+                }
+                
+                .servers-table td {
+                    padding: 12px;
+                    border-bottom: 1px solid #f0f0f0;
+                    vertical-align: middle;
+                }
+                
+                .server-row:hover {
+                    background: #f8f9fa;
+                }
+                
+                .server-name {
+                    font-weight: 600;
+                    color: #333;
+                }
+                
+                .server-id {
+                    font-family: 'Courier New', Courier, monospace;
+                    font-size: 11px;
+                    color: #666;
+                    max-width: 120px;
+                    word-break: break-all;
+                    line-height: 1.3;
+                }
+                
+                .translation-count .over-limit {
+                    color: #dc3545;
+                    font-weight: bold;
+                }
+                
+                .status-badge {
+                    padding: 4px 12px;
+                    border-radius: 20px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                }
+                
+                .status-badge.active {
+                    background: #d4edda;
+                    color: #155724;
+                }
+                
+                .status-badge.restricted {
+                    background: #f8d7da;
+                    color: #721c24;
+                }
+                
+                .status-badge.exempt {
+                    background: #d1ecf1;
+                    color: #0c5460;
+                }
+                
+                .status-badge.over-limit {
+                    background: #f5c6cb;
+                    color: #721c24;
+                }
+                
+                .server-actions {
+                    display: flex;
+                    gap: 5px;
+                    flex-wrap: wrap;
+                }
+                
+                .server-actions button {
+                    padding: 6px 12px;
+                    border: none;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+                
+                .btn-exempt {
+                    background: #28a745;
+                    color: white;
+                }
+                
+                .btn-restrict {
+                    background: #dc3545;
+                    color: white;
+                }
+                
+                .btn-remove {
+                    background: #6c757d;
+                    color: white;
+                }
+                
+                .btn-reset {
+                    background: #ffc107;
+                    color: #333;
+                }
+                
+                .server-actions button:hover {
+                    transform: scale(1.05);
+                }
+                
+                /* Responsive */
+                @media (max-width: 768px) {
+                    .action-group {
+                        flex-direction: column;
+                        align-items: stretch;
+                    }
+                    
+                    .action-buttons {
+                        justify-content: center;
+                    }
+                    
+                    .servers-table-container {
+                        overflow-x: auto;
+                    }
+                    
+                    .servers-table {
+                        min-width: 800px;
+                    }
+                }
+            </style>
+        `;
+    } catch (error) {
+        console.error('Error generating monetization content:', error);
+        return `
+            <div class="error-message">
+                <h3>Error Loading Monetization Data</h3>
+                <p>There was an error loading the monetization interface. Please try refreshing the page.</p>
+                <p style="color: #666; font-size: 14px;">Error: ${error.message}</p>
+            </div>
+        `;
+    }
+}
+
+function getServerStatusClass(server) {
+    if (server.isExempt) return 'exempt';
+    if (!server.canTranslate) return 'over-limit';
+    if (server.isRestricted) return 'restricted';
+    return 'active';
+}
+
+function getServerStatusText(server) {
+    if (server.isExempt) return 'Exempt';
+    if (!server.canTranslate) return 'Over Limit';
+    if (server.isRestricted) return 'Restricted';
+    return 'Active';
+}
+
+function generateServerActions(server) {
+    let actions = [];
+    
+    if (server.isExempt) {
+        actions.push(`<button class="btn-remove" onclick="removeExemptServer('${server.id}')">Remove Exempt</button>`);
+    } else if (server.isRestricted) {
+        actions.push(`<button class="btn-exempt" onclick="addExemptServer('${server.id}')">Add Exempt</button>`);
+        actions.push(`<button class="btn-remove" onclick="removeRestrictedServer('${server.id}')">Remove Restriction</button>`);
+    } else {
+        actions.push(`<button class="btn-exempt" onclick="addExemptServer('${server.id}')">Add Exempt</button>`);
+        actions.push(`<button class="btn-restrict" onclick="addRestrictedServer('${server.id}')">Add Restriction</button>`);
+    }
+    
+    if (server.translationCount > 0) {
+        actions.push(`<button class="btn-reset" onclick="resetServerCount('${server.id}')">Reset Count</button>`);
+    }
+    
+    return actions.join('');
+}
+
+/**
  * Generates the HTML for the admin dashboard with tab-based navigation.
  * @param {Object} analytics - The analytics data for the dashboard.
  * @param {Object} client - The Discord client instance.
- * @returns {string} The HTML content for the dashboard.
+ * @returns {Promise<string>} The HTML content for the dashboard.
  */
-function generateDashboard(analytics, client) {
+async function generateDashboard(analytics, client) {
     const messagesWithFeedback = analyticsService.getMessagesWithFeedback();
     const peakDayTranslations = Object.values(analytics.dailyStats)
         .reduce((max, day) => Math.max(max, day.translations || 0), 0);
@@ -1081,17 +1691,7 @@ function generateDashboard(analytics, client) {
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
-        let refreshTimer = setTimeout(() => {
-            const activeTab = document.querySelector('.tab-btn.active');
-            if (activeTab) {
-                const tabName = activeTab.onclick.toString().match(/switchTab\\('([^']+)'\\)/)[1];
-                sessionStorage.setItem('activeTab', tabName);
-            }
-            window.location.reload();
-        }, 30000);
-        
         function manualRefresh() {
-            clearTimeout(refreshTimer);
             const activeTab = document.querySelector('.tab-btn.active');
             if (activeTab) {
                 const tabName = activeTab.onclick.toString().match(/switchTab\\('([^']+)'\\)/)[1];
@@ -1100,21 +1700,7 @@ function generateDashboard(analytics, client) {
             window.location.reload();
         }
         
-        function switchTab(tabName) {
-            if (tabName === 'messaging') {
-                clearTimeout(refreshTimer);
-                refreshTimer = setTimeout(() => {
-                    sessionStorage.setItem('activeTab', 'messaging');
-                    window.location.reload();
-                }, 300000);
-            } else if (tabName === 'analytics') {
-                clearTimeout(refreshTimer);
-                refreshTimer = setTimeout(() => {
-                    sessionStorage.setItem('activeTab', 'analytics');
-                    window.location.reload();
-                }, 30000);
-            }
-            
+        function switchTab(tabName) {            
             document.querySelectorAll('.tab-pane').forEach(pane => {
                 pane.classList.remove('active');
             });
@@ -1367,13 +1953,6 @@ function generateDashboard(analytics, client) {
                 if (tabBtn) {
                     switchTab(savedTab);
                     tabBtn.classList.add('active');
-                    if (savedTab === 'messaging') {
-                        clearTimeout(refreshTimer);
-                        refreshTimer = setTimeout(() => {
-                            sessionStorage.setItem('activeTab', savedTab);
-                            window.location.reload();
-                        }, 300000);
-                    }
                 }
             }
         }
@@ -1449,6 +2028,274 @@ function generateDashboard(analytics, client) {
     }
 
     document.addEventListener('DOMContentLoaded', initLiveChart);
+    
+    // Auto-update global statistics every 30 seconds
+    function updateGlobalStats() {
+        // Only update if we're on the monetization tab
+        const monetizationTab = document.getElementById('monetization');
+        if (monetizationTab && monetizationTab.classList.contains('active')) {
+            // Force a page reload to get fresh data
+            // In a more sophisticated implementation, you could fetch only the stats via AJAX
+            const currentTime = Date.now();
+            const lastUpdate = sessionStorage.getItem('lastStatsUpdate');
+            
+            // Only update if it's been more than 30 seconds
+            if (!lastUpdate || (currentTime - parseInt(lastUpdate)) > 30000) {
+                sessionStorage.setItem('lastStatsUpdate', currentTime.toString());
+                // You could implement a more efficient AJAX update here
+                console.log('📊 Global statistics would be updated here');
+            }
+        }
+    }
+    
+    // Update stats every 30 seconds
+    setInterval(updateGlobalStats, 30000);
+    
+    // Monetization Functions
+    async function saveGlobalSettings() {
+        const freeLimit = document.getElementById('freeLimit').value;
+        const globalRestriction = document.getElementById('globalRestriction').checked;
+        
+        try {
+            const response = await fetch('/admin/monetization/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    defaultFreeTranslationLimit: parseInt(freeLimit),
+                    enableGlobalRestriction: globalRestriction
+                })
+            });
+            
+            if (response.ok) {
+                showNotification('Global settings saved successfully!', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showNotification('Failed to save settings', 'error');
+            }
+        } catch (error) {
+            showNotification('Error saving settings: ' + error.message, 'error');
+        }
+    }
+    
+    async function addExemptServer(serverId = null) {
+        const id = serverId || document.getElementById('serverIdInput').value.trim();
+        if (!id) {
+            showNotification('Please enter a server ID', 'error');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/admin/monetization/exempt/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ serverId: id })
+            });
+            
+            if (response.ok) {
+                showNotification('Server added to exempt list', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showNotification('Failed to add server to exempt list', 'error');
+            }
+        } catch (error) {
+            showNotification('Error: ' + error.message, 'error');
+        }
+    }
+    
+    async function addRestrictedServer(serverId = null) {
+        const id = serverId || document.getElementById('serverIdInput').value.trim();
+        if (!id) {
+            showNotification('Please enter a server ID', 'error');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/admin/monetization/restrict/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ serverId: id })
+            });
+            
+            if (response.ok) {
+                showNotification('Server added to restricted list', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showNotification('Failed to add server to restricted list', 'error');
+            }
+        } catch (error) {
+            showNotification('Error: ' + error.message, 'error');
+        }
+    }
+    
+    async function removeExemptServer(serverId) {
+        try {
+            const response = await fetch('/admin/monetization/exempt/remove', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ serverId })
+            });
+            
+            if (response.ok) {
+                showNotification('Server removed from exempt list', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showNotification('Failed to remove server from exempt list', 'error');
+            }
+        } catch (error) {
+            showNotification('Error: ' + error.message, 'error');
+        }
+    }
+    
+    async function removeRestrictedServer(serverId) {
+        try {
+            const response = await fetch('/admin/monetization/restrict/remove', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ serverId })
+            });
+            
+            if (response.ok) {
+                showNotification('Server removed from restricted list', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showNotification('Failed to remove server from restricted list', 'error');
+            }
+        } catch (error) {
+            showNotification('Error: ' + error.message, 'error');
+        }
+    }
+    
+    async function resetServerCount(serverId = null) {
+        const id = serverId || document.getElementById('serverIdInput').value.trim();
+        if (!id) {
+            showNotification('Please enter a server ID', 'error');
+            return;
+        }
+        
+        if (!confirm('Are you sure you want to reset the translation count for this server?')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch('/admin/monetization/reset-count', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ serverId: id })
+            });
+            
+            if (response.ok) {
+                showNotification('Translation count reset successfully', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showNotification('Failed to reset translation count', 'error');
+            }
+        } catch (error) {
+            showNotification('Error: ' + error.message, 'error');
+        }
+    }
+    
+    async function setCustomLimit() {
+        const serverId = document.getElementById('serverIdInput').value.trim();
+        const customLimit = document.getElementById('customLimitInput').value.trim();
+        
+        if (!serverId) {
+            showNotification('Please enter a server ID', 'error');
+            return;
+        }
+        
+        if (!customLimit || customLimit < 1) {
+            showNotification('Please enter a valid limit (minimum 1)', 'error');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/admin/monetization/custom-limit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    serverId: serverId,
+                    customLimit: parseInt(customLimit)
+                })
+            });
+            
+            if (response.ok) {
+                showNotification('Custom limit of ' + customLimit + ' set for server', 'success');
+                document.getElementById('customLimitInput').value = '';
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showNotification('Failed to set custom limit', 'error');
+            }
+        } catch (error) {
+            showNotification('Error: ' + error.message, 'error');
+        }
+    }
+    
+    function filterServers(type) {
+        // Update active filter button
+        document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+        
+        const rows = document.querySelectorAll('.server-row');
+        rows.forEach(row => {
+            const status = row.dataset.status;
+            let show = false;
+            
+            switch(type) {
+                case 'all':
+                    show = true;
+                    break;
+                case 'restricted':
+                    show = status === 'restricted';
+                    break;
+                case 'exempt':
+                    show = status === 'exempt';
+                    break;
+                case 'over-limit':
+                    show = status === 'over-limit';
+                    break;
+            }
+            
+            row.style.display = show ? 'table-row' : 'none';
+        });
+    }
+    
+    function showNotification(message, type = 'info') {
+        // Remove existing notifications
+        const existing = document.querySelector('.notification');
+        if (existing) existing.remove();
+        
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = \`notification notification-\${type}\`;
+        notification.textContent = message;
+        
+        // Add styles
+        notification.style.cssText = \`
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            z-index: 10000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            background: \${type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#667eea'};
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        \`;
+        
+        document.body.appendChild(notification);
+        
+        // Animate in
+        setTimeout(() => notification.style.transform = 'translateX(0)', 100);
+        
+        // Remove after 4 seconds
+        setTimeout(() => {
+            notification.style.transform = 'translateX(100%)';
+            setTimeout(() => notification.remove(), 300);
+        }, 4000);
+    }
 </script>
 </head>
 <body>
@@ -1462,7 +2309,7 @@ function generateDashboard(analytics, client) {
     
     <div class="container">
         <div class="refresh-info">
-            <span>Last updated: ${new Date().toLocaleString()} • Auto-refresh in 30s</span>
+            <span>Last updated: ${new Date().toLocaleString()}</span>
             <button class="refresh-btn" onclick="manualRefresh()">🔄 Refresh Now</button>
         </div>
         
@@ -1470,6 +2317,7 @@ function generateDashboard(analytics, client) {
             <div class="tab-nav">
                 <button class="tab-btn active" onclick="switchTab('analytics')">📊 Analytics</button>
                 <button class="tab-btn" onclick="switchTab('messaging')">📢 Server Messaging</button>
+                <button class="tab-btn" onclick="switchTab('monetization')">💰 Monetization</button>
                 <button class="tab-btn" onclick="switchTab('feedback')">📊 Feedback</button>
             </div>
             
@@ -1482,6 +2330,10 @@ function generateDashboard(analytics, client) {
                 
                 <div id="messaging" class="tab-pane">
                     ${generateMessageInterface()}
+                </div>
+                
+                <div id="monetization" class="tab-pane">
+                    ${await generateMonetizationContent(client)}
                 </div>
                 
                 <div id="feedback" class="tab-pane">
@@ -1961,12 +2813,18 @@ const server = http.createServer(async (req, res) => {
             const sessionToken = getSessionFromCookies(req.headers.cookie);
             
             if (isValidSession(sessionToken)) {
-                const analytics = analyticsService.getAnalytics();
-                const client = global.discordClient;
-                const dashboard = generateDashboard(analytics, client);
-                
-                res.writeHead(200, { 'Content-Type': 'text/html' });
-                res.end(dashboard);
+                try {
+                    const analytics = analyticsService.getAnalytics();
+                    const client = global.discordClient;
+                    const dashboard = await generateDashboard(analytics, client);
+                    
+                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    res.end(dashboard);
+                } catch (error) {
+                    console.error('Error generating dashboard:', error);
+                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                    res.end('Internal Server Error');
+                }
             } else {
                 const loginPage = generateLoginPage();
                 res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -2009,6 +2867,207 @@ const server = http.createServer(async (req, res) => {
                 'Location': '/admin'
             });
             res.end();
+            
+        // Monetization API Routes
+        } else if (pathname === '/admin/monetization/settings' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            try {
+                const postData = await parsePostData(req);
+                const data = JSON.parse(postData.body);
+                
+                await monetizationService.updateGlobalSettings({
+                    defaultFreeTranslationLimit: data.defaultFreeTranslationLimit,
+                    enableGlobalRestriction: data.enableGlobalRestriction
+                });
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                console.error('Error updating monetization settings:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+            
+        } else if (pathname === '/admin/monetization/exempt/add' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            try {
+                const postData = await parsePostData(req);
+                const data = JSON.parse(postData.body);
+                
+                await monetizationService.addExemptServer(data.serverId);
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                console.error('Error adding exempt server:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+            
+        } else if (pathname === '/admin/monetization/exempt/remove' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            try {
+                const postData = await parsePostData(req);
+                const data = JSON.parse(postData.body);
+                
+                await monetizationService.removeExemptServer(data.serverId);
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                console.error('Error removing exempt server:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+            
+        } else if (pathname === '/admin/monetization/restrict/add' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            try {
+                const postData = await parsePostData(req);
+                const data = JSON.parse(postData.body);
+                
+                await monetizationService.addRestrictedServer(data.serverId);
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                console.error('Error adding restricted server:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+            
+        } else if (pathname === '/admin/monetization/restrict/remove' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            try {
+                const postData = await parsePostData(req);
+                const data = JSON.parse(postData.body);
+                
+                await monetizationService.removeRestrictedServer(data.serverId);
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                console.error('Error removing restricted server:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+            
+        } else if (pathname === '/admin/monetization/reset-count' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            try {
+                const postData = await parsePostData(req);
+                const data = JSON.parse(postData.body);
+                
+                await monetizationService.resetServerCount(data.serverId);
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                console.error('Error resetting server count:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+        
+        // Custom limit endpoint
+        } else if (pathname === '/admin/monetization/custom-limit' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Unauthorized' }));
+                return;
+            }
+            
+            try {
+                const data = await parsePostData(req);
+                const { serverId, customLimit } = JSON.parse(data.body);
+                
+                if (!serverId || !customLimit || customLimit < 1) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Invalid server ID or limit' }));
+                    return;
+                }
+                
+                await monetizationService.setCustomLimit(serverId, parseInt(customLimit));
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                console.error('Error setting custom limit:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+        
+        // Vote webhook endpoint for top.gg
+        } else if (pathname === '/webhook/vote' && req.method === 'POST') {
+            try {
+                const data = await parsePostData(req);
+                const body = JSON.parse(data.body);
+                
+                // Verify webhook if you have authorization setup
+                const authHeader = req.headers.authorization;
+                if (process.env.TOPGG_WEBHOOK_SECRET && authHeader !== process.env.TOPGG_WEBHOOK_SECRET) {
+                    res.writeHead(401, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Unauthorized' }));
+                    return;
+                }
+                
+                const { user: userId, type, isWeekend } = body;
+                
+                if (type === 'upvote') {
+                    console.log(`📊 Received vote from user ${userId}${isWeekend ? ' (Weekend vote)' : ''}`);
+                    
+                    // For now, we'll handle votes globally. In the future, you might want to 
+                    // implement server-specific vote rewards through a command or interaction
+                    const result = await monetizationService.handleVoteReward(userId);
+                    
+                    if (result.success) {
+                        console.log(`✅ Vote reward processed for user ${userId}`);
+                    }
+                }
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                console.error('Error processing vote webhook:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Internal server error' }));
+            }
         } else {
             res.writeHead(404, { 'Content-Type': 'text/plain' });
             res.end('Not Found');

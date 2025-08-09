@@ -120,57 +120,66 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         }
     } else if (interaction.isButton()) {
-        // Handle feedback buttons
-        if (interaction.customId.startsWith('feedback_')) {
-            const feedbackType = interaction.customId.split('_')[1]; // 'like', 'dislike', or 'comment'
+        // Handle vote claim button
+        if (interaction.customId === 'vote_claim') {
+            // Import monetization service
+            const monetizationService = require('./services/monetizationService');
             
-            if (feedbackType === 'comment') {
-                // Show comment modal
-                const modal = new ModalBuilder()
-                    .setCustomId(`commentModal_${interaction.message.id}`)
-                    .setTitle('Provide Feedback');
-                    
-                const commentInput = new TextInputBuilder()
-                    .setCustomId('commentInput')
-                    .setLabel('Your comment')
-                    .setStyle(TextInputStyle.Paragraph)
-                    .setRequired(true)
-                    .setMaxLength(500);
-                    
-                const actionRow = new ActionRowBuilder().addComponents(commentInput);
-                modal.addComponents(actionRow);
+            try {
+                await interaction.deferReply({ ephemeral: true });
                 
-                await interaction.showModal(modal);
-                return;
-            }
-            
-            // Handle like/dislike buttons
-            const reactionType = interaction.customId.split('_')[1]; // 'like' or 'dislike'
-            
-            // Record feedback in analytics
-            analyticsService.recordFeedback(
-                interaction.message.id,
-                interaction.user.id,
-                reactionType
-            );
-            
-            // Update button to show user has reacted
-            const buttons = interaction.message.components[0].components.map(btn => {
-                const button = new ButtonBuilder(btn.data);
-                if (btn.customId === interaction.customId) {
-                    return button.setDisabled(true);
+                const userId = interaction.user.id;
+                const serverId = interaction.guild.id;
+                
+                // Check cooldown
+                const cooldownKey = `vote_claim_${userId}_${serverId}`;
+                const lastClaim = global.voteClaims?.get(cooldownKey);
+                const now = Date.now();
+                const COOLDOWN_HOURS = 12;
+                
+                if (!global.voteClaims) {
+                    global.voteClaims = new Map();
                 }
-                return button;
-            });
-            
-            await interaction.update({
-                components: [new ActionRowBuilder().addComponents(buttons)]
-            });
-            
-            await interaction.followUp({
-                content: `Thanks for your ${reactionType} feedback!`,
-                flags: MessageFlags.Ephemeral
-            });
+                
+                if (lastClaim && (now - lastClaim) < (COOLDOWN_HOURS * 60 * 60 * 1000)) {
+                    const timeLeft = Math.ceil(((COOLDOWN_HOURS * 60 * 60 * 1000) - (now - lastClaim)) / (60 * 60 * 1000));
+                    
+                    await interaction.editReply({
+                        content: `⏰ You can claim your next vote reward in **${timeLeft} hours**. You can vote every 12 hours on Top.gg!`
+                    });
+                    return;
+                }
+                
+                // Grant vote reward
+                const result = await monetizationService.handleVoteReward(userId, serverId);
+                
+                if (result.success) {
+                    global.voteClaims.set(cooldownKey, now);
+                    
+                    await interaction.editReply({
+                        content: `🎉 **Vote reward claimed!** Your server has been granted **50 bonus translations**. Thank you for supporting AirTranslator!`
+                    });
+                    
+                    console.log(`✅ Vote reward claimed via button by ${interaction.user.tag} for server ${interaction.guild.name} (${serverId})`);
+                } else {
+                    await interaction.editReply({
+                        content: `❌ There was an error processing your vote reward. Please try again later.`
+                    });
+                }
+            } catch (error) {
+                console.error('Error handling vote claim button:', error);
+                
+                if (interaction.deferred) {
+                    await interaction.editReply({
+                        content: `❌ There was an error processing your request. Please try again later.`
+                    });
+                } else {
+                    await interaction.reply({
+                        content: `❌ There was an error processing your request. Please try again later.`,
+                        ephemeral: true
+                    });
+                }
+            }
         }
     } else if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('commentModal_')) {

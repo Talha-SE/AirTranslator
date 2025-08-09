@@ -47,6 +47,36 @@ const serverSchema = new mongoose.Schema({
         type: [String],
         default: []
     },
+    translationCount: {
+        type: Number,
+        default: 0
+    },
+    toneEnabledChannels: {
+        type: [String],
+        default: []
+    },
+    monetization: {
+        freeTranslationLimit: {
+            type: Number,
+            default: 20
+        },
+        isRestricted: {
+            type: Boolean,
+            default: false
+        },
+        isExempt: {
+            type: Boolean,
+            default: false
+        },
+        lastReset: {
+            type: Date,
+            default: Date.now
+        },
+        customLimit: {
+            type: Number,
+            default: null // null means use global default
+        }
+    },
     setups: [setupSchema]
 }, { timestamps: true });
 

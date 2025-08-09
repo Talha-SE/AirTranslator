@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Server = require('../models/Server');
+const MonetizationSettings = require('../models/MonetizationSettings');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
@@ -217,6 +218,155 @@ const getToneSettings = async (serverId, channelId) => {
     }
 };
 
+/**
+ * Get monetization settings
+ * @returns {Promise<Object>} - The monetization settings
+ */
+const getMonetizationSettings = async () => {
+    try {
+        const settings = await MonetizationSettings.findOne({ settingsId: 'global' });
+        return settings;
+    } catch (error) {
+        console.error('Error getting monetization settings:', error);
+        return null;
+    }
+};
+
+/**
+ * Save monetization settings
+ * @param {Object} settings - The settings to save
+ * @returns {Promise<Object>} - The saved settings
+ */
+const saveMonetizationSettings = async (settings) => {
+    try {
+        const savedSettings = await MonetizationSettings.findOneAndUpdate(
+            { settingsId: 'global' },
+            settings,
+            { new: true, upsert: true }
+        );
+        return savedSettings;
+    } catch (error) {
+        console.error('Error saving monetization settings:', error);
+        throw error;
+    }
+};
+
+/**
+ * Get server by ID
+ * @param {String} serverId - The server ID
+ * @returns {Promise<Object>} - The server object
+ */
+const getServer = async (serverId) => {
+    try {
+        const server = await Server.findOne({ serverId });
+        return server;
+    } catch (error) {
+        console.error('Error getting server:', error);
+        return null;
+    }
+};
+
+/**
+ * Increment translation count for a server
+ * @param {String} serverId - The server ID
+ * @returns {Promise<Object>} - The updated server
+ */
+const incrementTranslationCount = async (serverId) => {
+    try {
+        const server = await Server.findOneAndUpdate(
+            { serverId },
+            { $inc: { translationCount: 1 } },
+            { new: true, upsert: true }
+        );
+        return server;
+    } catch (error) {
+        console.error('Error incrementing translation count:', error);
+        throw error;
+    }
+};
+
+/**
+ * Reset translation count for a server
+ * @param {String} serverId - The server ID
+ * @returns {Promise<Object>} - The updated server
+ */
+const resetTranslationCount = async (serverId) => {
+    try {
+        const server = await Server.findOneAndUpdate(
+            { serverId },
+            { $set: { translationCount: 0 } },
+            { new: true }
+        );
+        return server;
+    } catch (error) {
+        console.error('Error resetting translation count:', error);
+        throw error;
+    }
+};
+
+/**
+ * Update translation count for a server to a specific value
+ * @param {String} serverId - The server ID
+ * @param {Number} count - The new count value
+ * @returns {Promise<Object>} - The updated server
+ */
+const updateServerTranslationCount = async (serverId, count) => {
+    try {
+        const server = await Server.findOneAndUpdate(
+            { serverId },
+            { $set: { translationCount: count } },
+            { new: true, upsert: true }
+        );
+        return server;
+    } catch (error) {
+        console.error('Error updating translation count:', error);
+        throw error;
+    }
+};
+
+/**
+ * Get all servers
+ * @returns {Promise<Array>} - Array of all servers
+ */
+const getAllServers = async () => {
+    try {
+        const servers = await Server.find({}).select('serverId serverName translationCount monetization');
+        return servers.map(server => ({
+            server_id: server.serverId,
+            server_name: server.serverName,
+            translation_count: server.translationCount,
+            monetization: server.monetization
+        }));
+    } catch (error) {
+        console.error('Error getting all servers:', error);
+        return [];
+    }
+};
+
+/**
+ * Update server monetization settings
+ * @param {String} serverId - The server ID
+ * @param {Object} monetizationSettings - The monetization settings to update
+ * @returns {Promise<Object>} - The updated server
+ */
+const updateServerMonetization = async (serverId, monetizationSettings) => {
+    try {
+        const server = await Server.findOneAndUpdate(
+            { serverId },
+            { 
+                $set: { 
+                    monetization: monetizationSettings
+                } 
+            },
+            { new: true, upsert: true }
+        );
+        return server;
+    } catch (error) {
+        console.error('Error updating server monetization:', error);
+        throw error;
+    }
+};
+
 module.exports = {
     connectDB,
     saveServerConfig,
@@ -229,5 +379,13 @@ module.exports = {
     getSetupByChannelId,
     getSetupsByChannelId,
     toggleToneUnderstanding,
-    getToneSettings
+    getToneSettings,
+    getMonetizationSettings,
+    saveMonetizationSettings,
+    getServer,
+    incrementTranslationCount,
+    resetTranslationCount,
+    updateServerTranslationCount,
+    updateServerMonetization,
+    getAllServers
 };
