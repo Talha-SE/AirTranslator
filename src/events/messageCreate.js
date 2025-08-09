@@ -377,11 +377,22 @@ async function translateAndReply(message, languages) {
                     if (!thread) {
                         const threadName = targetLanguagesArray.length === 1 
                             ? `� Translation: ${getLanguageDisplayName(targetLanguagesArray[0])}`
-                            : `🌐 Translation: ${getLanguageDisplayName(targetLanguagesArray[0])} +${targetLanguagesArray.length - 1} more`;
+                            : `� Translation: ${getLanguageDisplayName(targetLanguagesArray[0])} +${targetLanguagesArray.length - 1} more`;
                         thread = await message.startThread({
                             name: threadName.substring(0, 100), // Discord thread name limit
                             autoArchiveDuration: 60, // Auto-archive after 1 hour of inactivity
                             reason: 'Translation thread for automatic message translation'
+                        });
+                        
+                        // Make thread less intrusive by adding a helpful message and archiving quickly
+                        const threadIntroEmbed = new EmbedBuilder()
+                            .setColor(0x0099FF)
+                            .setDescription(`🧵 **Translation Thread**\n*Translations will appear here and auto-archive in 30 seconds*\n\n📌 *Tip: Access archived translations by clicking the original message*`)
+                            .setFooter({ text: 'Air Translator • Clean translation organization' });
+                        
+                        await thread.send({ 
+                            embeds: [threadIntroEmbed],
+                            flags: ['SuppressEmbeds'] // Don't show previews in thread
                         });
                         
                         console.log(`🧵 Created translation thread: ${thread.name}`);
@@ -390,6 +401,16 @@ async function translateAndReply(message, languages) {
                     // Send translation to thread
                     await thread.send(replyOptions);
                     console.log(`🧵 Sent translation to thread: ${thread.name}`);
+                    
+                    // Add helpful context message after translation (only on last chunk)
+                    if (i === chunks.length - 1) {
+                        const contextEmbed = new EmbedBuilder()
+                            .setColor(0x2F3136)
+                            .setDescription('💡 *This thread auto-archives in 30s to keep channels tidy. Click the original message to access archived translations.*')
+                            .setFooter({ text: 'Air Translator' });
+                        
+                        await thread.send({ embeds: [contextEmbed] });
+                    }
                     
                     // Auto-archive thread after 30 seconds to keep channel list tidy
                     if (i === chunks.length - 1) { // Only set timeout on the last chunk
