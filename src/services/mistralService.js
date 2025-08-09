@@ -148,12 +148,14 @@ const analyzeToneContext = (text) => {
         angry: /(😠|😡|angry|mad|furious|damn|hate|stupid|annoying|frustrated|irritated|pissed)/i,
         sarcastic: /(oh sure|yeah right|totally|obviously|of course|wow such|so amazing|really\?|sure thing|how wonderful)/i,
         worried: /(worried|concern|afraid|scared|nervous|anxiety|hope not|stressed|anxious|unsure)/i,
-        affectionate: /(dear|honey|love|sweetheart|darling|babe|cutie|❤️|😘|💕|💖|baby|sweetie|beloved)/i,
-        playful: /(hehe|haha|lol|lmao|😂|🤣|teasing|kidding|joking|playful|silly|fun)/i,
+        affectionate: /(dear|honey|love|sweetheart|darling|babe|cutie|❤️|😘|💕|💖|baby|sweetie|beloved|babyyy|bby|hun|hunny|sugar|princess|prince)/i,
+        playful: /(hehe|haha|lol|lmao|😂|🤣|teasing|kidding|joking|playful|silly|fun|hihi|hehehe|ㅋㅋ|ㅎㅎ)/i,
         confident: /(definitely|absolutely|certainly|for sure|no doubt|obviously|clearly|of course)/i,
         uncertain: /(maybe|perhaps|possibly|might|could be|not sure|i think|probably|dunno)/i,
         grateful: /(thank you|thanks|grateful|appreciate|blessed|thankful|much appreciated)/i,
-        apologetic: /(sorry|apologize|my bad|oops|forgive me|excuse me|pardon)/i
+        apologetic: /(sorry|apologize|my bad|oops|forgive me|excuse me|pardon)/i,
+        casual_greeting: /(hey|hi|yo|sup|wassup|what's up|howdy|hiya)/i,
+        korean_cute: /(ㅠㅠ|ㅜㅜ|><|♡|ㅋㅋ|ㅎㅎ)/i
     };
 
     // Check for emotions
@@ -189,6 +191,8 @@ const analyzeToneContext = (text) => {
 
     // Special features
     if (/(.)\1{2,}/.test(text)) analysis.features.push('elongation');
+    if (/(baby+y+|hey+|love+|babe+y+|hun+y+|sweet+y+)/i.test(text)) analysis.features.push('affectionate_elongation');
+    if (/(hey{4,}|baby{4,}|love{4,}|hiii+|nooo+|yesss+|pleaseee+)/i.test(text)) analysis.features.push('extreme_elongation');
     if (/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(text)) analysis.features.push('emojis');
     if (/[.]{3,}/.test(text)) analysis.features.push('ellipsis');
     if (/[!]{2,}/.test(text)) analysis.features.push('emphasis');
@@ -196,7 +200,9 @@ const analyzeToneContext = (text) => {
     if (/#\w+/.test(text)) analysis.features.push('hashtags');
     if (/\b[A-Z]{2,}\b/.test(text)) analysis.features.push('caps');
     if (/\?\?+/.test(text)) analysis.features.push('multiple_questions');
-    if (/~+/.test(text)) analysis.features.push('tildes');
+    if (/~{2,}/.test(text)) analysis.features.push('tildes');
+    if (/(baby+y+|love+|cute+|sweet+).*~+/i.test(text)) analysis.features.push('affectionate_tildes');
+    if (/(ㅋㅋ|ㅎㅎ|ㅠㅠ|ㅜㅜ|><|♡)/i.test(text)) analysis.features.push('korean_chatting');
     if (/\*\w+\*/.test(text)) analysis.features.push('asterisk_emphasis');
     if (/\b(haha|hehe|lol|lmao|rofl)\b/i.test(text)) analysis.features.push('laughter');
     if (/\b\w+(-\w+)+\b/.test(text)) analysis.features.push('hyphenated_words');
@@ -423,12 +429,25 @@ ADVANCED TONE PRESERVATION:
 - FORMALITY SPECTRUM: Adapt from ultra-casual to highly formal based on original tone
 - CULTURAL IDIOMS: Replace idioms with equivalent expressions that carry same cultural weight
 - GENERATIONAL LANGUAGE: Match age-appropriate language patterns (teen slang, professional, elderly)
+- ELONGATED EXPRESSIONS: For terms like "babyyy", "heyyyy", "loveeee" - preserve the playful elongation in target language
+  * Korean: "babyyy" → "베이비이이" or "자기야야야", "heyyyy" → "야야야" or "안녕히히히"
+  * Japanese: "babyyy" → "ベイビーー" or "赤ちゃ〜ん", add ー or 〜 for elongation
+  * Spanish: "babyyy" → "bebééé" or "amorrrr", use accent repetition
+  * French: "babyyy" → "bébééé" or "chériiii", repeat final vowels
+  * Arabic: Add ـ (tatweel) or repeat final letters for emphasis
+- TILDE CUTENESS: For expressions like "babyyy~~~", "cute~~~" - preserve the extra cuteness
+  * Korean: "babyyy~~~" → "베이비이이~~♡" or "자기야야야~~~ㅎㅎ" or "애기야야~~~ㅋㅋ"
+  * Japanese: "babyyy~~~" → "ベイビー〜〜〜" or "かわいい〜〜"
+  * Spanish: "babyyy~~~" → "bebé~~~" or "lindo~~~"
+  * All languages: Tildes (~~~) indicate extreme cuteness/playfulness - amplify the affectionate tone
 
 CONTEXTUAL AWARENESS:
-- RELATIONSHIP DYNAMICS: Consider speaker-listener relationship (boss-employee, friends, strangers)
-- EMOTIONAL SUBTEXT: Detect underlying emotions (passive-aggressive, nervous, confident, flirty)
-- SITUATIONAL CONTEXT: Adapt to context (celebration, complaint, question, announcement)
+- RELATIONSHIP DYNAMICS: Consider speaker-listener relationship (boss-employee, friends, strangers, romantic partners)
+- EMOTIONAL SUBTEXT: Detect underlying emotions (passive-aggressive, nervous, confident, flirty, caring)
+- SITUATIONAL CONTEXT: Adapt to context (celebration, complaint, question, announcement, greeting, affection)
 - PERSONALITY MARKERS: Preserve individual speech patterns and personality quirks
+- INTIMACY INDICATORS: Terms like "baby", "babe", "honey", "love" indicate close/romantic relationship - translate with appropriate intimacy level
+- CASUAL GREETINGS: "hey" with elongation ("heyyyy") shows familiarity - use casual greeting forms in target language
 
 CRITICAL TECHNICAL RULES - FOLLOW EXACTLY:
 - TRANSLATE ONLY THE INPUT TEXT - do not add, expand, or create additional content
@@ -439,8 +458,13 @@ CRITICAL TECHNICAL RULES - FOLLOW EXACTLY:
 - NEVER justify translation choices or mention alternative interpretations
 - NEVER create conversations, dialogues, or additional sentences not in the original
 - NEVER expand single words into full sentences or conversations
-- For elongated words (like "heyyyyy"), translate to equivalent casual form with appropriate elongation in target language
+- For elongated words (like "heyyyyy", "babyyy", "loveeee"), translate to equivalent casual form with appropriate elongation in target language
 - If target language doesn't use elongation, use other casual markers (repeated punctuation, casual particles)
+- CRITICAL KOREAN HANDLING: "hey" + casual/affectionate tone should become "야" or "이봐" + appropriate particles
+- KOREAN AFFECTIONATE ELONGATION: "babyyy" → "베이비이이~~♡" or "자기야야야~~~ㅎㅎ" or "애기야야~~~ㅋㅋ"
+- KOREAN MANDATORY CHATTING STYLE: Always add Korean chat elements (~~~, ㅋㅋ, ㅎㅎ, ♡) when translating casual/affectionate elongated text
+- KOREAN ELONGATED GREETINGS: "heyyyy" → "야야야~~~" or "어이이이~~ㅋㅋ" (NEVER just "야")
+- FOR TONE UNDERSTANDING: Korean translations MUST include cute chatting elements for elongated affectionate expressions
 - Preserve every emoji exactly as written (😊 stays 😊, ❤️ stays ❤️)
 - Never translate emoji meanings
 - Maintain original emoji positions
@@ -453,31 +477,51 @@ KOREAN:
 - Match honorific levels perfectly (반말/존댓말) based on relationship and formality
 - Use appropriate particles (야/아, 이야/야) for casual tone
 - Preserve emotional particles (네, 어, 지) that convey speaker's feelings
+- For casual/affectionate tone: Use 야, 아, 애 endings and casual particles
+- For elongated casual expressions: Use ㅇ or vowel repetition (아아아, 야야야, 우우우)
+- Affectionate terms: 자기야 (honey), 베이비 (baby), 애기야 (baby), 사랑아 (love)
+- Casual emphasis: Add ㅋㅋ for laughter, ㅎㅎ for soft laughter, ㅠㅠ for crying
+- Preserve playful elongation: "babyyy" → "베이비이이" or "자기야야야"
+- ELONGATION EXAMPLES: "heyyyyyy" → "야야야야야" or "어이이이이", "babyyyyy" → "베이비이이이이" or "자기야야야야"
+- KOREAN CHATTING STYLE: Add cute elements like ~, ㅋㅋㅋ, ♡, ㅎㅎㅎ
+- KOREAN ELONGATED CHATTING: "heyyyyyy" → "야야야야~~~" or "어이이이이~~ㅋㅋ" or "안뇽~~~"
+- KOREAN CUTE PATTERNS: Use ~~, ♡, ㅋㅋ, ㅎㅎ, ㅠㅠ, >< for extra cuteness
+- KOREAN AFFECTIONATE CHATTING: "babyyy~~~" → "베이비이이~~♡" or "자기야야야~~~ㅎㅎ"
 
 JAPANESE:
 - Match keigo (honorific) levels precisely
 - Use appropriate sentence endings for gender and relationship (だ/である vs です/ます)
 - Preserve emotional particles (ね, よ, な) that indicate speaker's intent
+- ELONGATION TECHNIQUE: Use ー (chōonpu) or 〜 (tilde) for extending sounds
+- ELONGATION EXAMPLES: "heyyyy" → "おーい" or "ねー", "babyyy" → "ベイビーー" or "赤ちゃーん"
 
 ARABIC:
 - Adapt between formal Modern Standard Arabic and dialectical expressions based on tone
 - Preserve emotional intensity through appropriate verb forms and expressions
 - Use cultural greetings and closings that match the relationship level
+- ELONGATION TECHNIQUE: Use tatweel (ـ) to extend letters or repeat final consonants/vowels
+- ELONGATION EXAMPLES: "heyyyy" → "هـــاي" or "أهـــلا", "babyyy" → "حبيبـــي" or "عزيـــزي"
 
 SPANISH:
 - Distinguish between tú/usted based on formality and relationship
 - Preserve regional emotional expressions and cultural markers
 - Match intensity through appropriate diminutives and augmentatives
+- ELONGATION TECHNIQUE: Repeat vowels with accents or extend final sounds
+- ELONGATION EXAMPLES: "heyyyy" → "hoooolaaaa" or "eyyy", "babyyy" → "bebééé" or "amorrrr"
 
 CHINESE:
 - Use appropriate measure words and particles that convey politeness level
 - Preserve emotional tone through particle usage (啊, 呢, 吧)
 - Adapt between formal and colloquial expressions based on context
+- ELONGATION TECHNIQUE: Repeat characters or use particle repetition
+- ELONGATION EXAMPLES: "heyyyy" → "嗨嗨嗨嗨" or "哎呀呀呀", "babyyy" → "宝贝贝贝" or "亲爱的的的"
 
 FRENCH:
 - Match vous/tu usage based on relationship formality
 - Preserve emotional undertones through appropriate subjunctive and conditional usage
 - Use cultural expressions that carry equivalent emotional weight
+- ELONGATION TECHNIQUE: Repeat final vowels or use accent marks
+- ELONGATION EXAMPLES: "heyyyy" → "salutttt" or "coucouuuu", "babyyy" → "bébééé" or "chériiii"
 
 TRANSLITERATION RULES:
 - For proper names (people, places, brands), transliterate them into the target language's writing system
@@ -511,6 +555,8 @@ FINAL RULE: Return ONLY the translated text with perfect tone preservation. Noth
             if (toneAnalysis.features.length > 0) {
                 const featureDescriptions = {
                     'elongation': 'text has elongated words (showing emphasis/emotion)',
+                    'affectionate_elongation': 'contains elongated affectionate terms like "babyyy", "heyyyy" (preserve playful intimacy)',
+                    'extreme_elongation': 'contains heavily elongated words like "heyyyyyyyy", "babyyyyy" (use language-specific elongation techniques)',
                     'emojis': 'contains emojis (preserve their emotional context)',
                     'ellipsis': 'uses ellipsis (indicating pause, uncertainty, or continuation)',
                     'emphasis': 'uses multiple exclamation marks (high emotional emphasis)',
@@ -518,7 +564,9 @@ FINAL RULE: Return ONLY the translated text with perfect tone preservation. Noth
                     'hashtags': 'contains #hashtags (preserve exactly)',
                     'caps': 'uses CAPS for emphasis (preserve intensity)',
                     'multiple_questions': 'uses multiple question marks (showing confusion/urgency)',
-                    'tildes': 'uses tildes for playful/cute tone',
+                    'tildes': 'uses tildes ~~~ for playful/cute tone (preserve cuteness)',
+                    'affectionate_tildes': 'combines affectionate terms with tildes like "babyyy~~~" (extra cute/playful tone)',
+                    'korean_chatting': 'uses Korean chat symbols like ㅋㅋ, ㅎㅎ, ㅠㅠ, ♡, >< (preserve Korean texting style)',
                     'asterisk_emphasis': 'uses *asterisks* for emphasis',
                     'laughter': 'contains laughter expressions (preserve humor)',
                     'hyphenated_words': 'uses hyphenated expressions',
@@ -533,6 +581,41 @@ FINAL RULE: Return ONLY the translated text with perfect tone preservation. Noth
             
             if (contextParts.length > 0) {
                 toneContextPrompt = `\n\nIMPORTANT CONTEXT FOR THIS SPECIFIC MESSAGE: ${contextParts.join('. ')}. Use this context to ensure your translation perfectly captures these nuances in the target language's cultural and linguistic patterns.`;
+                
+                // Add specific elongation instructions if elongation is detected
+                if (toneAnalysis.features.includes('elongation') || toneAnalysis.features.includes('affectionate_elongation') || toneAnalysis.features.includes('extreme_elongation')) {
+                    toneContextPrompt += `\n\nELONGATION TRANSLATION GUIDE:
+- Korean: Use vowel/consonant repetition + chatting elements (야야야야~~~, 베이비이이이~~ㅋㅋ, 어이이이이~~~♡)
+- Japanese: Use ー for long vowels (ベイビーーー, おーーい) or 〜 for casual tone
+- Spanish: Repeat vowels with intensity (hoooolaaaa, bebééééé, amorrrrrr)
+- French: Repeat final vowels (salutttttt, chériiiiii, coucouuuuu)  
+- Arabic: Use tatweel ـ to extend (هــــاي, حبيبـــــي) or repeat letters
+- Chinese: Repeat characters (嗨嗨嗨嗨, 宝贝贝贝贝) or particles (啊啊啊啊)
+CRITICAL: Match the LENGTH of elongation from original text!`;
+                }
+                
+                // Add specific tilde instructions if tildes are detected
+                if (toneAnalysis.features.includes('tildes') || toneAnalysis.features.includes('affectionate_tildes')) {
+                    toneContextPrompt += `\n\nTILDE CUTENESS GUIDE:
+- Korean: Add cute chatting elements (야야야~~~, 베이비이이~~ㅋㅋ, 안뇽~~~♡, 자기야야~~~ㅎㅎ)
+- Japanese: Use 〜 naturally (ベイビー〜〜, かわいい〜〜〜)
+- Spanish: Keep tildes or use cute endings (bebé~~~, lindooo~~~)
+- French: Add cute expressions (bébé~~~, mignon~~~)
+- Arabic: Use decorative marks or sweet expressions (حبيبي~~~, يا قمر~~~)
+- Chinese: Add cute particles (宝贝~~~, 可爱~~~)
+PRESERVE the playful, cute, affectionate feeling of tildes!`;
+                }
+
+                // Add specific Korean chatting instructions if Korean chatting elements are detected OR if elongation + affection is detected
+                if (toneAnalysis.features.includes('korean_chatting') || 
+                    (toneAnalysis.features.includes('affectionate_elongation') && toneAnalysis.emotions.includes('affectionate'))) {
+                    toneContextPrompt += `\n\nKOREAN CHATTING STYLE MANDATORY:
+For Korean translations, you MUST add cute chatting elements:
+- "hey babyyy" → "야야야 베이비이이~~~♡" or "어이이 자기야야~~ㅎㅎ" 
+- Add ~~~, ㅋㅋ, ㅎㅎ, ♡, or >< to show cuteness
+- Never translate elongated affectionate terms to plain Korean without chat elements
+- Example: WRONG: "야 자기야야" → CORRECT: "야야야~~~ 베이비이이♡" or "어이이 자기야야~~~ㅎㅎ"`;
+                }
             }
         }
 
