@@ -78,15 +78,14 @@ module.exports = {
                 {
                     name: '🏴 **━━━ INSTANT FLAG MAGIC ━━━**',
                     value: '```glsl\n✨ React with flags = Instant translation! ✨\n```' +
-                        '**� Popular Flags:**\n' +
+                        '**🌟 Popular Flags:**\n' +
                         '🇺🇸 English  •  🇪🇸 Spanish  •  🇫🇷 French  •  🇰🇷 Korean\n' +
                         '🇯🇵 Japanese  •  🇩🇪 German  •  🇨🇳 Chinese  •  🇷🇺 Russian\n\n' +
-                        '**⚡ Super Powers:**\n' +
-                        '▫️ 🚀 **Zero setup** - Works instantly!\n' +
-                        '▫️ 🌍 **60+ languages** at your fingertips\n' +
-                        '▫️ 📜 **Time travel** - Works on old messages too\n' +
-                        '▫️ ⏰ **Self-cleaning** - Auto-deletes in 30s\n' +
-                        '💡 **Pro Tip:** Use `/flags` for the complete list!',
+                        '**💡 Pro Tips:**\n' +
+                        '▫️ Use `/style` to switch between threads and text display\n' +
+                        '▫️ Use `/flags` to see all 60+ supported languages\n' +
+                        '▫️ Use `/toggletone` for emotion-aware translations\n' +
+                        '▫️ Works instantly on any message - old or new!',
                     inline: false
                 },
                 {
@@ -95,7 +94,7 @@ module.exports = {
                         '� **[Join Support Server](https://discord.gg/WeynxzR9nq)**\n' +
                         '📖 Use `/help` anytime for this guide\n' +
                         '🚀 **Quick Start:** Try `/quicksetup` first!\n' +
-                        '💡 **Pro Tip:** Start small, then expand!\n\n' +
+                        '💡 **Pro Commands:** `/style` | `/flags` | `/toggletone` for more options!\n\n' +
                         '```yaml\nMade with ❤️ for global communities\n```'
                 }
             )
