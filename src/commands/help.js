@@ -16,7 +16,7 @@ module.exports = {
             .addFields(
                 {
                     name: '🚀 **━━━ QUICK START ━━━**',
-                    value: '```diff\n+ Get started in seconds!\n```' +
+                    value: '```diff\n+ Get started in seconds!\n```\n\n' +
                         '▫️ **`/quicksetup`** ➤ *Multi-channel setup wizard*\n' +
                         '   💡 Example: `/quicksetup channel1:#english language1:Spanish`\n\n' +
                         '▫️ **`/listsetups`** ➤ *View all configurations*\n' +
@@ -27,7 +27,7 @@ module.exports = {
                 },
                 {
                     name: '⚙️ **━━━ CHANNEL MANAGEMENT ━━━**',
-                    value: '```yaml\n# Advanced Channel Controls\n```' +
+                    value: '```yaml\n# Advanced Channel Controls\n```\n\n' +
                         '▫️ **`/addchannel`** ➤ *Expand your translation network*\n' +
                         '   💡 Example: `/addchannel setup:General channel:#german language:German`\n\n' +
                         '▫️ **`/removechannel`** ➤ *Clean up unwanted channels*\n' +
@@ -39,7 +39,7 @@ module.exports = {
                 },
                 {
                     name: '🌐 **━━━ POWER FEATURES ━━━**',
-                    value: '```css\n/* Smart AI-Powered Translation */\n```' +
+                    value: '```css\n/* Smart AI-Powered Translation */\n```\n\n' +
                         '▫️ **`/toggleservertranslation`** ➤ *Global translation mode*\n' +
                         '   💡 Example: `/toggleservertranslation enabled:true`\n' +
                         '   🌍 *Works across ALL channels*\n\n' +
@@ -54,9 +54,9 @@ module.exports = {
                 },
                 {
                     name: '🎁 **━━━ REWARDS & STATUS ━━━**',
-                    value: '```fix\n💎 Earn bonus translations daily!\n```' +
+                    value: '```fix\n💎 Earn bonus translations daily!\n```\n\n' +
                         '▫️ **`/votestatus`** ➤ *Your translation dashboard*\n' +
-                        '   � View server statistics & usage\n' +
+                        '   📊 View server statistics & usage\n' +
                         '   🎁 **Get 10 FREE bonus translations!**\n' +
                         '   ⏰ Vote every 12 hours for rewards\n' +
                         '   💡 Example: `/votestatus`',
@@ -64,7 +64,7 @@ module.exports = {
                 },
                 {
                     name: '👤 **━━━ PERSONAL TOOLS ━━━**',
-                    value: '```ini\n[Private Translation Assistant]\n```' +
+                    value: '```ini\n[Private Translation Assistant]\n```\n\n' +
                         '▫️ **`/personalbuddy`** ➤ *Your private translator*\n' +
                         '   📨 Translations delivered to your DMs\n' +
                         '   🔒 Independent from server settings\n' +
@@ -77,7 +77,7 @@ module.exports = {
                 },
                 {
                     name: '🏴 **━━━ INSTANT FLAG MAGIC ━━━**',
-                    value: '```glsl\n✨ React with flags = Instant translation! ✨\n```' +
+                    value: '```glsl\n✨ React with flags = Instant translation! ✨\n```\n\n' +
                         '**🌟 Popular Flags:**\n' +
                         '🇺🇸 English  •  🇪🇸 Spanish  •  🇫🇷 French  •  🇰🇷 Korean\n' +
                         '🇯🇵 Japanese  •  🇩🇪 German  •  🇨🇳 Chinese  •  🇷🇺 Russian\n\n' +
@@ -90,8 +90,8 @@ module.exports = {
                 },
                 {
                     name: '🆘 **━━━ NEED HELP? ━━━**',
-                    value: '```diff\n+ We are here for you 24/7!\n```' +
-                        '� **[Join Support Server](https://discord.gg/WeynxzR9nq)**\n' +
+                    value: '```diff\n+ We are here for you 24/7!\n```\n\n' +
+                        '🌐 **[Join Support Server](https://discord.gg/WeynxzR9nq)**\n' +
                         '📖 Use `/help` anytime for this guide\n' +
                         '🚀 **Quick Start:** Try `/quicksetup` first!\n' +
                         '💡 **Pro Commands:** `/style` | `/flags` | `/toggletone` for more options!\n\n' +
@@ -99,7 +99,7 @@ module.exports = {
                 }
             )
             .setFooter({ 
-                text: '� Air Translator • Breaking language barriers • Use /help anytime!'
+                text: '✨ Air Translator • Breaking language barriers • Use /help anytime!'
             })
             .setTimestamp();
 
