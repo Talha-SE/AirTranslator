@@ -323,7 +323,7 @@ async function translateAndReply(message, languages) {
                 });
                 
                 const embed = new EmbedBuilder()
-                    .setColor('#FFFFFF') // White color
+                    .setColor('#129af5') // Blue color
                     .setFields(fields);
                 
                 if (i === 0) {
@@ -376,8 +376,8 @@ async function translateAndReply(message, languages) {
                     // Create new thread if none exists
                     if (!thread) {
                         const threadName = targetLanguagesArray.length === 1 
-                            ? `� Translation: ${getLanguageDisplayName(targetLanguagesArray[0])}`
-                            : `� Translation: ${getLanguageDisplayName(targetLanguagesArray[0])} +${targetLanguagesArray.length - 1} more`;
+                            ? `💬 Translation: ${getLanguageDisplayName(targetLanguagesArray[0])}`
+                            : `💬 Translation: ${getLanguageDisplayName(targetLanguagesArray[0])} +${targetLanguagesArray.length - 1} more`;
                         thread = await message.startThread({
                             name: threadName.substring(0, 100), // Discord thread name limit
                             autoArchiveDuration: 60, // Auto-archive after 1 hour of inactivity
@@ -392,14 +392,18 @@ async function translateAndReply(message, languages) {
                         
                         await thread.send({ 
                             embeds: [threadIntroEmbed],
-                            flags: ['SuppressEmbeds'] // Don't show previews in thread
+                            flags: ['SuppressEmbeds', 'SuppressNotifications'] // Don't show previews and mute notifications
                         });
                         
                         console.log(`🧵 Created translation thread: ${thread.name}`);
                     }
                     
                     // Send translation to thread
-                    await thread.send(replyOptions);
+                    const silentReplyOptions = {
+                        ...replyOptions,
+                        flags: ['SuppressNotifications'] // Mute thread translation notifications
+                    };
+                    await thread.send(silentReplyOptions);
                     console.log(`🧵 Sent translation to thread: ${thread.name}`);
                     
                     // Add helpful context message after translation (only on last chunk)
@@ -409,7 +413,10 @@ async function translateAndReply(message, languages) {
                             .setDescription('💡 *This thread auto-archives in 30s to keep channels tidy. Click the original message to access archived translations.*')
                             .setFooter({ text: 'Air Translator' });
                         
-                        await thread.send({ embeds: [contextEmbed] });
+                        await thread.send({ 
+                            embeds: [contextEmbed],
+                            flags: ['SuppressNotifications'] // Mute context message notifications
+                        });
                     }
                     
                     // Auto-archive thread after 30 seconds to keep channel list tidy
