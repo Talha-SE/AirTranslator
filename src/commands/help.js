@@ -11,12 +11,12 @@ module.exports = {
         
         const embed = new EmbedBuilder()
             .setColor('#1E90FF') // Dodger blue for better visibility
-            .setTitle('� **Air Translator Bot - Command Guide** 🌟')
+            .setTitle(' **Air Translator Bot - Command Guide** 🌟')
             .setDescription('```✨ Transform your server into a global community! ✨```\n**📚 Complete command reference below:**')
             .addFields(
                 {
-                    name: '🚀 **━━━ QUICK START ━━━**',
-                    value: '```diff\n+ Get started in seconds!\n```\n\n' +
+                    name: '🚀 **\n\n━━━ QUICK START ━━━**',
+                    value: '```diff\n━━━ Get started in seconds! ━━━\n+ Multi-channel setup wizard\n+ View all configurations\n+ Remove unwanted setups\n```\n' +
                         '▫️ **`/quicksetup`** ➤ *Multi-channel setup wizard*\n' +
                         '   💡 Example: `/quicksetup channel1:#english language1:Spanish`\n\n' +
                         '▫️ **`/listsetups`** ➤ *View all configurations*\n' +
@@ -26,8 +26,8 @@ module.exports = {
                     inline: false
                 },
                 {
-                    name: '⚙️ **━━━ CHANNEL MANAGEMENT ━━━**',
-                    value: '```yaml\n# Advanced Channel Controls\n```\n\n' +
+                    name: '⚙️ **\n\n━━━ CHANNEL MANAGEMENT ━━━**',
+                    value: '```yaml\n━━━ Advanced Channel Controls ━━━\n# Expand your translation network\n# Clean up unwanted channels  \n# Keep channels spotless\n```\n' +
                         '▫️ **`/addchannel`** ➤ *Expand your translation network*\n' +
                         '   💡 Example: `/addchannel setup:General channel:#german language:German`\n\n' +
                         '▫️ **`/removechannel`** ➤ *Clean up unwanted channels*\n' +
@@ -38,8 +38,8 @@ module.exports = {
                     inline: false
                 },
                 {
-                    name: '🌐 **━━━ POWER FEATURES ━━━**',
-                    value: '```css\n/* Smart AI-Powered Translation */\n```\n\n' +
+                    name: '🌐 **\n\n━━━ POWER FEATURES ━━━**',
+                    value: '```css\n━━━ Smart AI-Powered Translation ━━━\n/* Global translation mode */\n/* Emotion & context preservation */\n/* Choose your display style */\n```\n' +
                         '▫️ **`/toggleservertranslation`** ➤ *Global translation mode*\n' +
                         '   💡 Example: `/toggleservertranslation enabled:true`\n' +
                         '   🌍 *Works across ALL channels*\n\n' +
@@ -53,8 +53,8 @@ module.exports = {
                     inline: false
                 },
                 {
-                    name: '🎁 **━━━ REWARDS & STATUS ━━━**',
-                    value: '```fix\n💎 Earn bonus translations daily!\n```\n\n' +
+                    name: '🎁 **\n\n━━━ REWARDS & STATUS ━━━**',
+                    value: '```fix\n━━━ Earn bonus translations daily! ━━━\n💎 Your translation dashboard\n🎁 Get 10 FREE bonus translations!\n⏰ Vote every 12 hours for rewards\n```\n' +
                         '▫️ **`/votestatus`** ➤ *Your translation dashboard*\n' +
                         '   📊 View server statistics & usage\n' +
                         '   🎁 **Get 10 FREE bonus translations!**\n' +
@@ -63,8 +63,8 @@ module.exports = {
                     inline: false
                 },
                 {
-                    name: '👤 **━━━ PERSONAL TOOLS ━━━**',
-                    value: '```ini\n[Private Translation Assistant]\n```\n\n' +
+                    name: '👤 **\n\n━━━ PERSONAL TOOLS ━━━**',
+                    value: '```ini\n━━━ Private Translation Assistant ━━━\n[personalbuddy] = Your private translator\n[flags] = Flag reaction guide\n```\n' +
                         '▫️ **`/personalbuddy`** ➤ *Your private translator*\n' +
                         '   📨 Translations delivered to your DMs\n' +
                         '   🔒 Independent from server settings\n' +
@@ -76,8 +76,8 @@ module.exports = {
                     inline: false
                 },
                 {
-                    name: '🏴 **━━━ INSTANT FLAG MAGIC ━━━**',
-                    value: '```glsl\n✨ React with flags = Instant translation! ✨\n```\n\n' +
+                    name: '🏴 **\n\n━━━ INSTANT FLAG MAGIC ━━━**',
+                    value: '```glsl\n━━━ React with flags = Instant translation! ━━━\n✨ Popular country flags for quick access\n🌟 Works instantly on any message - old or new!\n```\n' +
                         '**🌟 Popular Flags:**\n' +
                         '🇺🇸 English  •  🇪🇸 Spanish  •  🇫🇷 French  •  🇰🇷 Korean\n' +
                         '🇯🇵 Japanese  •  🇩🇪 German  •  🇨🇳 Chinese  •  🇷🇺 Russian\n\n' +
@@ -89,8 +89,8 @@ module.exports = {
                     inline: false
                 },
                 {
-                    name: '🆘 **━━━ NEED HELP? ━━━**',
-                    value: '```diff\n+ We are here for you 24/7!\n```\n\n' +
+                    name: '🆘 **\n\n━━━ NEED HELP? ━━━**',
+                    value: '```diff\n━━━ We are here for you 24/7! ━━━\n+ Join Support Server for live help\n+ Use /help anytime for this guide\n+ Quick Start: Try /quicksetup first!\n+ Pro Commands: /style | /flags | /toggletone\n```\n' +
                         '🌐 **[Join Support Server](https://discord.gg/WeynxzR9nq)**\n' +
                         '📖 Use `/help` anytime for this guide\n' +
                         '🚀 **Quick Start:** Try `/quicksetup` first!\n' +
