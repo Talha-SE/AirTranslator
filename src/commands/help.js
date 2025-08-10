@@ -1,13 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.                {
-                    name: '🏴 **━━━ INSTANT FLAG MAGIC ━━━**',
-                    value: '```glsl\n✨ React with flags = Instant translation! ✨\n```' +
-                        '**🌟 Popular Flags:**\n' +
-                        '🇺🇸 English  •  🇪🇸 Spanish  •  🇫🇷 French  •  🇰🇷 Korean\n' +
-                        '🇯🇵 Japanese  •  🇩🇪 German  •  🇨🇳 Chinese  •  🇷🇺 Russian\n\n' +
-                        '**⚙️ Related Commands:**\n' +
-                        '▫️ **`/flags`** ➤ *View all supported country flags*\n' +
-                        '▫️ **`/toggletone`** ➤ *Enable smart tone understanding*\n' +
-                        '▫️ **`/style`** ➤ *Choose thread or text display style*',ule.exports = {
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
+
+module.exports = {
     data: new SlashCommandBuilder()
         .setName('help')
         .setDescription('Get help with all bot commands'),
