@@ -50,10 +50,10 @@ async function messageReactionAdd(client, reaction, user) {
 
         console.log(`🏴 Flag reaction detected: ${flagEmoji} -> ${targetLanguage} by user ${user.username}`);
 
-        // Check for personal translation buddy settings
+        // Check for personal translation buddy settings - works everywhere
         const personalSettings = await getPersonalTranslationSettings(user.id);
         if (personalSettings) {
-            console.log(`👤 Personal translation buddy active for ${user.username}`);
+            console.log(`👤 Personal translation buddy active for ${user.username} - processing universally`);
             
             // Check if message has content or images to translate
             const hasTextContent = message.content && message.content.trim().length > 0;
@@ -75,47 +75,83 @@ async function messageReactionAdd(client, reaction, user) {
             }
 
             try {
-                let translation = null;
-                let detectedLang = null;
-
-                // Handle text translation
+                // Prepare content for unified translation system (same as server translation)
+                let contentToTranslate = '';
+                let detectedLanguage = 'unknown';
+                
+                // Handle text content
                 if (hasTextContent) {
-                    detectedLang = await detectLanguage(message.content);
-                    console.log(`🔍 Detected language: ${detectedLang}`);
+                    contentToTranslate = message.content;
+                    detectedLanguage = await detectLanguage(message.content);
+                    console.log(`🔍 Detected text language: ${detectedLanguage}`);
+                }
+                
+                // Handle image attachments - extract text and add to content
+                if (imageAttachments.length > 0) {
+                    console.log(`🖼️ Processing ${imageAttachments.length} image(s) for text extraction`);
                     
-                    // Don't translate if already in target language
-                    if (detectedLang !== targetLanguage) {
-                        translation = await translateText(message.content, targetLanguage, detectedLang, true); // Use tone understanding for personal translations
-                        console.log(`✅ Personal translation completed: ${targetLanguage}`);
+                    for (let i = 0; i < Math.min(imageAttachments.length, 3); i++) {
+                        const attachment = imageAttachments[i];
+                        try {
+                            console.log(`📸 Analyzing image ${i + 1}/${Math.min(imageAttachments.length, 3)}: ${attachment.name}`);
+                            const imageAnalysis = await analyzeAndTranslateImage(attachment.url, 'en'); // Extract in English first
+                            
+                            if (imageAnalysis.hasText && imageAnalysis.extractedText) {
+                                // Add extracted text to content for unified translation
+                                const imageText = imageAnalysis.extractedText.trim();
+                                if (imageText.length > 0) {
+                                    if (contentToTranslate.length > 0) {
+                                        contentToTranslate += '\n\n--- Image Text ---\n';
+                                    }
+                                    contentToTranslate += imageText;
+                                    
+                                    // Update detected language if we only had image content
+                                    if (!hasTextContent) {
+                                        detectedLanguage = imageAnalysis.detectedLanguage || await detectLanguage(imageText);
+                                    }
+                                    
+                                    console.log(`✅ Extracted text from ${attachment.name}: "${imageText.substring(0, 50)}..."`);
+                                }
+                            } else {
+                                console.log(`ℹ️ No text found in ${attachment.name}`);
+                            }
+                        } catch (imageError) {
+                            console.error(`❌ Error processing image ${attachment.name}:`, imageError.message);
+                        }
                     }
                 }
 
-                // Create DM embed with improved design
+                // Check if we have content to translate
+                if (!contentToTranslate || contentToTranslate.trim().length === 0) {
+                    console.log('❌ No translatable content found');
+                    return;
+                }
+
+                // Skip if already in target language
+                if (detectedLanguage.toLowerCase() === targetLanguage.toLowerCase()) {
+                    console.log(`⚠️ Content already in ${targetLanguage}, skipping personal translation`);
+                    return;
+                }
+
+                // Use unified translation system
+                console.log(`🔄 Personal buddy translating content from ${detectedLanguage} to ${targetLanguage}`);
+                const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, true); // Use tone understanding
+                
+                if (!translation || translation.trim().length === 0) {
+                    console.log('❌ Personal translation failed or returned empty result');
+                    return;
+                }
+
+                // Create DM embed - only show translation, no original text
                 const personalEmbed = new EmbedBuilder()
                     .setTitle(`${flagEmoji} Personal Translation Buddy`)
                     .setColor('#6366f1')
                     .setDescription(`✨ Your personal translation for **${getLanguageDisplayName(targetLanguage)}**`)
-                    .addFields(
-                        {
-                            name: `📄 Original Text ${detectedLang ? `• ${getLanguageDisplayName(detectedLang)}` : ''}`,
-                            value: hasTextContent ? `🔹 ${message.content}` : '_No text content_',
-                            inline: false
-                        }
-                    );
-
-                if (translation && translation !== message.content) {
-                    personalEmbed.addFields({
+                    .addFields({
                         name: `🎯 Translation • ${getLanguageDisplayName(targetLanguage)} ${flagEmoji}`,
-                        value: `🔸 **${translation}**`,
+                        value: translation.length > 1000 ? translation.substring(0, 997) + '...' : translation,
                         inline: false
-                    });
-                } else if (detectedLang === targetLanguage) {
-                    personalEmbed.addFields({
-                        name: '💡 Already Translated',
-                        value: `🔸 This message is already in **${getLanguageDisplayName(targetLanguage)}**`,
-                        inline: false
-                    });
-                }
+                    })
 
                 // Add message context with better formatting
                 personalEmbed.addFields({
@@ -207,80 +243,70 @@ async function messageReactionAdd(client, reaction, user) {
             return;
         }
 
-        // Process text content
-        let textTranslation = null;
+        // Prepare content for unified translation system
+        let contentToTranslate = '';
         let detectedLanguage = 'unknown';
         
+        // Handle text content
         if (hasTextContent) {
-            // Detect source language
+            contentToTranslate = message.content;
             detectedLanguage = await detectLanguage(message.content);
             console.log(`🔍 Detected text language: ${detectedLanguage}`);
-
-            // Skip if already in target language
-            if (detectedLanguage.toLowerCase() === targetLanguage.toLowerCase()) {
-                console.log(`⚠️ Text already in ${targetLanguage}, checking for images...`);
-            } else {
-                // Translate the text
-                console.log(`🔄 Translating text from ${detectedLanguage} to ${targetLanguage}`);
-                textTranslation = await translateText(message.content, targetLanguage, detectedLanguage);
-                
-                if (!textTranslation || textTranslation.trim().length === 0) {
-                    console.log('❌ Text translation failed or returned empty result');
-                    textTranslation = null;
-                }
-            }
         }
-
-        // Process image attachments
-        let imageTranslations = [];
         
+        // Handle image attachments - extract text and add to content
         if (imageAttachments.length > 0) {
-            console.log(`🖼️ Processing ${imageAttachments.length} image(s) for content analysis and description translation`);
+            console.log(`🖼️ Processing ${imageAttachments.length} image(s) for text extraction`);
             
-            for (let i = 0; i < Math.min(imageAttachments.length, 3); i++) { // Limit to 3 images to avoid rate limits
+            for (let i = 0; i < Math.min(imageAttachments.length, 3); i++) {
                 const attachment = imageAttachments[i];
                 try {
                     console.log(`📸 Analyzing image ${i + 1}/${Math.min(imageAttachments.length, 3)}: ${attachment.name}`);
-                    const imageAnalysis = await analyzeAndTranslateImage(attachment.url, targetLanguage);
+                    const imageAnalysis = await analyzeAndTranslateImage(attachment.url, 'en'); // Extract in English first
                     
-                    if (imageAnalysis.hasText) {
-                        imageTranslations.push({
-                            fileName: attachment.name,
-                            originalText: imageAnalysis.extractedText,
-                            detectedLanguage: imageAnalysis.detectedLanguage,
-                            translation: imageAnalysis.translation,
-                            confidence: imageAnalysis.confidence
-                        });
-                        console.log(`✅ Generated description for ${attachment.name}: "${imageAnalysis.extractedText.substring(0, 50)}..."`);
+                    if (imageAnalysis.hasText && imageAnalysis.extractedText) {
+                        // Add extracted text to content for unified translation
+                        const imageText = imageAnalysis.extractedText.trim();
+                        if (imageText.length > 0) {
+                            if (contentToTranslate.length > 0) {
+                                contentToTranslate += '\n\n--- Image Text ---\n';
+                            }
+                            contentToTranslate += imageText;
+                            
+                            // Update detected language if we only had image content
+                            if (!hasTextContent) {
+                                detectedLanguage = imageAnalysis.detectedLanguage || await detectLanguage(imageText);
+                            }
+                            
+                            console.log(`✅ Extracted text from ${attachment.name}: "${imageText.substring(0, 50)}..."`);
+                        }
                     } else {
-                        console.log(`ℹ️ No content found in ${attachment.name}`);
+                        console.log(`ℹ️ No text found in ${attachment.name}`);
                     }
                 } catch (imageError) {
                     console.error(`❌ Error processing image ${attachment.name}:`, imageError.message);
-                    if (imageError.message === 'RATE_LIMITED') {
-                        imageTranslations.push({
-                            fileName: attachment.name,
-                            error: 'Rate limited - please try again later'
-                        });
-                    }
                 }
             }
         }
 
-        // Check if we have anything to show
-        const hasTextToShow = textTranslation && textTranslation.trim().length > 0;
-        const hasImageTextToShow = imageTranslations.length > 0 && imageTranslations.some(img => img.translation || img.error);
+        // Check if we have content to translate
+        if (!contentToTranslate || contentToTranslate.trim().length === 0) {
+            console.log('❌ No translatable content found');
+            return;
+        }
 
-        if (!hasTextToShow && !hasImageTextToShow) {
-            if (hasTextContent && detectedLanguage.toLowerCase() === targetLanguage.toLowerCase() && imageAttachments.length === 0) {
-                console.log(`⚠️ Message already in ${targetLanguage}, skipping translation`);
-                return;
-            }
-            if (imageAttachments.length > 0 && !hasImageTextToShow) {
-                console.log(`ℹ️ No translatable text found in any images`);
-                return;
-            }
-            console.log('❌ No content to translate found');
+        // Skip if already in target language
+        if (detectedLanguage.toLowerCase() === targetLanguage.toLowerCase()) {
+            console.log(`⚠️ Content already in ${targetLanguage}, skipping translation`);
+            return;
+        }
+
+        // Use unified translation system
+        console.log(`🔄 Translating content from ${detectedLanguage} to ${targetLanguage} using unified system`);
+        const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, true); // Use tone understanding
+        
+        if (!translation || translation.trim().length === 0) {
+            console.log('❌ Translation failed or returned empty result');
             return;
         }
 
@@ -288,20 +314,56 @@ async function messageReactionAdd(client, reaction, user) {
         await monetizationService.incrementTranslationCount(serverId);
         
         // Track analytics
-        if (hasTextToShow) {
-            analyticsService.recordTranslation(detectedLanguage, targetLanguage, message.channel.id, user.id);
-        } else if (hasImageTextToShow) {
-            // Track image translation analytics
-            const primaryImageLang = imageTranslations.find(img => img.detectedLanguage)?.detectedLanguage || 'unknown';
-            analyticsService.recordTranslation(primaryImageLang, targetLanguage, message.channel.id, user.id);
-        }
+        analyticsService.recordTranslation(detectedLanguage, targetLanguage, message.channel.id, user.id);
 
-        // Create translation embed with original design (as shown in user's image)
-        const translationEmbed = new EmbedBuilder()
+        // Use the same UI design as auto-translation system
+        const flag = {
+            'afrikaans': '🇿🇦', 'albanian': '🇦🇱', 'amharic': '🇪🇹', 'arabic': '🇸🇦',
+            'armenian': '🇦🇲', 'azerbaijani': '🇦🇿', 'basque': '🇪🇸', 'belarusian': '🇧🇾',
+            'bengali': '🇧🇩', 'bosnian': '🇧🇦', 'bulgarian': '🇧🇬', 'catalan': '🇪🇸',
+            'cebuano': '🇵🇭', 'chichewa': '🇲🇼', 'chinese': '🇨🇳', 'corsican': '🇫🇷',
+            'croatian': '🇭🇷', 'czech': '🇨🇿', 'danish': '🇩🇰', 'dutch': '🇳🇱',
+            'english': '🇺🇸', 'esperanto': '🌍', 'estonian': '🇪🇪', 'filipino': '🇵🇭',
+            'finnish': '🇫🇮', 'french': '🇫🇷', 'frisian': '🇳🇱', 'galician': '🇪🇸',
+            'georgian': '🇬🇪', 'german': '🇩🇪', 'greek': '🇬🇷', 'gujarati': '🇮🇳',
+            'haitian': '🇭🇹', 'hausa': '🇳🇬', 'hawaiian': '🇺🇸', 'hebrew': '🇮🇱',
+            'hindi': '🇮🇳', 'hmong': '🇱🇦', 'hungarian': '🇭🇺', 'icelandic': '🇮🇸',
+            'igbo': '🇳🇬', 'indonesian': '🇮🇩', 'irish': '🇮🇪', 'italian': '🇮🇹',
+            'japanese': '🇯🇵', 'javanese': '🇮🇩', 'kannada': '🇮🇳', 'kazakh': '🇰🇿',
+            'khmer': '🇰🇭', 'korean': '🇰🇷', 'kurdish': '🇮🇶', 'kyrgyz': '🇰🇬',
+            'lao': '🇱🇦', 'latin': '🇻🇦', 'latvian': '🇱🇻', 'lithuanian': '🇱🇹',
+            'luxembourgish': '🇱🇺', 'macedonian': '🇲🇰', 'malagasy': '🇲🇬', 'malay': '🇲🇾',
+            'malayalam': '🇮🇳', 'maltese': '🇲🇹', 'maori': '🇳🇿', 'marathi': '🇮🇳',
+            'mongolian': '🇲🇳', 'myanmar': '🇲🇲', 'nepali': '🇳🇵', 'norwegian': '🇳🇴',
+            'odia': '🇮🇳', 'pashto': '🇦🇫', 'persian': '🇮🇷', 'polish': '🇵🇱',
+            'portuguese': '🇵🇹', 'punjabi': '🇮🇳', 'romanian': '🇷🇴', 'russian': '🇷🇺',
+            'samoan': '🇼🇸', 'scots': '🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'serbian': '🇷🇸', 'sesotho': '🇱🇸',
+            'shona': '🇿🇼', 'sindhi': '🇵🇰', 'sinhala': '🇱🇰', 'slovak': '🇸🇰',
+            'slovenian': '🇸🇮', 'somali': '🇸🇴', 'spanish': '🇪🇸', 'sundanese': '🇮🇩',
+            'swahili': '🇰🇪', 'swedish': '🇸🇪', 'tajik': '🇹🇯', 'tamil': '🇮🇳',
+            'telugu': '🇮🇳', 'thai': '🇹🇭', 'turkish': '🇹🇷', 'ukrainian': '🇺🇦',
+            'urdu': '🇵🇰', 'uyghur': '🇨🇳', 'uzbek': '🇺🇿', 'vietnamese': '🇻🇳',
+            'welsh': '🏴󠁧󠁢󠁷󠁬󠁳󠁿', 'xhosa': '🇿🇦', 'yiddish': '🇮🇱', 'yoruba': '🇳🇬', 'zulu': '🇿🇦'
+        }[targetLanguage] || flagEmoji;
+
+        const displayLanguage = getLanguageDisplayName(targetLanguage);
+
+        // Create embed using the same design as auto-translation system - only show translation
+        const embed = new EmbedBuilder()
             .setColor('#5865F2')
             .setAuthor({
                 name: `${message.author.displayName}`,
                 iconURL: message.author.displayAvatarURL({ dynamic: true, size: 128 })
+            })
+            .addFields({
+                name: `${flag} ${displayLanguage}`,
+                value: translation.length > 1000 ? translation.substring(0, 997) + '...' : translation,
+                inline: false
+            })
+            .addFields({
+                name: '🔍 Translation Info',
+                value: `**From:** ${getLanguageDisplayName(detectedLanguage)}\n**Requested by:** <@${user.id}>\n**Original:** [Jump to message](${message.url})`,
+                inline: false
             })
             .setTimestamp()
             .setFooter({
@@ -309,74 +371,9 @@ async function messageReactionAdd(client, reaction, user) {
                 iconURL: client.user.displayAvatarURL()
             });
 
-        // Handle text content
-        if (hasTextToShow) {
-            // Set description with original message
-            translationEmbed.setDescription(`> ${message.content}`);
-            
-            // Add main translation field
-            translationEmbed.addFields({
-                name: `${flagEmoji} ${getLanguageDisplayName(targetLanguage)}`,
-                value: textTranslation,
-                inline: false
-            });
-
-            // Add translation info
-            translationEmbed.addFields({
-                name: '🔍 Translation Info',
-                value: `**From:** ${getLanguageDisplayName(detectedLanguage)}\n**Requested by:** <@${user.id}>\n**Original:** [Jump to message](${message.url})`,
-                inline: false
-            });
-        }
-
-        // Handle image translations if available
-        if (hasImageTextToShow) {
-            if (!hasTextToShow) {
-                // If only images, set a different description
-                translationEmbed.setDescription(`> Image text translation requested`);
-            }
-            
-            // Add image translation results
-            for (let i = 0; i < Math.min(imageTranslations.length, 2); i++) { // Limit to 2 images to keep clean design
-                const imgTranslation = imageTranslations[i];
-                
-                if (imgTranslation.error) {
-                    translationEmbed.addFields({
-                        name: `🖼️ ${imgTranslation.fileName}`,
-                        value: `⚠️ ${imgTranslation.error}`,
-                        inline: false
-                    });
-                } else if (imgTranslation.translation) {
-                    // Add image translation field
-                    translationEmbed.addFields({
-                        name: `${flagEmoji} ${getLanguageDisplayName(targetLanguage)} (image description)`,
-                        value: imgTranslation.translation,
-                        inline: false
-                    });
-
-                    // Add image translation info
-                    if (!hasTextToShow) { // Only add if we don't have text translation info already
-                        translationEmbed.addFields({
-                            name: '� Translation Info',
-                            value: `**From:** ${getLanguageDisplayName(imgTranslation.detectedLanguage || 'detected')}\n**Requested by:** <@${user.id}>\n**Original:** [Jump to message](${message.url})`,
-                            inline: false
-                        });
-                    }
-                }
-            }
-
-            if (imageTranslations.length > 2) {
-                translationEmbed.addFields({
-                    name: 'ℹ️ Note',
-                    value: `${imageTranslations.length - 2} more images were processed but not shown to keep the design clean.`,
-                    inline: false
-                });
-            }
-        }
-
-        console.log(`📤 Sending translation embed with original design`);
+        console.log(`📤 Sending flag translation with unified design`);
         const translationReply = await message.reply({
-            embeds: [translationEmbed],
+            embeds: [embed],
             allowedMentions: { repliedUser: false }
         });
 

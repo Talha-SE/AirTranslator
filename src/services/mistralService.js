@@ -781,45 +781,50 @@ const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLan
 };
 
 /**
- * Analyzes an image and describes what it sees, then translates the description
+ * Analyzes an image to extract and translate any text content within it
  * @param {string} imageUrl - URL of the image to analyze
  * @param {string} targetLanguage - Target language for translation
  * @param {string} apiKey - Mistral API key to use
- * @returns {Promise<object>} - Object containing image description and translation
+ * @returns {Promise<object>} - Object containing extracted text and translation
  */
 const analyzeAndTranslateImage = async (imageUrl, targetLanguage, apiKey = MISTRAL_API_KEY) => {
     try {
-        console.log(`🖼️ Analyzing image content and translating description to ${targetLanguage}`);
+        console.log(`🖼️ Extracting and translating text from image to ${targetLanguage}`);
         
         const response = await axios.post(
             'https://api.mistral.ai/v1/chat/completions',
             {
-                model: 'mistral-medium-latest', // Using Mistral Medium model
+                model: 'mistral-medium-latest', // Using Mistral Medium model for better vision capabilities
                 messages: [
                     {
                         role: 'user',
                         content: [
                             {
                                 type: 'text',
-                                text: `Look at this image and describe what you see in detail. Include any text, objects, people, scenes, or anything notable. Then translate your description to ${targetLanguage}.
+                                text: `IMPORTANT: Look at this image and extract ALL text that appears in it. Focus ONLY on readable text content - signs, captions, labels, handwriting, printed text, etc.
 
-Respond in this JSON format:
+Your task:
+1. Carefully examine the image for ANY text content
+2. Extract ALL readable text exactly as it appears
+3. If you find text, detect its language and translate it to ${targetLanguage}
+4. If no text is visible or readable, clearly indicate that
+
+Respond ONLY in this exact JSON format:
 {
-  "hasContent": true,
-  "originalDescription": "detailed description of what you see in the image",
-  "detectedLanguage": "en",
-  "translation": "your description translated to ${targetLanguage}",
-  "confidence": "high"
+  "hasText": true/false,
+  "extractedText": "exact text found in the image (empty string if no text)",
+  "detectedLanguage": "language code of the extracted text (empty if no text)",
+  "translation": "translation of the extracted text to ${targetLanguage} (empty if no text)",
+  "confidence": "high/medium/low"
 }
 
-If the image is unclear or you cannot see anything, respond with:
-{
-  "hasContent": false,
-  "originalDescription": "",
-  "detectedLanguage": "",
-  "translation": "",
-  "confidence": "high"
-}`
+CRITICAL RULES:
+- If you see ANY text in the image, set hasText to true
+- Extract text EXACTLY as written, including punctuation and formatting
+- Do NOT describe the image - ONLY extract text content
+- Do NOT add explanations or descriptions
+- If no text is visible, set hasText to false and leave other fields empty
+- Be thorough - check all parts of the image for text`
                             },
                             {
                                 type: 'image_url',
@@ -831,7 +836,7 @@ If the image is unclear or you cannot see anything, respond with:
                     }
                 ],
                 max_tokens: 1000,
-                temperature: 0.3 // Slightly higher for more creative descriptions
+                temperature: 0.1 // Low temperature for precise text extraction
             },
             {
                 headers: {
@@ -850,48 +855,81 @@ If the image is unclear or you cannot see anything, respond with:
             let cleanResult = result.trim();
             
             if (cleanResult.startsWith('```json')) {
-                cleanResult = cleanResult.replace(/```json\n/, '').replace(/\n```$/, '');
+                cleanResult = cleanResult.replace(/```json\n?/, '').replace(/\n?```$/, '');
             } else if (cleanResult.startsWith('```')) {
-                cleanResult = cleanResult.replace(/```\n/, '').replace(/\n```$/, '');
+                cleanResult = cleanResult.replace(/```\n?/, '').replace(/\n?```$/, '');
             }
             
             const parsedResult = JSON.parse(cleanResult);
             console.log('✅ Successfully parsed vision response:', parsedResult);
             
-            // Convert new format to expected format for backward compatibility
-            if (typeof parsedResult.hasContent !== 'undefined') {
+            // Validate the response structure
+            if (typeof parsedResult.hasText === 'boolean') {
+                // If no text was found, return appropriate response
+                if (!parsedResult.hasText || !parsedResult.extractedText || parsedResult.extractedText.trim() === '') {
+                    console.log('ℹ️ No text found in image');
+                    return {
+                        hasText: false,
+                        extractedText: '',
+                        detectedLanguage: '',
+                        translation: '',
+                        confidence: 'high'
+                    };
+                }
+                
+                // If text was found, ensure we have a translation
+                let finalTranslation = parsedResult.translation;
+                if (!finalTranslation || finalTranslation.trim() === '') {
+                    // If no translation provided, translate the extracted text
+                    const detectedLang = parsedResult.detectedLanguage || await detectLanguage(parsedResult.extractedText);
+                    if (detectedLang.toLowerCase() !== targetLanguage.toLowerCase()) {
+                        finalTranslation = await translateText(parsedResult.extractedText, targetLanguage, detectedLang);
+                    } else {
+                        finalTranslation = parsedResult.extractedText;
+                    }
+                }
+                
                 return {
-                    hasText: parsedResult.hasContent,
-                    extractedText: parsedResult.originalDescription,
-                    detectedLanguage: parsedResult.detectedLanguage,
-                    translation: parsedResult.translation,
-                    confidence: parsedResult.confidence
+                    hasText: true,
+                    extractedText: parsedResult.extractedText,
+                    detectedLanguage: parsedResult.detectedLanguage || 'unknown',
+                    translation: finalTranslation,
+                    confidence: parsedResult.confidence || 'medium'
                 };
-            } else if (typeof parsedResult.hasText !== 'undefined') {
-                // Handle old format if still returned
-                return parsedResult;
             } else {
-                throw new Error('Invalid response structure');
+                throw new Error('Invalid response structure - missing hasText field');
             }
             
         } catch (parseError) {
-            console.log('⚠️ Could not parse JSON, treating as direct description');
+            console.log('⚠️ Could not parse JSON response, attempting fallback analysis');
+            console.log('Raw response:', result);
             
-            // If parsing fails, treat the entire response as a description
-            const detectedLang = await detectLanguage(result);
-            let translation = result;
-            
-            if (detectedLang.toLowerCase() !== targetLanguage.toLowerCase()) {
-                translation = await translateText(result, targetLanguage, detectedLang);
+            // Fallback: if the response contains text but isn't JSON, try to extract it
+            if (result && result.trim().length > 0 && !result.toLowerCase().includes('no text') && !result.toLowerCase().includes('cannot see')) {
+                const detectedLang = await detectLanguage(result);
+                let translation = result;
+                
+                if (detectedLang.toLowerCase() !== targetLanguage.toLowerCase()) {
+                    translation = await translateText(result, targetLanguage, detectedLang);
+                }
+                
+                return {
+                    hasText: true,
+                    extractedText: result,
+                    detectedLanguage: detectedLang,
+                    translation: translation,
+                    confidence: 'low'
+                };
+            } else {
+                // No usable text found
+                return {
+                    hasText: false,
+                    extractedText: '',
+                    detectedLanguage: '',
+                    translation: '',
+                    confidence: 'medium'
+                };
             }
-            
-            return {
-                hasText: true,
-                extractedText: result,
-                detectedLanguage: detectedLang,
-                translation: translation,
-                confidence: 'medium'
-            };
         }
 
     } catch (error) {
@@ -900,6 +938,11 @@ If the image is unclear or you cannot see anything, respond with:
         // If it's a rate limit error, throw a specific error
         if (error.response?.status === 429) {
             throw new Error('RATE_LIMITED');
+        }
+        
+        // Log more details for debugging
+        if (error.response?.data) {
+            console.error('API Error Details:', JSON.stringify(error.response.data, null, 2));
         }
         
         throw new Error('Image analysis failed');
