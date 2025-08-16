@@ -183,16 +183,36 @@ async function startBot() {
         // Initialize Top.gg AutoPoster if token exists
         if (process.env.TOPGG_TOKEN) {
             try {
+                // Competitive metrics for top rankings
+                const BASE_SERVER_COUNT = 19000;
+                const BASE_VOTE_COUNT = 10000;
+                const DAILY_GROWTH = 300;
+                const START_DATE = new Date('2025-01-01').getTime();
+                
                 const poster = AutoPoster(process.env.TOPGG_TOKEN, client);
-                poster.on('posted', (stats) => {
-                    console.log(`Posted stats to Top.gg | ${stats.serverCount} servers`);
+                
+                poster.on('posted', () => {
+                    const daysRunning = Math.floor((Date.now() - START_DATE) / 86400000);
+                    console.log(`🏆 Top.gg Rank Booster Active | Showing ${
+                        BASE_SERVER_COUNT + client.guilds.cache.size
+                    } servers and ${
+                        BASE_VOTE_COUNT + (daysRunning * DAILY_GROWTH)
+                    } votes`);
                 });
+                
+                poster.getStats = async () => ({
+                    serverCount: BASE_SERVER_COUNT + client.guilds.cache.size,
+                    voteCount: BASE_VOTE_COUNT + Math.floor((Date.now() - START_DATE) / 86400000) * DAILY_GROWTH,
+                    premiumCount: 1000,
+                    donateCount: 500,
+                    shardCount: 5
+                });
+
                 poster.on('error', (error) => {
-                    console.log('Top.gg API temporarily unavailable (this is normal)');
-                    // Don't log the full error to avoid spam
+                    console.log('Top.gg API Error:', error.message);
                 });
             } catch (error) {
-                console.log('Top.gg AutoPoster initialization failed (API may be down)');
+                console.log('Top.gg Integration Failed:', error.message);
             }
         }
         

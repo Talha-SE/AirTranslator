@@ -1,5 +1,6 @@
 const axios = require('axios');
 const monetizationService = require('./monetizationService');
+const databaseService = require('./databaseService');
 
 class VoteCheckService {
     constructor() {
@@ -7,6 +8,7 @@ class VoteCheckService {
         this.checkedVotes = new Map(); // Store userId -> lastChecked timestamp
         this.checkInterval = 5 * 60 * 1000; // Check every 5 minutes
         this.voteCheckTimer = null;
+        this.cooldownCleanupTimer = null; // periodic DB cleanup
     }
 
     /**
@@ -31,6 +33,21 @@ class VoteCheckService {
         this.voteCheckTimer = setInterval(() => {
             this.checkRecentVotes();
         }, this.checkInterval);
+
+        // Periodic cleanup of expired cooldowns (every hour)
+        if (this.cooldownCleanupTimer) {
+            clearInterval(this.cooldownCleanupTimer);
+        }
+        this.cooldownCleanupTimer = setInterval(async () => {
+            try {
+                const deleted = await databaseService.cleanupExpiredVoteCooldowns(12);
+                if (deleted > 0) {
+                    console.log(`🧹 Cleaned ${deleted} expired vote cooldowns`);
+                }
+            } catch (e) {
+                console.error('Error during cooldown cleanup:', e.message);
+            }
+        }, 60 * 60 * 1000);
     }
 
     /**
@@ -41,6 +58,10 @@ class VoteCheckService {
             clearInterval(this.voteCheckTimer);
             this.voteCheckTimer = null;
             console.log('🛑 Vote check service stopped');
+        }
+        if (this.cooldownCleanupTimer) {
+            clearInterval(this.cooldownCleanupTimer);
+            this.cooldownCleanupTimer = null;
         }
     }
 
@@ -78,6 +99,8 @@ class VoteCheckService {
             let newVotesProcessed = 0;
             const now = Date.now();
             const fiveMinutesAgo = now - (5 * 60 * 1000);
+            const twelveHoursMs = 12 * 60 * 60 * 1000;
+            const ONE_MINUTE_MS = 60 * 1000;
 
             for (const vote of votes) {
                 const userId = vote.id || vote.user;
@@ -104,23 +127,56 @@ class VoteCheckService {
                         }
                     }
                     
-                    if (targetServerId) {
-                        // Award 10 bonus translations
-                        const result = await monetizationService.handleVoteReward(userId, targetServerId, 10);
-                        
-                        if (result.success) {
-                            console.log(`✅ Vote reward (10 translations) processed for user ${userId} in server ${targetServerId}`);
-                            newVotesProcessed++;
-                            
-                            // Send confirmation message
-                            await this.sendVoteConfirmation(userId, targetServerId);
+                    // Enforce 12-hour per-user cooldown (persisted in DB)
+                    let lastRewarded = 0;
+                    try {
+                        const cooldown = await databaseService.getUserVoteCooldown(userId);
+                        lastRewarded = cooldown?.lastRewardedAt ? new Date(cooldown.lastRewardedAt).getTime() : 0;
+                    } catch (_) { /* ignore lookup errors */ }
+                    const canReward = now - lastRewarded >= twelveHoursMs;
+
+                    if (targetServerId && canReward) {
+                        console.log(`⏳ Scheduling 20 free translations for user ${userId} in server ${targetServerId} after 1 minute`);
+
+                        // Persist cooldown immediately to avoid duplicate scheduling
+                        try {
+                            // Upsert new cooldown timestamp (acts like delete+add semantics)
+                            await databaseService.upsertUserVoteCooldown(userId, new Date(now));
+                        } catch (err) {
+                            console.error('Failed to upsert cooldown before scheduling:', err.message);
                         }
-                        
-                        // Update last checked time
+
+                        setTimeout(async () => {
+                            try {
+                                const result = await monetizationService.handleVoteReward(userId, targetServerId, 20);
+                                if (result.success) {
+                                    console.log(`✅ Vote reward (20 translations) granted to server ${targetServerId} by user ${userId}`);
+                                    await this.sendVoteConfirmation(userId, targetServerId, 20);
+                                    // Refresh cooldown to actual grant time
+                                    try { await databaseService.upsertUserVoteCooldown(userId, new Date()); } catch (_) {}
+                                } else {
+                                    console.log(`⚠️ Failed to grant vote reward for user ${userId}: ${result.error || 'unknown error'}`);
+                                    // Roll back cooldown to allow retry next cycle
+                                    try { await databaseService.deleteUserVoteCooldown(userId); } catch (_) {}
+                                }
+                            } catch (err) {
+                                console.error('Error during delayed vote reward:', err);
+                                try { await databaseService.deleteUserVoteCooldown(userId); } catch (_) {}
+                            }
+                        }, ONE_MINUTE_MS);
+
+                        newVotesProcessed++;
                         this.checkedVotes.set(userId, voteTimestamp);
                     } else {
-                        console.log(`⚠️ No server found for user ${userId}, skipping vote reward`);
-                        // Still mark as checked to avoid reprocessing
+                        if (!targetServerId) {
+                            console.log(`⚠️ No server found for user ${userId}, skipping vote reward`);
+                        } else {
+                            const remaining = twelveHoursMs - (now - lastRewarded);
+                            const hrs = Math.max(0, Math.floor(remaining / (60 * 60 * 1000)));
+                            const mins = Math.max(0, Math.ceil((remaining % (60 * 60 * 1000)) / (60 * 1000)));
+                            console.log(`⛔ User ${userId} already received free translations within 12 hours. Try again in ~${hrs}h ${mins}m`);
+                        }
+                        // Mark as checked to avoid reprocessing this same vote
                         this.checkedVotes.set(userId, voteTimestamp);
                     }
                 }
@@ -149,7 +205,7 @@ class VoteCheckService {
     /**
      * Send vote confirmation message to Discord
      */
-    async sendVoteConfirmation(userId, serverId) {
+    async sendVoteConfirmation(userId, serverId, amount = 20) {
         try {
             if (!this.client) return;
 
@@ -172,17 +228,17 @@ class VoteCheckService {
 
             const { EmbedBuilder } = require('discord.js');
             const confirmEmbed = new EmbedBuilder()
-                .setTitle('🎉 Vote Reward Received!')
-                .setDescription(`Thank you <@${userId}> for voting on Top.gg!\n\n**Your server has received 10 bonus translations!**`)
+                .setTitle('🎉 Vote Reward Scheduled!')
+                .setDescription(`Thank you <@${userId}> for voting on Top.gg!\n\n**Your server will receive ${amount} free translations in about 1 minute.**`)
                 .setColor('#28a745')
                 .addFields({
                     name: '🗳️ Vote Again',
-                    value: 'You can vote again in 12 hours for more rewards!',
+                    value: 'You can get this free reward once every 12 hours.',
                     inline: false
                 })
                 .setFooter({
                     text: 'AirTranslator - Thank you for your support!',
-                    iconURL: client.user.displayAvatarURL()
+                    iconURL: this.client.user.displayAvatarURL()
                 })
                 .setTimestamp();
 

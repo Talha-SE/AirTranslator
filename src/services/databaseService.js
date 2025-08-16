@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Server = require('../models/Server');
 const MonetizationSettings = require('../models/MonetizationSettings');
+const VoteCooldown = require('../models/VoteCooldown');
 const PersonalTranslation = require('../models/PersonalTranslation');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
@@ -12,6 +13,68 @@ const connectDB = async () => {
     } catch (error) {
         console.error('MongoDB connection error:', error);
         process.exit(1);
+    }
+};
+
+/**
+ * Get a user's vote cooldown record
+ * @param {String} userId - The Discord user ID
+ * @returns {Promise<Object|null>} - The cooldown document or null
+ */
+const getUserVoteCooldown = async (userId) => {
+    try {
+        return await VoteCooldown.findOne({ userId });
+    } catch (error) {
+        console.error('Error getting user vote cooldown:', error);
+        return null;
+    }
+};
+
+/**
+ * Upsert a user's vote cooldown timestamp
+ * @param {String} userId - The Discord user ID
+ * @param {Date} lastRewardedAt - The timestamp to set
+ * @returns {Promise<Object>} - The upserted cooldown document
+ */
+const upsertUserVoteCooldown = async (userId, lastRewardedAt) => {
+    try {
+        return await VoteCooldown.findOneAndUpdate(
+            { userId },
+            { $set: { lastRewardedAt } },
+            { new: true, upsert: true }
+        );
+    } catch (error) {
+        console.error('Error upserting user vote cooldown:', error);
+        throw error;
+    }
+};
+
+/**
+ * Delete a user's vote cooldown (e.g., after 12 hours or during cleanup)
+ * @param {String} userId - The Discord user ID
+ * @returns {Promise<void>}
+ */
+const deleteUserVoteCooldown = async (userId) => {
+    try {
+        await VoteCooldown.deleteOne({ userId });
+    } catch (error) {
+        console.error('Error deleting user vote cooldown:', error);
+    }
+};
+
+/**
+ * Cleanup expired cooldowns older than provided hours
+ * @param {number} hours - Hours threshold
+ * @returns {Promise<number>} - Number of deleted docs
+ */
+const cleanupExpiredVoteCooldowns = async (hours = 12) => {
+    try {
+        const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
+        const res = await VoteCooldown.deleteMany({ lastRewardedAt: { $lt: cutoff } });
+        return res.deletedCount || 0;
+    } catch (error) {
+        console.error('Error cleaning up expired vote cooldowns:', error);
+        return 0;
     }
 };
 
@@ -529,5 +592,9 @@ module.exports = {
     getPersonalTranslationSettings,
     recordPersonalTranslation,
     toggleTranslationStyle,
-    shouldUseThreadTranslation
+    shouldUseThreadTranslation,
+    getUserVoteCooldown,
+    upsertUserVoteCooldown,
+    deleteUserVoteCooldown,
+    cleanupExpiredVoteCooldowns
 };
