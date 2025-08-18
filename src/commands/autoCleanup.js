@@ -91,7 +91,7 @@ module.exports = {
                     },
                     {
                         name: '💡 How it works',
-                        value: '• Original messages are deleted after translation\n• Translation messages remain visible\n• Only applies to automatic translations\n• Flag translations have their own 30s auto-delete',
+                        value: '• Original messages are deleted after translation\n• Translation messages remain visible\n• Only applies to automatic translations\n• Flag translations have their own 1min auto-delete',
                         inline: false
                     }
                 );

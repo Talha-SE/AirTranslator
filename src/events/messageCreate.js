@@ -44,8 +44,94 @@ function getLanguageDisplayName(language) {
 }
 
 // Store recent limit messages to avoid spam (serverId -> timestamp)
+// Note: Cooldown removed to show limit message on every user message when limit is reached
 const recentLimitMessages = new Map();
-const LIMIT_MESSAGE_COOLDOWN = 5 * 60 * 1000; // 5 minutes cooldown
+const LIMIT_MESSAGE_COOLDOWN = 0; // No cooldown - show message every time
+
+// Vote tracking system for automatic credit granting
+const pendingVotes = new Map(); // serverId -> { timestamp, timeout }
+const VOTE_CREDIT_DELAY = 15 * 1000; // 15 seconds
+const VOTE_BONUS_AMOUNT = 30; // Free translations to grant
+
+// Function to start vote tracking and auto-grant credits
+function startVoteTracking(serverId, userInfo = null, client = null) {
+    // Clear any existing timeout for this server
+    const existing = pendingVotes.get(serverId);
+    if (existing && existing.timeout) {
+        clearTimeout(existing.timeout);
+    }
+    
+    // Set new timeout to grant credits after 15 seconds
+    const timeout = setTimeout(async () => {
+        try {
+            console.log(`🎯 Auto-granting ${VOTE_BONUS_AMOUNT} free translations to server ${serverId} after vote button click`);
+            
+            // Grant bonus translations using the monetization service with user info
+            const result = await monetizationService.handleVoteReward(userInfo?.id, serverId, VOTE_BONUS_AMOUNT);
+            
+            // handleVoteReward already records the vote event, no need to duplicate here
+            
+            if (result.success) {
+                console.log(`✅ Successfully granted ${VOTE_BONUS_AMOUNT} bonus translations to server ${serverId} by user ${userInfo?.username || 'Unknown'}`);
+                
+                // Send confirmation message to the channel where limit was reached
+                try {
+                    if (client) {
+                        const guild = client.guilds.cache.get(serverId);
+                        if (guild) {
+                            // Find a suitable channel to send confirmation
+                            const channel = guild.systemChannel || 
+                                          guild.channels.cache.find(ch => 
+                                              ch.type === 0 && 
+                                              ch.permissionsFor(guild.members.me)?.has(['SendMessages', 'EmbedLinks'])
+                                          );
+                            
+                            if (channel) {
+                                const confirmEmbed = new EmbedBuilder()
+                                    .setTitle('🎉 Free Credits Added!')
+                                    .setDescription(`**${VOTE_BONUS_AMOUNT} free translations** have been added to your server!`)
+                                    .setColor('#00ff88')
+                                    .addFields({
+                                        name: '✨ Thank you!',
+                                        value: `Thanks to ${userInfo?.displayName || 'a user'} for supporting AirTranslator!`,
+                                        inline: false
+                                    })
+                                    .setFooter({
+                                        text: 'AirTranslator • Vote rewards',
+                                        iconURL: client.user.displayAvatarURL()
+                                    })
+                                    .setTimestamp();
+                                
+                                await channel.send({ embeds: [confirmEmbed] });
+                            }
+                        }
+                    }
+                } catch (confirmError) {
+                    console.error('Error sending confirmation message:', confirmError);
+                }
+            } else {
+                console.error(`❌ Failed to grant bonus translations to server ${serverId}:`, result.error);
+            }
+            
+            // Remove from pending votes
+            pendingVotes.delete(serverId);
+            
+        } catch (error) {
+            console.error(`❌ Error granting vote bonus to server ${serverId}:`, error);
+            pendingVotes.delete(serverId);
+        }
+    }, VOTE_CREDIT_DELAY);
+    
+    // Store the tracking info
+    pendingVotes.set(serverId, {
+        timestamp: Date.now(),
+        timeout: timeout,
+        userInfo: userInfo,
+        client: client
+    });
+    
+    console.log(`🗳️ Started vote tracking for server ${serverId} by user ${userInfo?.username || 'Unknown'} - credits will be granted in ${VOTE_CREDIT_DELAY/1000} seconds`);
+}
 
 // Auto-cleanup function for original messages
 async function scheduleAutoCleanup(message, serverId) {
@@ -147,6 +233,15 @@ async function sendLimitReachedMessage(message) {
             })
             .setTimestamp();
 
+        // Start vote tracking for this server with user info
+        const userInfo = {
+            id: message.author.id,
+            username: message.author.username,
+            displayName: message.author.displayName || message.author.username,
+            displayAvatarURL: () => message.author.displayAvatarURL({ dynamic: true, size: 64 })
+        };
+        startVoteTracking(message.guild.id, userInfo, message.client);
+        
         const voteButton = new ButtonBuilder()
             .setLabel('🗳️ Vote on Top.gg')
             .setStyle(ButtonStyle.Link)

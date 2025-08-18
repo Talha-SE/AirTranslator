@@ -228,16 +228,11 @@ class VoteCheckService {
 
             const { EmbedBuilder } = require('discord.js');
             const confirmEmbed = new EmbedBuilder()
-                .setTitle('🎉 Vote Reward Scheduled!')
-                .setDescription(`Thank you <@${userId}> for voting on Top.gg!\n\n**Your server will receive ${amount} free translations in about 1 minute.**`)
-                .setColor('#28a745')
-                .addFields({
-                    name: '🗳️ Vote Again',
-                    value: 'You can get this free reward once every 12 hours.',
-                    inline: false
-                })
+                .setTitle('🎉 Free Credits Added!')
+                .setDescription(`**${amount} free translations** have been added to this server. Thank you <@${userId}> for voting!`)
+                .setColor('#00ff88')
                 .setFooter({
-                    text: 'AirTranslator - Thank you for your support!',
+                    text: 'AirTranslator • Vote rewards',
                     iconURL: this.client.user.displayAvatarURL()
                 })
                 .setTimestamp();

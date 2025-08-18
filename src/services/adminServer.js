@@ -660,6 +660,8 @@ async function generateMonetizationContent(client) {
     try {
         const settings = monetizationService.getSettings();
         const serversStatus = await monetizationService.getAllServersStatus(client);
+        // Get vote statistics
+        const voteStats = await monetizationService.getVoteStats();
         
         // Calculate global statistics
         const totalServers = serversStatus.length;
@@ -721,6 +723,95 @@ async function generateMonetizationContent(client) {
                                 <div class="stat-label">Restricted Servers</div>
                             </div>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- Vote Tracking Section -->
+                <div class="stats-section">
+                    <h3>🗳️ Vote Tracking & Auto-Credits</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card vote-card">
+                            <div class="stat-icon">🎯</div>
+                            <div class="stat-info">
+                                <div class="stat-value">${voteStats.totalVoteClicks}</div>
+                                <div class="stat-label">Total Vote Clicks</div>
+                            </div>
+                        </div>
+                        <div class="stat-card vote-card">
+                            <div class="stat-icon">💎</div>
+                            <div class="stat-info">
+                                <div class="stat-value">${voteStats.totalCreditsGranted.toLocaleString()}</div>
+                                <div class="stat-label">Credits Auto-Granted</div>
+                            </div>
+                        </div>
+                        <div class="stat-card vote-card">
+                            <div class="stat-icon">📅</div>
+                            <div class="stat-info">
+                                <div class="stat-value">${voteStats.todayVotes}</div>
+                                <div class="stat-label">Today's Votes</div>
+                            </div>
+                        </div>
+                        <div class="stat-card vote-card">
+                            <div class="stat-icon">⚡</div>
+                            <div class="stat-info">
+                                <div class="stat-value">${voteStats.recentVotesCount}</div>
+                                <div class="stat-label">Recent Activity</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Recent Votes Table -->
+                    <div class="recent-votes-section">
+                        <h4>Recent Vote Activity (Last 20)</h4>
+                        <table class="table vote-table">
+                            <thead>
+                                <tr>
+                                    <th>Server ID</th>
+                                    <th>User</th>
+                                    <th>Credits Granted</th>
+                                    <th>Timestamp</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${voteStats.recentVotes.slice(0, 20).map(vote => {
+                                    const server = client ? client.guilds.cache.get(vote.serverId) : null;
+                                    const serverName = server ? server.name : 'Unknown Server';
+                                    const timeAgo = new Date(vote.timestamp).toLocaleString();
+                                    const userDisplay = vote.user ? 
+                                        `<td>
+                                            <span class="user-mention">@${vote.user.displayName}</span>
+                                            <br>
+                                            <small class="text-muted">ID: ${vote.user.id}</small>
+                                            <br><small class="${vote.creditsGranted > 0 ? 'text-success' : 'text-warning'}">
+                                                Status: ${vote.creditsGranted > 0 ? 'Credits Granted' : 'Blocked (Cooldown)'}
+                                            </small>
+                                            <div class="mt-1">
+                                                <button class="btn btn-sm btn-outline-secondary me-1" onclick="copyToClipboard('${vote.user.id}')">
+                                                    Copy ID
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-info" onclick="window.open('https://discord.com/users/${vote.user.id}', '_blank')">
+                                                    Profile
+                                                </button>
+                                            </div>
+                                        </td>` : 
+                                        '<td><span class="no-user">Unknown User</span></td>';
+                                    return `
+                                    <tr>
+                                        <td>
+                                            <div class="server-info">
+                                                <strong>${vote.serverId}</strong>
+                                                <small>${serverName}</small>
+                                            </div>
+                                        </td>
+                                        <td>${userDisplay}</td>
+                                        <td><span class="credit-badge">+${vote.creditsGranted}</span></td>
+                                        <td>${timeAgo}</td>
+                                        <td><span class="status-success">✅ Granted</span></td>
+                                    </tr>`;
+                                }).join('')}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
                 

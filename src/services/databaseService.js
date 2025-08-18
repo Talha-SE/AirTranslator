@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Server = require('../models/Server');
 const MonetizationSettings = require('../models/MonetizationSettings');
 const VoteCooldown = require('../models/VoteCooldown');
+const VoteEvent = require('../models/VoteEvent');
 const PersonalTranslation = require('../models/PersonalTranslation');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
@@ -75,6 +76,70 @@ const cleanupExpiredVoteCooldowns = async (hours = 12) => {
     } catch (error) {
         console.error('Error cleaning up expired vote cooldowns:', error);
         return 0;
+    }
+};
+
+/**
+ * Save a vote event to the database
+ * @param {Object} voteData - Vote event data
+ * @returns {Promise<Object>} - The saved vote event
+ */
+const saveVoteEvent = async (voteData) => {
+    try {
+        const voteEvent = new VoteEvent(voteData);
+        return await voteEvent.save();
+    } catch (error) {
+        console.error('Error saving vote event:', error);
+        throw error;
+    }
+};
+
+/**
+ * Get vote statistics from database
+ * @returns {Promise<Object>} - Vote statistics
+ */
+const getVoteStats = async () => {
+    try {
+        const totalVoteClicks = await VoteEvent.countDocuments();
+        const totalCreditsGranted = await VoteEvent.aggregate([
+            { $group: { _id: null, total: { $sum: '$creditsGranted' } } }
+        ]);
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayVotes = await VoteEvent.countDocuments({ 
+            timestamp: { $gte: today } 
+        });
+
+        return {
+            totalVoteClicks,
+            totalCreditsGranted: totalCreditsGranted[0]?.total || 0,
+            todayVotes
+        };
+    } catch (error) {
+        console.error('Error getting vote stats:', error);
+        return {
+            totalVoteClicks: 0,
+            totalCreditsGranted: 0,
+            todayVotes: 0
+        };
+    }
+};
+
+/**
+ * Get recent vote events from database
+ * @param {number} limit - Number of recent votes to fetch
+ * @returns {Promise<Array>} - Array of recent vote events
+ */
+const getRecentVoteEvents = async (limit = 20) => {
+    try {
+        return await VoteEvent.find()
+            .sort({ timestamp: -1 })
+            .limit(limit)
+            .lean();
+    } catch (error) {
+        console.error('Error getting recent vote events:', error);
+        return [];
     }
 };
 
@@ -596,5 +661,8 @@ module.exports = {
     getUserVoteCooldown,
     upsertUserVoteCooldown,
     deleteUserVoteCooldown,
-    cleanupExpiredVoteCooldowns
+    cleanupExpiredVoteCooldowns,
+    saveVoteEvent,
+    getVoteStats,
+    getRecentVoteEvents
 };

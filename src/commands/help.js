@@ -49,7 +49,7 @@ module.exports = {
                         '▫️ **`/style`** ➤ *Choose your display style*\n' +
                         '   💡 Example: `/style type:thread` *(organized threads)*\n' +
                         '   💡 Example: `/style type:text` *(direct messages)*\n' +
-                        '   ⚡ *Threads auto-vanish in 30 seconds!*',
+                        '   ⚡ *Threads auto-vanish in 1 minute!*',
                     inline: false
                 },
                 {

@@ -367,7 +367,7 @@ async function messageReactionAdd(client, reaction, user) {
             })
             .setTimestamp()
             .setFooter({
-                text: 'React with 🏴 flags to translate messages • Auto-deletes in 30s • AirTranslator',
+                text: 'React with 🏴 flags to translate messages • Auto-deletes in 1min • AirTranslator',
                 iconURL: client.user.displayAvatarURL()
             });
 
@@ -377,15 +377,15 @@ async function messageReactionAdd(client, reaction, user) {
             allowedMentions: { repliedUser: false }
         });
 
-        // Auto-delete flag translation after 30 seconds
+        // Auto-delete flag translation after 1 minute
         setTimeout(async () => {
             try {
                 await translationReply.delete();
-                console.log(`🗑️ Auto-deleted flag translation after 30 seconds`);
+                console.log(`🗑️ Auto-deleted flag translation after 1 minute`);
             } catch (deleteError) {
                 console.log('Could not delete flag translation (message may already be deleted)');
             }
-        }, 30000); // 30 seconds
+        }, 60000); // 1 minute
 
         // Update user-server tracking for vote rewards
         if (!global.userServerTracking) {

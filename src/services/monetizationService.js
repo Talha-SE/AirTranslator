@@ -7,6 +7,7 @@ class MonetizationService {
             enableGlobalRestriction: false
         };
         this.settingsLoaded = false;
+        // Vote tracking will now use database instead of in-memory storage
     }
 
     /**
@@ -297,31 +298,165 @@ class MonetizationService {
     /**
      * Handle vote reward - grant additional translations
      */
-    async handleVoteReward(userId, serverId = null, bonusAmount = 10) {
+    async handleVoteReward(userId, serverId = null, bonusAmount = 30, userInfo = null) {
         try {
-            const VOTE_BONUS_TRANSLATIONS = bonusAmount; // Use custom amount, default to 10
-            
-            // If serverId is provided, grant translations to that specific server
+            // Check if user can vote (12-hour cooldown)
+            if (!(await this.canUserVote(userId))) {
+                const remainingTime = await this.getUserCooldownRemaining(userId);
+                const hoursRemaining = Math.ceil(remainingTime / (60 * 60 * 1000));
+                
+                // Record the vote click but don't grant credits
+                await this.recordVoteEvent(serverId, 0, userInfo);
+                
+                console.log(`Vote blocked: User ${userId} is on cooldown for ${hoursRemaining} hours`);
+                return { 
+                    success: false, 
+                    onCooldown: true,
+                    hoursRemaining,
+                    message: `You can vote again in ${hoursRemaining} hours` 
+                };
+            }
+
             if (serverId) {
-                // Get current server data
-                const server = await databaseService.getServer(serverId);
-                const currentCount = server?.translationCount || 0;
+                // Grant bonus translations to the server
+                const serverSettings = await this.getServerSettings(serverId);
+                const newLimit = serverSettings.freeTranslationLimit + bonusAmount;
                 
-                // Subtract bonus translations (effectively granting more translations)
-                const newCount = Math.max(0, currentCount - VOTE_BONUS_TRANSLATIONS);
-                await databaseService.updateServerTranslationCount(serverId, newCount);
+                await this.updateServerSettings(serverId, {
+                    ...serverSettings,
+                    freeTranslationLimit: newLimit
+                });
                 
-                console.log(`Vote reward: ${VOTE_BONUS_TRANSLATIONS} bonus translations granted to server ${serverId} by user ${userId}`);
-                return { success: true, bonusTranslations: VOTE_BONUS_TRANSLATIONS, serverId };
+                // Record the vote event with credits granted
+                await this.recordVoteEvent(serverId, bonusAmount, userInfo);
+                
+                console.log(`Vote reward granted: ${bonusAmount} bonus translations to server ${serverId}`);
+                return { success: true, newLimit, bonusAmount };
             } else {
-                // If no specific server, we could implement user-based rewards
-                // For now, just log the vote
+                // Record vote without server-specific reward but still apply cooldown
+                await this.recordVoteEvent(null, 0, userInfo);
                 console.log(`Vote received from user ${userId} - no specific server reward`);
                 return { success: true, message: 'Vote recorded' };
             }
         } catch (error) {
             console.error('Error handling vote reward:', error);
             return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Check if user can vote (12-hour cooldown) - now uses database
+     */
+    async canUserVote(userId) {
+        if (!userId) return false;
+        
+        try {
+            const cooldown = await databaseService.getUserVoteCooldown(userId);
+            if (!cooldown) return true;
+            
+            const TWELVE_HOURS = 12 * 60 * 60 * 1000;
+            const now = Date.now();
+            const timeSinceLastVote = now - cooldown.lastRewardedAt.getTime();
+            
+            return timeSinceLastVote >= TWELVE_HOURS;
+        } catch (error) {
+            console.error('Error checking user vote cooldown:', error);
+            return true; // Allow vote on error
+        }
+    }
+
+    /**
+     * Get remaining cooldown time for user - now uses database
+     */
+    async getUserCooldownRemaining(userId) {
+        if (!userId) return 0;
+        
+        try {
+            const cooldown = await databaseService.getUserVoteCooldown(userId);
+            if (!cooldown) return 0;
+            
+            const TWELVE_HOURS = 12 * 60 * 60 * 1000;
+            const now = Date.now();
+            const timeSinceLastVote = now - cooldown.lastRewardedAt.getTime();
+            
+            if (timeSinceLastVote >= TWELVE_HOURS) return 0;
+            
+            return TWELVE_HOURS - timeSinceLastVote;
+        } catch (error) {
+            console.error('Error getting user cooldown remaining:', error);
+            return 0;
+        }
+    }
+
+    /**
+     * Record vote event for admin panel tracking - now uses database
+     */
+    async recordVoteEvent(serverId, creditsGranted, userInfo = null) {
+        try {
+            const now = new Date();
+            
+            // Update user cooldown if credits were granted
+            if (creditsGranted > 0 && userInfo?.id) {
+                await databaseService.upsertUserVoteCooldown(userInfo.id, now);
+            }
+            
+            // Save vote event to database
+            if (userInfo) {
+                const voteEventData = {
+                    serverId,
+                    userId: userInfo.id,
+                    username: userInfo.username,
+                    displayName: userInfo.displayName || userInfo.username,
+                    avatar: userInfo.displayAvatarURL ? userInfo.displayAvatarURL() : null,
+                    creditsGranted,
+                    timestamp: now,
+                    status: creditsGranted > 0 ? 'granted' : 'blocked_cooldown'
+                };
+                
+                await databaseService.saveVoteEvent(voteEventData);
+            }
+            
+            // Clean up expired cooldowns periodically
+            await databaseService.cleanupExpiredVoteCooldowns(12);
+        } catch (error) {
+            console.error('Error recording vote event:', error);
+        }
+    }
+
+    /**
+     * Get vote statistics for admin panel - now uses database
+     */
+    async getVoteStats() {
+        try {
+            const stats = await databaseService.getVoteStats();
+            const recentVotes = await databaseService.getRecentVoteEvents(20);
+            
+            return {
+                totalVoteClicks: stats.totalVoteClicks,
+                totalCreditsGranted: stats.totalCreditsGranted,
+                todayVotes: stats.todayVotes,
+                recentVotes: recentVotes.map(vote => ({
+                    serverId: vote.serverId,
+                    timestamp: vote.timestamp.toISOString(),
+                    creditsGranted: vote.creditsGranted,
+                    user: {
+                        id: vote.userId,
+                        username: vote.username,
+                        displayName: vote.displayName,
+                        avatar: vote.avatar
+                    }
+                })),
+                recentVotesCount: recentVotes.length
+            };
+        } catch (error) {
+            console.error('Error getting vote stats:', error);
+            return {
+                totalVoteClicks: 0,
+                totalCreditsGranted: 0,
+                todayVotes: 0,
+                recentVotes: [],
+                recentVotesCount: 0
+            };
         }
     }
 
