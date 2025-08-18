@@ -386,6 +386,10 @@ CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - Maintain original emoji positions
 - Preserve all line breaks and spacing exactly
 - Preserve punctuation and special characters
+- Preserve the author's exact voice and style
+- Prioritize accuracy in conveying the author's exact meaning. Maintain the original tone, formality level, and writing style.
+- Your translation should read as if the original author wrote it directly in the target language. Preserve nuance, idioms, and cultural context appropriately.
+- Focus on delivering translations that capture not just what was said, but how it was said - including humor, emotion, and subtle implications.
 
 KOREAN TRANSLATION ACCURACY RULES:
 - 나 = I/me (NOT "you")
