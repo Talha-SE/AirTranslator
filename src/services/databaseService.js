@@ -146,7 +146,21 @@ const getRecentVoteEvents = async (limit = 20) => {
 const saveServerConfig = async (serverId, config) => {
     const server = await Server.findOneAndUpdate(
         { serverId },
-        { $set: config },
+        {
+            $set: config,
+            $setOnInsert: {
+                serverUniqueId: uuidv4(),
+                serverName: config.serverName || 'Unknown Server',
+                translationCount: 0,
+                monetization: {
+                    freeTranslationLimit: 20,
+                    isRestricted: false,
+                    isExempt: false,
+                    lastReset: new Date(),
+                    customLimit: null
+                }
+            }
+        },
         { new: true, upsert: true }
     );
     return server;
@@ -404,7 +418,20 @@ const incrementTranslationCount = async (serverId) => {
     try {
         const server = await Server.findOneAndUpdate(
             { serverId },
-            { $inc: { translationCount: 1 } },
+            {
+                $inc: { translationCount: 1 },
+                $setOnInsert: {
+                    serverUniqueId: uuidv4(),
+                    serverName: 'Unknown Server',
+                    monetization: {
+                        freeTranslationLimit: 20,
+                        isRestricted: false,
+                        isExempt: false,
+                        lastReset: new Date(),
+                        customLimit: null
+                    }
+                }
+            },
             { new: true, upsert: true }
         );
         return server;
@@ -443,7 +470,20 @@ const updateServerTranslationCount = async (serverId, count) => {
     try {
         const server = await Server.findOneAndUpdate(
             { serverId },
-            { $set: { translationCount: count } },
+            {
+                $set: { translationCount: count },
+                $setOnInsert: {
+                    serverUniqueId: uuidv4(),
+                    serverName: 'Unknown Server',
+                    monetization: {
+                        freeTranslationLimit: 20,
+                        isRestricted: false,
+                        isExempt: false,
+                        lastReset: new Date(),
+                        customLimit: null
+                    }
+                }
+            },
             { new: true, upsert: true }
         );
         return server;
@@ -482,10 +522,15 @@ const updateServerMonetization = async (serverId, monetizationSettings) => {
     try {
         const server = await Server.findOneAndUpdate(
             { serverId },
-            { 
-                $set: { 
+            {
+                $set: {
                     monetization: monetizationSettings
-                } 
+                },
+                $setOnInsert: {
+                    serverUniqueId: uuidv4(),
+                    serverName: 'Unknown Server',
+                    translationCount: 0
+                }
             },
             { new: true, upsert: true }
         );
