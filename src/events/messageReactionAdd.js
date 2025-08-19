@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getFlagLanguage, getLanguageDisplayName } = require('../utils/flagMapping');
 const { translateText, detectLanguage, analyzeAndTranslateImage } = require('../services/mistralService');
 const { getPersonalTranslationSettings, recordPersonalTranslation } = require('../services/databaseService');
@@ -223,22 +223,57 @@ async function messageReactionAdd(client, reaction, user) {
         
         if (!canTranslate) {
             console.log(`❌ Server ${serverId} has reached translation limit`);
-            
-            // Send ephemeral message to the user who reacted
-            try {
-                const limitEmbed = new EmbedBuilder()
-                    .setTitle('❌ Translation Limit Reached')
-                    .setDescription('This server has reached its daily translation limit.\n\n💡 **Get more translations:**\n• Use `/vote` to get the server-specific voting link\n• Vote on Top.gg for 10 bonus translations!')
-                    .setColor('#e74c3c')
-                    .setFooter({
-                        text: 'Vote every 12 hours for more translations!',
-                        iconURL: client.user.displayAvatarURL()
-                    });
 
-                // Try to DM the user
-                await user.send({ embeds: [limitEmbed] });
-            } catch (dmError) {
-                console.log('Could not DM user about limit');
+            try {
+                // Fetch server stats for consistent messaging
+                const serverStats = await monetizationService.getServerStats(serverId);
+
+                const embed = new EmbedBuilder()
+                    .setTitle('🚫 Translation Limit Reached')
+                    .setDescription(`Your server has reached the free translation limit of **${serverStats.freeTranslationLimit} messages**.`)
+                    .setColor('#e74c3c')
+                    .addFields(
+                        {
+                            name: '🎯 Get More Translations',
+                            value: 'Vote for AirTranslator on Top.gg to unlock **50 more free translations**!',
+                            inline: false
+                        },
+                        {
+                            name: '⏱️ Reset Schedule',
+                            value: 'Free translations reset monthly for all servers.',
+                            inline: false
+                        }
+                    )
+                    .setFooter({
+                        text: 'Thank you for using AirTranslator!',
+                        iconURL: client.user.displayAvatarURL()
+                    })
+                    .setTimestamp();
+
+                const voteButton = new ButtonBuilder()
+                    .setLabel('🗳️ Vote on Top.gg')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${message.guild.id}`);
+
+                const supportButton = new ButtonBuilder()
+                    .setLabel('💎 Premium Plans')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL('https://your-website.com/premium');
+
+                const actionRow = new ActionRowBuilder().addComponents(voteButton, supportButton);
+
+                // Try to send to the current channel, fallback to system channel or first text channel with perms
+                let targetChannel = message.channel;
+                if (!targetChannel.permissionsFor(message.guild.members.me)?.has(['SendMessages', 'EmbedLinks'])) {
+                    targetChannel = message.guild.systemChannel ||
+                        message.guild.channels.cache.find(ch => ch.type === 0 && ch.permissionsFor(message.guild.members.me)?.has(['SendMessages', 'EmbedLinks']));
+                }
+
+                if (targetChannel) {
+                    await targetChannel.send({ embeds: [embed], components: [actionRow] });
+                }
+            } catch (limitMsgError) {
+                console.error('Error sending limit reached message (flag path):', limitMsgError);
             }
             return;
         }
