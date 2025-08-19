@@ -1,7 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getFlagLanguage, getLanguageDisplayName } = require('../utils/flagMapping');
 const { translateText, detectLanguage, analyzeAndTranslateImage } = require('../services/mistralService');
-const { getPersonalTranslationSettings, recordPersonalTranslation } = require('../services/databaseService');
+const { getPersonalTranslationSettings, recordPersonalTranslation, getToneSettings } = require('../services/databaseService');
 const monetizationService = require('../services/monetizationService');
 const analyticsService = require('../services/analyticsService');
 
@@ -185,9 +185,10 @@ async function messageReactionAdd(client, reaction, user) {
                     return;
                 }
 
-                // Use unified translation system
+                // Use unified translation system with same tone setting as auto-translation
+                const toneSettings = await getToneSettings(message.guild.id, message.channel.id);
                 console.log(`🔄 Personal buddy translating content from ${detectedLanguage} to ${targetLanguage}`);
-                const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, true); // Use tone understanding
+                const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, toneSettings); // Respect tone setting
                 
                 if (!translation || translation.trim().length === 0) {
                     console.log('❌ Personal translation failed or returned empty result');
@@ -397,9 +398,10 @@ async function messageReactionAdd(client, reaction, user) {
             return;
         }
 
-        // Use unified translation system
+        // Use unified translation system with same tone setting as auto-translation
+        const toneSettings = await getToneSettings(message.guild.id, message.channel.id);
         console.log(`🔄 Translating content from ${detectedLanguage} to ${targetLanguage} using unified system`);
-        const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, true); // Use tone understanding
+        const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, toneSettings); // Respect tone setting
         
         if (!translation || translation.trim().length === 0) {
             console.log('❌ Translation failed or returned empty result');
