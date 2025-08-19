@@ -90,6 +90,17 @@ const escapeRegExp = (string) => {
 };
 
 /**
+ * Normalize elongated sequences to improve language detection and translation stability.
+ * - Compresses alphabetic character runs of length >= 5 down to 3 (heyyyyy -> heyyy)
+ * - Leaves numbers, emojis, URLs, mentions, hashtags, and special tokens unaffected (best-effort)
+ */
+const normalizeElongatedText = (text) => {
+    if (!text || typeof text !== 'string') return text;
+    // Only compress ASCII letters to avoid impacting CJK or other scripts
+    return text.replace(/([A-Za-z])\1{4,}/g, '$1$1$1');
+};
+
+/**
  * Removes unwanted explanatory notes from translations
  * @param {string} translation - The translated text
  * @returns {string} - Clean translation without notes
@@ -233,37 +244,41 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
             if (attempt >= maxRetries || (status && status !== 429)) {
                 throw err;
             }
-            const backoff = Math.min(60000, (2 ** attempt) * 1000 + Math.random() * 500);
+            // Prefer server-provided Retry-After when present
+            let retryAfterHeader = err.response?.headers?.['retry-after'];
+            let retryAfterMs = 0;
+            if (retryAfterHeader) {
+                const parsed = parseFloat(retryAfterHeader);
+                if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+                    retryAfterMs = parsed * 1000;
+                }
+            }
+            const jitter = Math.random() * 500;
+            const expBackoff = (2 ** attempt) * 1000 + jitter;
+            const backoff = Math.min(60000, Math.max(retryAfterMs, expBackoff));
             console.warn(`Mistral request failed (status ${status}). Retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})`);
             await sleep(backoff);
             attempt++;
         }
     }
 };
+
 const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 
 /**
- * Normalizes elongated text by reducing excessive character repetition
- * @param {string} text - The text to normalize
- * @returns {string} - The normalized text
+ * Detects the language of a given text
+ * @param {string} text - The text to detect the language for
+ * @returns {string} - The detected language code
  */
-const normalizeElongatedText = (text) => {
-    // Reduce excessive character repetition (more than 3 consecutive characters)
-    return text.replace(/([a-zA-Z0-9])\1{3,}/g, (match, char) => {
-        // Keep maximum 3 repetitions for emphasis
-        return char.repeat(3);
-    });
-};
-
 const detectLanguage = async (text) => {
     try {
         // Normalize the text before detection
         const normalizedText = normalizeElongatedText(text);
         
         const response = await postMistralWithRetry({
-            model: 'mistral-medium-latest',
+            model: 'mistral-small-latest',
             messages: [
                 {
                     role: 'system',
@@ -368,7 +383,7 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         }
 
         // Create appropriate system prompt based on tone understanding setting
-        let systemContent = `You are a professional translator. Translate text naturally while preserving meaning and style.
+        let systemContent = `You are a professional translator. Translate text accurately as user intented while preserving meaning and style.
 
 CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - TRANSLATE ONLY THE INPUT TEXT - do not add, expand, or create additional content
@@ -466,7 +481,7 @@ CRITICAL TECHNICAL RULES - FOLLOW EXACTLY:
 - If target language doesn't use elongation, use other casual markers (repeated punctuation, casual particles)
 - CRITICAL KOREAN HANDLING: "hey" + casual/affectionate tone should become "야" or "이봐" + appropriate particles
 - KOREAN AFFECTIONATE ELONGATION: "babyyy" → "베이비이이~~♡" or "자기야야야~~~ㅎㅎ" or "애기야야~~~ㅋㅋ"
-- KOREAN MANDATORY CHATTING STYLE: Always add Korean chat elements (~~~, ㅋㅋ, ㅎㅎ, ♡) when translating casual/affectionate elongated text
+- KOREAN MANDATORY CHATTING STYLE: Always add Korean chat elements (~~~, ㅋㅋ, ♡) when translating casual/affectionate elongated text
 - KOREAN ELONGATED GREETINGS: "heyyyy" → "야야야~~~" or "어이이이~~ㅋㅋ" (NEVER just "야")
 - FOR TONE UNDERSTANDING: Korean translations MUST include cute chatting elements for elongated affectionate expressions
 - Preserve every emoji exactly as written (😊 stays 😊, ❤️ stays ❤️)
@@ -518,7 +533,7 @@ CHINESE:
 - Preserve emotional tone through particle usage (啊, 呢, 吧)
 - Adapt between formal and colloquial expressions based on context
 - ELONGATION TECHNIQUE: Repeat characters or use particle repetition
-- ELONGATION EXAMPLES: "heyyyy" → "嗨嗨嗨嗨" or "哎呀呀呀", "babyyy" → "宝贝贝贝" or "亲爱的的的"
+- ELONGATION EXAMPLES: "heyyyy" → "嗨嗨嗨嗨" or "哎呀呀呀", "babyyy" → "亲爱的的的" or "宝贝贝贝"
 
 FRENCH:
 - Match vous/tu usage based on relationship formality
@@ -535,6 +550,7 @@ TRANSLITERATION RULES:
 - Keep the same pronunciation but write it in target language script
 
 FINAL RULE: Return ONLY the translated text with perfect tone preservation. Nothing else. No explanations whatsoever.`;
+
         }
 
         // Add contextual tone analysis for enhanced understanding when tone mode is enabled
@@ -778,8 +794,23 @@ For Korean translations, you MUST add cute chatting elements:
 
 const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLanguage = null, useToneUnderstanding = false, apiKey = MISTRAL_API_KEY) => {
     const translations = {};
+    let detected = sourceLanguage;
+    try {
+        if (!detected) {
+            detected = await detectLanguage(text);
+        }
+    } catch (_) {
+        // Fallback to null if detection fails; translateText will handle auto-detect
+        detected = sourceLanguage;
+    }
     for (const targetLanguage of targetLanguages) {
-        translations[targetLanguage] = await translateText(text, targetLanguage, sourceLanguage, useToneUnderstanding, apiKey);
+        translations[targetLanguage] = await translateText(
+            text,
+            targetLanguage,
+            detected,
+            useToneUnderstanding,
+            apiKey
+        );
     }
     return translations;
 };

@@ -16,7 +16,50 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'AirTranslator2024!';
 const sessions = new Map();
 
 // Scheduled messages storage
-const scheduledMessages = new Map();
+const scheduledMessages = new Map(); // job metadata only (JSON-safe)
+const scheduledJobs = new Map(); // jobId -> cron job handle
+
+// In-memory caps and intervals
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const SESSION_SWEEP_INTERVAL_MS = 10 * 60 * 1000; // 10m
+const MAX_SESSIONS = 5000;
+const MAX_SCHEDULED_MESSAGES = 1000;
+
+// Analytics cache (HTML) with short TTL
+const ANALYTICS_CACHE_TTL_MS = 60 * 1000; // 60s
+let dashboardCache = { html: null, ts: 0 };
+
+// Periodic sweepers to control memory
+function sweepSessions() {
+    const now = Date.now();
+    for (const [token, sess] of sessions.entries()) {
+        if (!sess || (now - (sess.createdAt || 0)) > SESSION_TTL_MS) {
+            sessions.delete(token);
+        }
+    }
+    // Cap size: evict oldest entries if over limit
+    while (sessions.size > MAX_SESSIONS) {
+        const oldestKey = sessions.keys().next().value;
+        sessions.delete(oldestKey);
+    }
+}
+
+function sweepScheduledMessages() {
+    // Cap size only; scheduled jobs are recurring, so we don't TTL them aggressively
+    while (scheduledMessages.size > MAX_SCHEDULED_MESSAGES) {
+        const oldestKey = scheduledMessages.keys().next().value;
+        // try to stop underlying job if still present
+        const job = scheduledJobs.get(oldestKey);
+        if (job && typeof job.destroy === 'function') {
+            try { job.destroy(); } catch (_) {}
+        }
+        scheduledJobs.delete(oldestKey);
+        scheduledMessages.delete(oldestKey);
+    }
+}
+
+setInterval(sweepSessions, SESSION_SWEEP_INTERVAL_MS).unref();
+setInterval(sweepScheduledMessages, SESSION_SWEEP_INTERVAL_MS).unref();
 
 /**
  * Generates a random session token.
@@ -2801,7 +2844,11 @@ function scheduleMessage(messageConfig) {
         timezone
     });
     
-    scheduledMessages.set(job.id, messageConfig);
+    // Store metadata and job handle separately
+    scheduledMessages.set(job.id, { ...messageConfig, createdAt: Date.now(), cronPattern });
+    scheduledJobs.set(job.id, job);
+    // Cap size after insert
+    sweepScheduledMessages();
     return job.id;
 }
 
@@ -2831,11 +2878,12 @@ async function sendScheduledMessage(messageConfig) {
  * @param {string} jobId - The job ID to cancel
  */
 function cancelScheduledMessage(jobId) {
-    const job = scheduledMessages.get(jobId);
-    if (job) {
-        job.destroy();
-        scheduledMessages.delete(jobId);
+    const job = scheduledJobs.get(jobId);
+    if (job && typeof job.destroy === 'function') {
+        try { job.destroy(); } catch (err) { console.error('Error destroying cron job:', err); }
     }
+    scheduledJobs.delete(jobId);
+    scheduledMessages.delete(jobId);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -2977,9 +3025,14 @@ const server = http.createServer(async (req, res) => {
             
             if (isValidSession(sessionToken)) {
                 try {
-                    const analytics = analyticsService.getAnalytics();
-                    const client = global.discordClient;
-                    const dashboard = await generateDashboard(analytics, client);
+                    const now = Date.now();
+                    if (!dashboardCache.html || (now - dashboardCache.ts) > ANALYTICS_CACHE_TTL_MS) {
+                        const analytics = analyticsService.getAnalytics();
+                        const client = global.discordClient;
+                        const html = await generateDashboard(analytics, client);
+                        dashboardCache = { html, ts: now };
+                    }
+                    const dashboard = dashboardCache.html;
                     
                     res.writeHead(200, { 'Content-Type': 'text/html' });
                     res.end(dashboard);
@@ -3003,9 +3056,11 @@ const server = http.createServer(async (req, res) => {
                         createdAt: Date.now(),
                         username: postData.username
                     });
+                    // Cap sessions after insert
+                    sweepSessions();
                     
                     res.writeHead(302, {
-                        'Set-Cookie': `session=${sessionToken}; HttpOnly; Path=/; Max-Age=86400`,
+                        'Set-Cookie': `session=${sessionToken}; HttpOnly; Path=/; Max-Age=${24 * 60 * 60}`,
                         'Location': '/admin'
                     });
                     res.end();

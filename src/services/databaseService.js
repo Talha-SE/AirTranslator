@@ -24,7 +24,7 @@ const connectDB = async () => {
  */
 const getUserVoteCooldown = async (userId) => {
     try {
-        return await VoteCooldown.findOne({ userId });
+        return await VoteCooldown.findOne({ userId }).lean();
     } catch (error) {
         console.error('Error getting user vote cooldown:', error);
         return null;
@@ -197,7 +197,7 @@ const saveServerConfig = async (serverId, config) => {
 };
 
 const getServerConfig = async (serverId) => {
-    const server = await Server.findOne({ serverId });
+    const server = await Server.findOne({ serverId }).lean();
     return server;
 };
 
@@ -271,7 +271,7 @@ const createServerSetup = async (serverId, serverName, setupName, channels, lang
 };
 
 const getServerSetups = async (serverId) => {
-    const server = await Server.findOne({ serverId });
+    const server = await Server.findOne({ serverId }).lean();
     return server;
 };
 
@@ -317,7 +317,7 @@ const deleteServerSetup = async (serverId, setupName) => {
 };
 
 const getSetupsByChannelId = async (serverId, channelId) => {
-    const server = await Server.findOne({ serverId });
+    const server = await Server.findOne({ serverId }).lean();
     if (!server) return [];
 
     // Find ALL setups that include this channel
@@ -431,7 +431,7 @@ const saveMonetizationSettings = async (settings) => {
  */
 const getServer = async (serverId) => {
     try {
-        const server = await Server.findOne({ serverId });
+        const server = await Server.findOne({ serverId }).lean();
         return server;
     } catch (error) {
         console.error('Error getting server:', error);
@@ -529,7 +529,7 @@ const updateServerTranslationCount = async (serverId, count) => {
  */
 const getAllServers = async () => {
     try {
-        const servers = await Server.find({}).select('serverId serverName translationCount monetization');
+        const servers = await Server.find({}).select('serverId serverName translationCount monetization').lean();
         return servers.map(server => ({
             server_id: server.serverId,
             server_name: server.serverName,
@@ -612,7 +612,7 @@ const togglePersonalTranslation = async (userId, enabled, targetLanguages = []) 
  */
 const getPersonalTranslationSettings = async (userId) => {
     try {
-        const settings = await PersonalTranslation.findOne({ userId, enabled: true });
+        const settings = await PersonalTranslation.findOne({ userId, enabled: true }).lean();
         return settings;
     } catch (error) {
         console.error('Error getting personal translation settings:', error);
@@ -691,7 +691,7 @@ const toggleTranslationStyle = async (serverId, channelId = null, isThreadBased 
  */
 const shouldUseThreadTranslation = async (serverId, channelId) => {
     try {
-        const server = await Server.findOne({ serverId });
+        const server = await Server.findOne({ serverId }).lean();
         if (!server) return false;
 
         // Check channel-specific setting first
