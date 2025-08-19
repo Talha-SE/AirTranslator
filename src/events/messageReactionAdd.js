@@ -459,13 +459,13 @@ async function messageReactionAdd(client, reaction, user) {
                 inline: false
             })
             .addFields({
-                name: '🔍 Translation Info',
-                value: `**From:** ${getLanguageDisplayName(detectedLanguage)}\n**Requested by:** <@${user.id}>\n**Original:** [Jump to message](${message.url})`,
+                name: '🔍 Info',
+                value: `**Original:** [Jump to message](${message.url})`,
                 inline: false
             })
-            .setTimestamp()
+            
             .setFooter({
-                text: 'React with 🏴 flags to translate messages • Auto-deletes in 1min • AirTranslator',
+                text: 'Auto-deletes in 1 min',
                 iconURL: client.user.displayAvatarURL()
             });
 
