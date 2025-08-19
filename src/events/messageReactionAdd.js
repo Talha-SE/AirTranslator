@@ -5,6 +5,58 @@ const { getPersonalTranslationSettings, recordPersonalTranslation } = require('.
 const monetizationService = require('../services/monetizationService');
 const analyticsService = require('../services/analyticsService');
 
+// Local vote tracking (mirrors messageCreate.js behavior) for flag-reaction path
+const VOTE_CREDIT_DELAY = 15 * 1000; // 15 seconds
+const VOTE_BONUS_AMOUNT = 50; // Free translations to grant
+
+async function startVoteTrackingForServer(serverId, userInfo, client) {
+    try {
+        setTimeout(async () => {
+            try {
+                console.log(`🎯 Auto-granting ${VOTE_BONUS_AMOUNT} free translations to server ${serverId} after vote button click (flag path)`);
+                const result = await monetizationService.handleVoteReward(userInfo?.id, serverId, VOTE_BONUS_AMOUNT);
+                if (result.success) {
+                    console.log(`✅ Successfully granted ${VOTE_BONUS_AMOUNT} bonus translations to server ${serverId} by user ${userInfo?.username || 'Unknown'} (flag path)`);
+                    try {
+                        if (client) {
+                            const guild = client.guilds.cache.get(serverId);
+                            if (guild) {
+                                const channel = guild.systemChannel || guild.channels.cache.find(ch => ch.type === 0 && ch.permissionsFor(guild.members.me)?.has(['SendMessages', 'EmbedLinks']));
+                                if (channel) {
+                                    const confirmEmbed = new EmbedBuilder()
+                                        .setTitle('🎉 Free Credits Added!')
+                                        .setDescription(`**${VOTE_BONUS_AMOUNT} free translations** have been added to your server!`)
+                                        .setColor('#00ff88')
+                                        .addFields({
+                                            name: '✨ Thank you!',
+                                            value: `Thanks to ${userInfo?.displayName || 'a user'} for supporting AirTranslator!`,
+                                            inline: false
+                                        })
+                                        .setFooter({
+                                            text: 'AirTranslator • Vote rewards',
+                                            iconURL: client.user.displayAvatarURL()
+                                        })
+                                        .setTimestamp();
+                                    await channel.send({ embeds: [confirmEmbed] });
+                                }
+                            }
+                        }
+                    } catch (confirmError) {
+                        console.error('Error sending confirmation message (flag path):', confirmError);
+                    }
+                } else {
+                    console.error(`❌ Failed to grant bonus translations to server ${serverId}:`, result.error);
+                }
+            } catch (error) {
+                console.error(`❌ Error granting vote bonus to server ${serverId} (flag path):`, error);
+            }
+        }, VOTE_CREDIT_DELAY);
+        console.log(`🗳️ Started vote tracking (flag path) for server ${serverId} by user ${userInfo?.username || 'Unknown'} - credits in ${VOTE_CREDIT_DELAY/1000}s`);
+    } catch (e) {
+        console.error('Failed to start vote tracking (flag path):', e);
+    }
+}
+
 async function messageReactionAdd(client, reaction, user) {
     // Ignore bot reactions
     if (user.bot) return;
@@ -261,6 +313,15 @@ async function messageReactionAdd(client, reaction, user) {
                     .setURL('https://your-website.com/premium');
 
                 const actionRow = new ActionRowBuilder().addComponents(voteButton, supportButton);
+
+                // Start vote tracking similar to message limit flow
+                const userInfo = {
+                    id: user.id,
+                    username: user.username,
+                    displayName: user.displayName || user.username,
+                    displayAvatarURL: () => user.displayAvatarURL({ dynamic: true, size: 64 })
+                };
+                startVoteTrackingForServer(serverId, userInfo, client);
 
                 // Try to send to the current channel, fallback to system channel or first text channel with perms
                 let targetChannel = message.channel;

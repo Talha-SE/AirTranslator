@@ -143,6 +143,36 @@ const getRecentVoteEvents = async (limit = 20) => {
     }
 };
 
+/**
+ * Delete a specific vote event by its ID
+ * @param {string} voteId - The MongoDB _id of the vote event
+ * @returns {Promise<boolean>} - True if a document was deleted
+ */
+const deleteVoteEventById = async (voteId) => {
+    try {
+        // Fetch the event first to know which user cooldown to clear
+        const event = await VoteEvent.findById(voteId).lean();
+        const res = await VoteEvent.deleteOne({ _id: voteId });
+        const deleted = (res?.deletedCount || 0) > 0;
+
+        if (deleted && event && event.userId) {
+            // Only clear cooldown if this event actually granted credits
+            if (typeof event.creditsGranted === 'number' && event.creditsGranted > 0) {
+                try {
+                    await VoteCooldown.deleteOne({ userId: event.userId });
+                } catch (err) {
+                    console.error('Error clearing user vote cooldown during delete:', err);
+                }
+            }
+        }
+
+        return deleted;
+    } catch (error) {
+        console.error('Error deleting vote event:', error);
+        return false;
+    }
+};
+
 const saveServerConfig = async (serverId, config) => {
     const server = await Server.findOneAndUpdate(
         { serverId },
@@ -709,5 +739,6 @@ module.exports = {
     cleanupExpiredVoteCooldowns,
     saveVoteEvent,
     getVoteStats,
-    getRecentVoteEvents
+    getRecentVoteEvents,
+    deleteVoteEventById
 };

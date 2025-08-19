@@ -250,34 +250,44 @@ class MonetizationService {
      */
     async getAllServersStatus(client) {
         try {
+            await this.ensureSettingsLoaded();
             const servers = await databaseService.getAllServers();
-            const serversStatus = [];
 
-            for (const server of servers) {
-                const serverSettings = await this.getServerSettings(server.server_id);
-                
-                let serverInfo = {
-                    id: server.server_id,
-                    name: 'Unknown Server',
-                    translationCount: server.translation_count || 0,
-                    isExempt: serverSettings.isExempt,
-                    isRestricted: serverSettings.isRestricted || this.globalSettings.enableGlobalRestriction,
-                    canTranslate: await this.canTranslate(server.server_id),
-                    freeTranslationLimit: serverSettings.customLimit || serverSettings.freeTranslationLimit,
-                    lastReset: serverSettings.lastReset
+            const serversStatus = servers.map((server) => {
+                const sMon = server.monetization || {
+                    freeTranslationLimit: this.globalSettings.defaultFreeTranslationLimit,
+                    isRestricted: this.globalSettings.enableGlobalRestriction,
+                    isExempt: false,
+                    lastReset: new Date(),
+                    customLimit: null
                 };
 
-                // Get server name from Discord client
+                const translationCount = server.translation_count || 0;
+                const effectiveLimit = sMon.customLimit || sMon.freeTranslationLimit;
+                const isRestricted = sMon.isRestricted || this.globalSettings.enableGlobalRestriction;
+                const canTranslate = sMon.isExempt ? true : (isRestricted ? translationCount < effectiveLimit : true);
+
+                const info = {
+                    id: server.server_id,
+                    name: 'Unknown Server',
+                    translationCount,
+                    isExempt: sMon.isExempt,
+                    isRestricted,
+                    canTranslate,
+                    freeTranslationLimit: effectiveLimit,
+                    lastReset: sMon.lastReset
+                };
+
                 if (client) {
-                    const discordServer = client.guilds.cache.get(server.server_id);
-                    if (discordServer) {
-                        serverInfo.name = discordServer.name;
-                        serverInfo.memberCount = discordServer.memberCount;
+                    const guild = client.guilds.cache.get(server.server_id);
+                    if (guild) {
+                        info.name = guild.name;
+                        info.memberCount = guild.memberCount;
                     }
                 }
 
-                serversStatus.push(serverInfo);
-            }
+                return info;
+            });
 
             return serversStatus;
         } catch (error) {
@@ -306,7 +316,8 @@ class MonetizationService {
                 const hoursRemaining = Math.ceil(remainingTime / (60 * 60 * 1000));
                 
                 // Record the vote click but don't grant credits
-                await this.recordVoteEvent(serverId, 0, userInfo);
+                const infoFallback = userInfo || (userId ? { id: userId } : null);
+                await this.recordVoteEvent(serverId, 0, infoFallback);
                 
                 console.log(`Vote blocked: User ${userId} is on cooldown for ${hoursRemaining} hours`);
                 return { 
@@ -328,13 +339,15 @@ class MonetizationService {
                 });
                 
                 // Record the vote event with credits granted
-                await this.recordVoteEvent(serverId, bonusAmount, userInfo);
+                const infoFallback = userInfo || (userId ? { id: userId } : null);
+                await this.recordVoteEvent(serverId, bonusAmount, infoFallback);
                 
                 console.log(`Vote reward granted: ${bonusAmount} bonus translations to server ${serverId}`);
                 return { success: true, newLimit, bonusAmount };
             } else {
                 // Record vote without server-specific reward but still apply cooldown
-                await this.recordVoteEvent(null, 0, userInfo);
+                const infoFallback = userInfo || (userId ? { id: userId } : null);
+                await this.recordVoteEvent(null, 0, infoFallback);
                 console.log(`Vote received from user ${userId} - no specific server reward`);
                 return { success: true, message: 'Vote recorded' };
             }
@@ -402,12 +415,16 @@ class MonetizationService {
             
             // Save vote event to database
             if (userInfo) {
+                const safeUsername = userInfo.username || `user_${userInfo.id || 'unknown'}`;
+                const safeDisplayName = userInfo.displayName || safeUsername;
+                const avatarUrl = typeof userInfo.displayAvatarURL === 'function' ? userInfo.displayAvatarURL() : (userInfo.avatar || null);
+
                 const voteEventData = {
                     serverId,
                     userId: userInfo.id,
-                    username: userInfo.username,
-                    displayName: userInfo.displayName || userInfo.username,
-                    avatar: userInfo.displayAvatarURL ? userInfo.displayAvatarURL() : null,
+                    username: safeUsername,
+                    displayName: safeDisplayName,
+                    avatar: avatarUrl,
                     creditsGranted,
                     timestamp: now,
                     status: creditsGranted > 0 ? 'granted' : 'blocked_cooldown'
@@ -436,6 +453,7 @@ class MonetizationService {
                 totalCreditsGranted: stats.totalCreditsGranted,
                 todayVotes: stats.todayVotes,
                 recentVotes: recentVotes.map(vote => ({
+                    id: vote._id,
                     serverId: vote.serverId,
                     timestamp: vote.timestamp.toISOString(),
                     creditsGranted: vote.creditsGranted,

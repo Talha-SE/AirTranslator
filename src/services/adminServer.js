@@ -2,6 +2,7 @@ const http = require('http');
 const crypto = require('crypto');
 const analyticsService = require('./analyticsService');
 const monetizationService = require('./monetizationService');
+const databaseService = require('./databaseService');
 const nodeCron = require('node-cron');
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
@@ -662,6 +663,44 @@ async function generateMonetizationContent(client) {
         const serversStatus = await monetizationService.getAllServersStatus(client);
         // Get vote statistics
         const voteStats = await monetizationService.getVoteStats();
+        // Enrich recent votes with Discord user info (only up to 20) to show proper @username
+        let enrichedRecentVotes = voteStats.recentVotes.slice(0, 20);
+        if (client && enrichedRecentVotes.length) {
+            enrichedRecentVotes = await Promise.all(enrichedRecentVotes.map(async (vote) => {
+                const uid = vote?.user?.id;
+                if (!uid) return vote;
+
+                // If username seems missing or numeric-only, try to fill from Discord API
+                const currentName = vote.user.displayName || vote.user.username || '';
+                const needsEnrich = !currentName || /^\d+$/.test(currentName);
+                if (!needsEnrich) return vote;
+
+                try {
+                    const cached = client.users.cache.get(uid);
+                    if (cached) {
+                        return {
+                            ...vote,
+                            user: {
+                                ...vote.user,
+                                username: cached.username || vote.user.username,
+                                displayName: cached.displayName || cached.username || vote.user.displayName || vote.user.username
+                            }
+                        };
+                    }
+                    const fetched = await client.users.fetch(uid);
+                    return {
+                        ...vote,
+                        user: {
+                            ...vote.user,
+                            username: fetched?.username || vote.user.username,
+                            displayName: fetched?.displayName || fetched?.username || vote.user.displayName || vote.user.username
+                        }
+                    };
+                } catch (_) {
+                    return vote;
+                }
+            }));
+        }
         
         // Calculate global statistics
         const totalServers = serversStatus.length;
@@ -771,16 +810,24 @@ async function generateMonetizationContent(client) {
                                     <th>Credits Granted</th>
                                     <th>Timestamp</th>
                                     <th>Status</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${voteStats.recentVotes.slice(0, 20).map(vote => {
+                                ${enrichedRecentVotes.map(vote => {
                                     const server = client ? client.guilds.cache.get(vote.serverId) : null;
                                     const serverName = server ? server.name : 'Unknown Server';
                                     const timeAgo = new Date(vote.timestamp).toLocaleString();
+                                    const rawName = vote.user ? (vote.user.displayName || vote.user.username || '') : '';
+                                    const isNumericOnly = /^\d+$/.test(rawName);
+                                    const safeName = vote.user ? (
+                                        isNumericOnly
+                                            ? `user_${(vote.user.id || '').toString().slice(-4)}`
+                                            : rawName || `user_${(vote.user.id || '').toString().slice(-4)}`
+                                    ) : 'unknown_user';
                                     const userDisplay = vote.user ? 
                                         `<td>
-                                            <span class="user-mention">@${vote.user.displayName}</span>
+                                            <span class="user-mention">@${safeName}</span>
                                             <br>
                                             <small class="text-muted">ID: ${vote.user.id}</small>
                                             <br><small class="${vote.creditsGranted > 0 ? 'text-success' : 'text-warning'}">
@@ -808,10 +855,35 @@ async function generateMonetizationContent(client) {
                                         <td><span class="credit-badge">+${vote.creditsGranted}</span></td>
                                         <td>${timeAgo}</td>
                                         <td><span class="status-success">✅ Granted</span></td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="deleteVoteRecord('${vote.id}')">Delete</button>
+                                        </td>
                                     </tr>`;
                                 }).join('')}
                             </tbody>
                         </table>
+                        <script>
+                            async function deleteVoteRecord(voteId) {
+                                if (!voteId) return;
+                                if (!confirm('Are you sure you want to permanently delete this vote record?')) return;
+                                try {
+                                    const res = await fetch('/admin/monetization/vote/delete', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ voteId })
+                                    });
+                                    const data = await res.json();
+                                    if (data.success) {
+                                        alert('Vote record deleted.');
+                                        location.reload();
+                                    } else {
+                                        alert('Failed to delete: ' + (data.message || 'Unknown error'));
+                                    }
+                                } catch (e) {
+                                    alert('Error deleting vote: ' + e.message);
+                                }
+                            }
+                        </script>
                     </div>
                 </div>
                 
@@ -3122,6 +3194,31 @@ const server = http.createServer(async (req, res) => {
                 console.error('Error setting custom limit:', error);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+        
+        // Delete a specific vote record
+        } else if (pathname === '/admin/monetization/vote/delete' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            try {
+                const data = await parsePostData(req);
+                const { voteId } = JSON.parse(data.body || '{}');
+                if (!voteId) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'voteId required' }));
+                    return;
+                }
+                const deleted = await databaseService.deleteVoteEventById(voteId);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: deleted }));
+            } catch (error) {
+                console.error('Error deleting vote record:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Server error' }));
             }
         
         // Vote webhook endpoint for top.gg
