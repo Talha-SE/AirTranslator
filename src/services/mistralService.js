@@ -738,7 +738,7 @@ For Korean translations, you MUST add cute chatting elements:
         }
 
         const response = await postMistralWithRetry({
-            model: 'mistral-medium-latest',
+            model: 'mistral-small-latest',
             messages: [
                 {
                     role: 'system',
