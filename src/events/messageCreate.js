@@ -555,7 +555,10 @@ async function translateAndReply(message, languages) {
                     // Text-based translation with immediate placeholder edit for the first chunk
                     if (i === 0 && placeholderReply) {
                         try {
-                            await placeholderReply.edit(replyOptions);
+                            await placeholderReply.edit({
+                                content: 'Translated',
+                                ...replyOptions
+                            });
                         } catch (editErr) {
                             console.log('Failed to edit placeholder, sending new reply instead');
                             await message.reply(replyOptions);
