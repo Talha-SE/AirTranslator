@@ -101,6 +101,43 @@ const normalizeElongatedText = (text) => {
 };
 
 /**
+ * Emoji utilities for strict preservation behavior
+ */
+const EMOJI_REGEX = /[\u{1F300}-\u{1F5FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E6}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
+const hasEmoji = (text) => {
+    if (!text) return false;
+    return EMOJI_REGEX.test(text);
+};
+const extractEmojis = (text) => {
+    if (!text) return [];
+    return (text.match(EMOJI_REGEX) || []);
+};
+const stripEmojis = (text) => {
+    if (!text) return text;
+    return text.replace(EMOJI_REGEX, '');
+};
+
+// Filters translation emojis to only those present in the allowed set, respecting counts
+const filterEmojisToAllowed = (text, allowedEmojis) => {
+    if (!text) return text;
+    if (!allowedEmojis || allowedEmojis.length === 0) return stripEmojis(text);
+    // Build count map from allowed emojis (source counts)
+    const allowedCounts = new Map();
+    for (const e of allowedEmojis) {
+        allowedCounts.set(e, (allowedCounts.get(e) || 0) + 1);
+    }
+    // Replace any emoji exceeding counts or not in allowed set
+    return text.replace(EMOJI_REGEX, (m) => {
+        const left = allowedCounts.get(m) || 0;
+        if (left > 0) {
+            allowedCounts.set(m, left - 1);
+            return m; // keep
+        }
+        return ''; // remove extra or disallowed emoji
+    });
+};
+
+/**
  * Removes unwanted explanatory notes from translations
  * @param {string} translation - The translated text
  * @returns {string} - Clean translation without notes
@@ -399,9 +436,12 @@ CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - Preserve every emoji exactly as written (😊 stays 😊, ❤️ stays ❤️)
 - Never translate emoji meanings
 - Maintain original emoji positions
+- Do NOT replace words with emojis or symbols. If the source text says something like "thumbs up", translate the phrase as words; do not output 👍 unless the original already contains 👍.
+- Do NOT add new emojis that are not in the source. Only preserve existing emojis.
 - Preserve all line breaks and spacing exactly
 - Preserve punctuation and special characters
 - Preserve the author's exact voice and style
+- NUMBERS: Preserve numeric digits exactly as digits. Do not spell out numbers (5 stays 5). If the source spells a number in words ("five"), translate it as words. For mixed forms (e.g., "5th", "5/10", times, dates, codes), keep the numerals and translate only the linguistic parts/suffixes.
 - Prioritize accuracy in conveying the author's exact meaning. Maintain the original tone, formality level, and writing style.
 - Your translation should read as if the original author wrote it directly in the target language. Preserve nuance, idioms, and cultural context appropriately.
 - Focus on delivering translations that capture not just what was said, but how it was said - including humor, emotion, and subtle implications.
@@ -487,8 +527,11 @@ CRITICAL TECHNICAL RULES - FOLLOW EXACTLY:
 - Preserve every emoji exactly as written (😊 stays 😊, ❤️ stays ❤️)
 - Never translate emoji meanings
 - Maintain original emoji positions
+- Do NOT replace words with emojis or symbols. If the source text contains phrases like "thumbs up", translate the phrase as words; do not output 👍 unless the original already contains 👍.
+- Do NOT add new emojis that are not in the source. Only preserve existing emojis.
 - Preserve all line breaks and spacing exactly
 - Preserve punctuation intensity (!! stays !!, ... stays ...)
+- NUMBERS: Preserve numeric digits exactly as digits. Do not spell out numbers (5 stays 5). If the source spells a number in words ("five"), translate it as words. For mixed forms (e.g., "5th", "5/10", times, dates, codes), keep the numerals and translate only the linguistic parts/suffixes.
 
 LANGUAGE-SPECIFIC EXPERTISE:
 KOREAN:
@@ -729,8 +772,23 @@ For Korean translations, you MUST add cute chatting elements:
         // Only preserve technical items (URLs, mentions, etc.) that shouldn't be changed at all
         const { processedText, nameMap } = markNamesForTransliteration(normalizedText);
 
+        // Prepare dynamic hard constraints based on source text
+        const sourceHasEmoji = hasEmoji(normalizedText);
+        const sourceEmojis = extractEmojis(normalizedText);
+        const sourceHasNonEmojiText = stripEmojis(normalizedText).trim().length > 0;
+        let dynamicHardConstraints = '';
+        if (!sourceHasEmoji) {
+            dynamicHardConstraints += '\n\nHARD CONSTRAINT: The source contains no emojis. The output MUST NOT contain any emoji characters.';
+        } else {
+            const list = Array.from(new Set(sourceEmojis)).join(' ');
+            dynamicHardConstraints += `\n\nHARD CONSTRAINT: Preserve exactly these emojis in their original positions and do NOT add any new emojis: ${list}`;
+        }
+        if (sourceHasNonEmojiText) {
+            dynamicHardConstraints += '\n\nHARD CONSTRAINT: The source contains non-emoji text. The translation MUST include corresponding non-emoji text. Do NOT reply with emojis only.';
+        }
+
         // Prepare system content without placeholder instructions if no placeholders are needed
-        let finalSystemContent = systemContent + toneContextPrompt;
+        let finalSystemContent = systemContent + toneContextPrompt + dynamicHardConstraints;
         if (nameMap.size > 0) {
             finalSystemContent += '\n\nCRITICAL: You will see placeholder text that looks like "__PRESERVE_0_1__" or "__PRESERVE_1_2__" etc. These are special markers for technical content. Keep these placeholders EXACTLY as they appear - do not modify the numbers, underscores, or any part of them. Do not create your own placeholders.';
         } else {
@@ -767,6 +825,49 @@ For Korean translations, you MUST add cute chatting elements:
         
         // Restore the preserved technical items (URLs, mentions, etc.)
         translation = restorePreservedItems(translation, nameMap);
+
+        // Enforce emoji policy based on source
+        if (sourceHasEmoji) {
+            translation = filterEmojisToAllowed(translation, sourceEmojis);
+        } else {
+            translation = stripEmojis(translation);
+        }
+
+        // If model returned only emojis but source had non-emoji text, retry once with stricter instruction
+        const translationHasNonEmojiText = stripEmojis(translation).trim().length > 0;
+        if (sourceHasNonEmojiText && !translationHasNonEmojiText) {
+            try {
+                const retryMessages = [
+                    { role: 'system', content: finalSystemContent + '\n\nHARD CONSTRAINT: Your output must contain the full textual translation. Do NOT reply with emojis only.' },
+                    { role: 'user', content: `Translate to ${targetLangName}: "${processedText}"` }
+                ];
+                const retryResponse = await postMistralWithRetry({
+                    model: 'mistral-small-latest',
+                    messages: retryMessages,
+                    temperature: 0.1,
+                    max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2)))
+                }, apiKey);
+                let retryTranslation = retryResponse.data.choices[0].message.content.trim();
+                if ((retryTranslation.startsWith('"') && retryTranslation.endsWith('"')) ||
+                    (retryTranslation.startsWith("'") && retryTranslation.endsWith("'"))) {
+                    retryTranslation = retryTranslation.slice(1, -1);
+                }
+                retryTranslation = removeUnwantedNotes(retryTranslation);
+                retryTranslation = restorePreservedItems(retryTranslation, nameMap);
+                if (sourceHasEmoji) {
+                    retryTranslation = filterEmojisToAllowed(retryTranslation, sourceEmojis);
+                } else {
+                    retryTranslation = stripEmojis(retryTranslation);
+                }
+                if (stripEmojis(retryTranslation).trim().length > 0) {
+                    translation = retryTranslation;
+                } else {
+                    console.warn('⚠️ Retry still produced emoji-only translation; keeping original.');
+                }
+            } catch (e) {
+                console.warn('⚠️ Retry failed:', e.message || e);
+            }
+        }
         
         // Clean up any rogue placeholders that Mistral created on its own
         if (nameMap.size === 0) {
@@ -829,7 +930,7 @@ const analyzeAndTranslateImage = async (imageUrl, targetLanguage, apiKey = MISTR
         const response = await axios.post(
             'https://api.mistral.ai/v1/chat/completions',
             {
-                model: 'mistral-medium-latest', // Using Mistral Medium model for better vision capabilities
+                model: 'mistral-small-latest', // Using Mistral Medium model for better vision capabilities
                 messages: [
                     {
                         role: 'user',
