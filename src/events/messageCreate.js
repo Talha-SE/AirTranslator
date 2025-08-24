@@ -291,19 +291,6 @@ async function translateAndReply(message, languages) {
         // Check if this channel should use thread-based translation
         const useThreadTranslation = await shouldUseThreadTranslation(message.guild.id, message.channel.id);
         
-        // Immediately place a placeholder reply under the original message (non-thread mode only)
-        let placeholderReply = null;
-        if (!useThreadTranslation) {
-            try {
-                placeholderReply = await message.reply({
-                    content: 'Translating…',
-                    allowedMentions: { repliedUser: false }
-                });
-            } catch (e) {
-                console.log('Could not send placeholder reply:', e?.message || e);
-            }
-        }
-        
         // Detect the language only once for efficiency
         const detectedLanguage = await detectLanguage(message.content);
         console.log(`Detected language: ${detectedLanguage} for message: "${message.content.substring(0, 30)}${message.content.length > 30 ? '...' : ''}"`);
@@ -318,18 +305,7 @@ async function translateAndReply(message, languages) {
             !alreadyTranslatedTo.has(language.toLowerCase())
         );
         
-        if (targetLanguagesArray.length === 0) {
-            // Nothing to translate (e.g., target list equals detected language)
-            if (placeholderReply) {
-                try {
-                    await placeholderReply.edit({
-                        content: 'No translation needed for this message.',
-                        allowedMentions: { repliedUser: false }
-                    });
-                } catch (_) {}
-            }
-            return;
-        }
+        if (targetLanguagesArray.length === 0) return;
         
         // Use dual-API translation for real-time processing
         const translations = await translationQueue.push(async () => {
@@ -552,20 +528,8 @@ async function translateAndReply(message, languages) {
                         }, 30 * 1000); // 30 seconds
                     }
                 } else {
-                    // Text-based translation with immediate placeholder edit for the first chunk
-                    if (i === 0 && placeholderReply) {
-                        try {
-                            await placeholderReply.edit({
-                                content: 'Translated',
-                                ...replyOptions
-                            });
-                        } catch (editErr) {
-                            console.log('Failed to edit placeholder, sending new reply instead');
-                            await message.reply(replyOptions);
-                        }
-                    } else {
-                        await message.reply(replyOptions);
-                    }
+                    // Text-based translation (original behavior)
+                    await message.reply(replyOptions);
                 }
                 
                 // Check for auto-cleanup configuration and schedule deletion of original message
@@ -580,15 +544,6 @@ async function translateAndReply(message, languages) {
         }
     } catch (error) {
         console.error('Error in translateAndReply:', error);
-        // Best-effort update to placeholder if one exists
-        try {
-            if (typeof placeholderReply !== 'undefined' && placeholderReply) {
-                await placeholderReply.edit({
-                    content: '⚠️ Failed to translate this message. Please try again.',
-                    allowedMentions: { repliedUser: false }
-                });
-            }
-        } catch (_) {}
     }
 }
 
