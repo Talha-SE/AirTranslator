@@ -420,7 +420,7 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         }
 
         // Create appropriate system prompt based on tone understanding setting
-        let systemContent = `You are a professional native translator. Translate text accurately and naturally as user intented while preserving meaning and style. Give complete translation.
+        let systemContent = `You are a professional native translator. Translate text naturally while preserving meaning and style. Give complete translation.
 
 CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - TRANSLATE ONLY THE INPUT TEXT - do not add, expand, or create additional content
