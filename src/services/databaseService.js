@@ -11,6 +11,28 @@ const connectDB = async () => {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
         console.log('MongoDB connected');
+
+        // Ensure indexes are correct and remove legacy problematic ones
+        try {
+            // Drop a legacy unique index on setups.setupId if it exists (causes dup key on null)
+            const indexes = await mongoose.connection.db.collection('servers').indexes();
+            const legacy = indexes.find(idx => idx.name === 'setups.setupId_1' || (idx.key && idx.key['setups.setupId'] === 1 && !idx.partialFilterExpression));
+            if (legacy) {
+                await mongoose.connection.db.collection('servers').dropIndex(legacy.name);
+                console.log(`Dropped legacy index: ${legacy.name}`);
+            }
+        } catch (idxErr) {
+            // Non-fatal
+            console.warn('Index maintenance warning:', idxErr.message || idxErr);
+        }
+
+        // Align collection indexes with Mongoose schema (will create missing and remove extraneous)
+        try {
+            await require('../models/Server').syncIndexes();
+            console.log('Server indexes synced');
+        } catch (syncErr) {
+            console.warn('Server index sync warning:', syncErr.message || syncErr);
+        }
     } catch (error) {
         console.error('MongoDB connection error:', error);
         process.exit(1);

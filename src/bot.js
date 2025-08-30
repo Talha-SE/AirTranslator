@@ -1,4 +1,6 @@
 const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, Partials } = require('discord.js');
+const { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus } = require('@discordjs/voice');
+const TTSSettings = require('./models/TTSSettings');
 const { connectDB } = require('./services/databaseService');
 const analyticsService = require('./services/analyticsService');
 const translationQueueService = require('./services/translationQueueService');
@@ -12,7 +14,8 @@ const client = new Client({
         GatewayIntentBits.Guilds, 
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMessageReactions
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildVoiceStates,
     ],
     partials: [
         Partials.Message,
@@ -41,6 +44,7 @@ const flagsCommand = require('./commands/flags');
 const autoCleanupCommand = require('./commands/autoCleanup');
 const personalBuddyCommand = require('./commands/personalBuddy');
 const styleCommand = require('./commands/style');
+const ttsSetupCommand = require('./commands/ttsSetup');
 
 client.commands.set('quicksetup', quickSetupCommand);
 client.commands.set('addchannel', addChannelCommand);
@@ -55,6 +59,7 @@ client.commands.set('flags', flagsCommand);
 client.commands.set('autocleanup', autoCleanupCommand);
 client.commands.set('personalbuddy', personalBuddyCommand);
 client.commands.set('style', styleCommand);
+client.commands.set('ttssetup', ttsSetupCommand);
 
 // Load events
 const ready = require('./events/ready');
@@ -85,6 +90,54 @@ client.on('guildDelete', (guild) => {
     guildDelete(guild);
     // Update server list when bot leaves a server
     analyticsService.updateServerList(client);
+});
+
+// Keep bot in configured TTS voice channel when users are present; leave when empty
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    try {
+        const guild = newState?.guild || oldState?.guild;
+        if (!guild) return;
+        const settings = await TTSSettings.findOne({ guildId: guild.id, enabled: true }).lean();
+        if (!settings || !settings.voiceChannelId) return;
+
+        // Only react if the update involves the configured channel
+        const affectedIds = [oldState?.channelId, newState?.channelId].filter(Boolean);
+        if (!affectedIds.includes(settings.voiceChannelId)) return;
+
+        const voiceChannel = guild.channels.cache.get(settings.voiceChannelId);
+        if (!voiceChannel) return;
+
+        const nonBotCount = voiceChannel.members.filter(m => !m.user.bot).size;
+        const connection = getVoiceConnection(guild.id);
+
+        if (nonBotCount > 0) {
+            // Ensure joined
+            if (!connection || connection.state.status === VoiceConnectionStatus.Destroyed) {
+                joinVoiceChannel({
+                    channelId: voiceChannel.id,
+                    guildId: guild.id,
+                    adapterCreator: guild.voiceAdapterCreator,
+                    selfDeaf: true,
+                });
+                console.log('[VoicePresence] Joined configured TTS channel due to user presence', {
+                    guildId: guild.id,
+                    channelId: voiceChannel.id,
+                    nonBotCount,
+                });
+            }
+        } else {
+            // Leave if empty
+            if (connection) {
+                try { connection.destroy(); } catch {}
+                console.log('[VoicePresence] Left configured TTS channel because it is empty', {
+                    guildId: guild.id,
+                    channelId: voiceChannel.id,
+                });
+            }
+        }
+    } catch (err) {
+        console.error('[VoicePresence] voiceStateUpdate error:', err);
+    }
 });
 
 client.on('guildCreate', async (guild) => {

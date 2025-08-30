@@ -251,9 +251,14 @@ class MonetizationService {
     async getAllServersStatus(client) {
         try {
             await this.ensureSettingsLoaded();
-            const servers = await databaseService.getAllServers();
 
-            const serversStatus = servers.map((server) => {
+            // 1) Load servers known in DB
+            const dbServers = await databaseService.getAllServers();
+
+            // Map for quick lookup by id
+            const byId = new Map();
+
+            const fromDb = dbServers.map((server) => {
                 const sMon = server.monetization || {
                     freeTranslationLimit: this.globalSettings.defaultFreeTranslationLimit,
                     isRestricted: this.globalSettings.enableGlobalRestriction,
@@ -275,21 +280,53 @@ class MonetizationService {
                     isRestricted,
                     canTranslate,
                     freeTranslationLimit: effectiveLimit,
-                    lastReset: sMon.lastReset
+                    lastReset: sMon.lastReset,
+                    memberCount: undefined
                 };
 
-                if (client) {
-                    const guild = client.guilds.cache.get(server.server_id);
-                    if (guild) {
-                        info.name = guild.name;
-                        info.memberCount = guild.memberCount;
-                    }
-                }
-
+                byId.set(info.id, info);
                 return info;
             });
 
-            return serversStatus;
+            // 2) Add any guilds from the client that are not in DB yet
+            const merged = [...fromDb];
+            if (client && client.guilds && client.guilds.cache) {
+                client.guilds.cache.forEach((guild) => {
+                    if (!byId.has(guild.id)) {
+                        const sMonDefault = {
+                            freeTranslationLimit: this.globalSettings.defaultFreeTranslationLimit,
+                            isRestricted: this.globalSettings.enableGlobalRestriction,
+                            isExempt: false,
+                            lastReset: new Date(),
+                            customLimit: null
+                        };
+
+                        const effectiveLimit = sMonDefault.customLimit || sMonDefault.freeTranslationLimit;
+                        const info = {
+                            id: guild.id,
+                            name: guild.name || 'Unknown Server',
+                            translationCount: 0,
+                            isExempt: sMonDefault.isExempt,
+                            isRestricted: sMonDefault.isRestricted || this.globalSettings.enableGlobalRestriction,
+                            canTranslate: !sMonDefault.isRestricted || 0 < effectiveLimit,
+                            freeTranslationLimit: effectiveLimit,
+                            lastReset: sMonDefault.lastReset,
+                            memberCount: guild.memberCount
+                        };
+                        merged.push(info);
+                        byId.set(guild.id, info);
+                    } else {
+                        // Enrich existing with live guild info
+                        const existing = byId.get(guild.id);
+                        existing.name = guild.name || existing.name;
+                        existing.memberCount = guild.memberCount;
+                    }
+                });
+            }
+
+            // Optional: sort by name for stable UI
+            merged.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            return merged;
         } catch (error) {
             console.error('Error getting all servers status:', error);
             return [];

@@ -3,8 +3,7 @@ const mongoose = require('mongoose');
 const setupSchema = new mongoose.Schema({
     setupId: {
         type: String,
-        required: true,
-        unique: true
+        required: true
     },
     name: {
         type: String,
@@ -87,6 +86,13 @@ const serverSchema = new mongoose.Schema({
     },
     setups: [setupSchema]
 }, { timestamps: true });
+
+// Ensure setup IDs are unique per server (not globally across the collection)
+// Use a compound partial unique index so documents without setups do not clash on null
+serverSchema.index(
+    { serverId: 1, 'setups.setupId': 1 },
+    { unique: true, partialFilterExpression: { 'setups.setupId': { $exists: true } } }
+);
 
 const Server = mongoose.model('Server', serverSchema);
 

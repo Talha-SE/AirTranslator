@@ -6,7 +6,7 @@ class TranslationQueueService {
         this.maxRetries = 3;
         this.apiKeys = [
             process.env.MISTRAL_API_KEY, // Primary API key
-            process.env.MISTRAL_API_KEY_2 || 'hXtB0z74fQvRLlxJvaWKmOqX82DewIFQ' // Secondary API key
+            process.env.MISTRAL_API_KEY_2 // Secondary API key
         ];
         this.currentApiIndex = 0;
     }

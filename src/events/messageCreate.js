@@ -7,6 +7,10 @@ const analyticsService = require('../services/analyticsService');
 const translationQueueService = require('../services/translationQueueService');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const Server = require('../models/Server');
+const TTSSettings = require('../models/TTSSettings');
+const { synthesizeMultispeaker } = require('../services/ttsService');
+const { validateLanguages, assignVoices } = require('../services/ttsLanguageHelper');
+const { playBufferInChannel } = require('../services/voicePlaybackService');
 
 // Helper function to format language names for display
 function getLanguageDisplayName(language) {
@@ -244,8 +248,9 @@ async function sendLimitReachedMessage(message) {
         
         const voteButton = new ButtonBuilder()
             .setLabel('🗳️ Vote on Top.gg')
-            .setStyle(ButtonStyle.Link)
-            .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${message.guild.id}`); // Server-specific vote tracking
+            .setEmoji('🗳️')
+            .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${message.guild.id}`)
+            .setStyle(ButtonStyle.Link);
 
         const supportButton = new ButtonBuilder()
             .setLabel('💎 Premium Plans')
@@ -286,8 +291,14 @@ async function worker(task) {
     return task();
 }
 
-async function translateAndReply(message, languages) {
+async function translateAndReply(message, languages, options = {}) {
+    console.log('[DEBUG] Translation started', { 
+        languages,
+        forQuickSetup: options.forQuickSetup,
+        channel: message.channel.name 
+    });
     try {
+        const { forQuickSetup = false } = options;
         // Check if this channel should use thread-based translation
         const useThreadTranslation = await shouldUseThreadTranslation(message.guild.id, message.channel.id);
         
@@ -541,6 +552,67 @@ async function translateAndReply(message, languages) {
             // Increment translation count after successful translation
             await monetizationService.incrementTranslationCount(message.guild.id);
             console.log(`✅ Translation count incremented for server: ${message.guild.id}`);
+
+            // TTS playback: only for quick-setup path and when configured
+            if (forQuickSetup) {
+                try {
+                    const ttsSettings = await TTSSettings.findOne({ guildId: message.guild.id }).lean();
+                    console.log('[DEBUG] TTS Attempt', {
+                        voiceChannel: ttsSettings?.voiceChannelId,
+                        textChannel: message.channel.id,
+                        matching: message.channel.id === ttsSettings?.textChannelId
+                    });
+                    if (ttsSettings?.enabled && message.channel.id === ttsSettings.textChannelId) {
+                        // Respect max 2 languages and intersect with produced translations
+                        const desired = Array.from(new Set((ttsSettings.languages || []).map(l => String(l).toLowerCase()))).slice(0, 2);
+                        const availablePairs = desired
+                            .map(l => [l, translations[l]])
+                            .filter(([l, t]) => typeof t === 'string' && t.trim().length > 0);
+
+                        if (availablePairs.length > 0) {
+                            // Build multi-speaker script
+                            const [first, second] = availablePairs;
+                            const voices = assignVoices(availablePairs.map(([l]) => l), ttsSettings.voices);
+                            console.log('[TTS] Settings:', {
+                                guildId: message.guild.id,
+                                textChannelId: ttsSettings.textChannelId,
+                                voiceChannelId: ttsSettings.voiceChannelId,
+                                desiredLanguages: desired,
+                                availableLanguages: availablePairs.map(([l]) => l),
+                                voices,
+                            });
+                            let script = 'Read the following translated lines in a clear, natural tone.\n';
+                            script += `Speaker 1 (${first[0]}): ${first[1]}\n`;
+                            if (second) {
+                                script += `Speaker 2 (${second[0]}): ${second[1]}\n`;
+                            }
+
+                            console.log('[TTS] Synthesizing audio...');
+                            const audioBuffer = await synthesizeMultispeaker(script, {
+                                voice1: voices.voice1,
+                            });
+                            console.log('[TTS] Synthesis result bytes:', audioBuffer ? audioBuffer.length : 0);
+                            if (audioBuffer && audioBuffer.length > 0) {
+                                const voiceChannel = message.guild.channels.cache.get(ttsSettings.voiceChannelId);
+                                if (voiceChannel && voiceChannel.joinable) {
+                                    console.log('[TTS] Playing in voice channel', { channelId: voiceChannel.id, name: voiceChannel.name });
+                                    await playBufferInChannel(voiceChannel, audioBuffer);
+                                }
+                                else {
+                                    console.warn('[TTS] Voice channel not joinable or not found', { voiceChannelId: ttsSettings.voiceChannelId });
+                                }
+                            } else {
+                                console.warn('[TTS] No audio buffer returned from synthesis');
+                            }
+                        }
+                        else {
+                            console.warn('[TTS] No available translations match desired languages', { desired, translationsAvailable: Object.keys(translations) });
+                        }
+                    }
+                } catch (ttsErr) {
+                    console.error('TTS process error:', ttsErr);
+                }
+            }
         }
     } catch (error) {
         console.error('Error in translateAndReply:', error);
@@ -616,7 +688,7 @@ module.exports = async (client, message) => {
             )
         )];
         
-        await translateAndReply(message, languages);
+        await translateAndReply(message, languages, { forQuickSetup: true });
     } catch (error) {
         console.error('Error processing message:', error);
         
