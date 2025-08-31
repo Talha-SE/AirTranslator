@@ -62,7 +62,7 @@ async function messageReactionAdd(client, reaction, user) {
     if (user.bot) return;
 
     try {
-        console.log(`🔍 Reaction received from ${user.username}: ${reaction.emoji.name}`);
+        console.log(`🔍 Reaction received from ${user.username} in ${reaction.message?.guild?.name || 'UnknownServer'}: ${reaction.emoji.name}`);
         
         // If the reaction is partial, fetch it
         if (reaction.partial) {
@@ -90,13 +90,15 @@ async function messageReactionAdd(client, reaction, user) {
 
         const message = reaction.message;
         const flagEmoji = reaction.emoji.name;
+        const guildInfo = message.guild ? `${message.guild.name} (${message.guild.id})` : 'DM/Unknown';
+        const channelInfo = message.channel ? `#${message.channel.name} (${message.channel.id})` : 'UnknownChannel';
         
-        console.log(`📝 Message details - Author: ${message.author?.username || 'Unknown'}, Content: "${message.content?.substring(0, 50) || 'No content'}${message.content?.length > 50 ? '...' : ''}"`);
+        console.log(`📝 Message details - Server: ${guildInfo} • Channel: ${channelInfo} • Author: ${message.author?.username || 'Unknown'}, Content: "${message.content?.substring(0, 50) || 'No content'}${message.content?.length > 50 ? '...' : ''}"`);
         
         // Check if this is a flag emoji we support
         const targetLanguage = getFlagLanguage(flagEmoji);
         if (!targetLanguage) {
-            console.log(`⚠️ Unsupported flag emoji: ${flagEmoji}`);
+            console.log(`⚠️ Unsupported flag emoji: ${flagEmoji} • Server: ${guildInfo}`);
             return;
         }
 

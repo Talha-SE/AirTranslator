@@ -9,6 +9,56 @@ const { translateTextToMultipleLanguages } = require('./services/mistralService'
 const { AutoPoster } = require('topgg-autoposter');
 require('dotenv').config();
 
+// Lightweight structured logger with levels, timestamps, and ANSI colors
+const LOGGER_LEVELS = ['debug', 'info', 'success', 'warn', 'error'];
+const COLORS = {
+  reset: '\x1b[0m', dim: '\x1b[2m',
+  gray: '\x1b[90m', blue: '\x1b[34m', green: '\x1b[32m', yellow: '\x1b[33m', red: '\x1b[31m',
+};
+const ICONS = { debug: '🐛', info: 'ℹ️', success: '✅', warn: '⚠️', error: '❌' };
+const LEVEL_COLOR = { debug: COLORS.gray, info: COLORS.blue, success: COLORS.green, warn: COLORS.yellow, error: COLORS.red };
+const ACTIVE_LEVEL = (process.env.LOG_LEVEL || 'info').toLowerCase();
+
+function timeStamp() {
+  const now = new Date();
+  return now.toISOString();
+}
+
+function asPlainObject(errOrObj) {
+  if (!errOrObj) return undefined;
+  if (errOrObj instanceof Error) {
+    return { name: errOrObj.name, message: errOrObj.message, stack: errOrObj.stack };
+  }
+  // Avoid circular JSON; shallow copy primitives
+  try { return JSON.parse(JSON.stringify(errOrObj)); } catch { return { note: 'unserializable_meta' }; }
+}
+
+function createLogger(scope) {
+  const minIndex = LOGGER_LEVELS.indexOf(ACTIVE_LEVEL) === -1 ? 1 : LOGGER_LEVELS.indexOf(ACTIVE_LEVEL);
+  const base = (level, message, meta) => {
+    const idx = LOGGER_LEVELS.indexOf(level);
+    if (idx < minIndex) return;
+    const color = LEVEL_COLOR[level] || COLORS.blue;
+    const icon = ICONS[level] || ICONS.info;
+    const ts = timeStamp();
+    const scopePart = scope ? ` ${COLORS.dim}[${scope}]${COLORS.reset}` : '';
+    const metaObj = asPlainObject(meta);
+    const metaPart = metaObj ? ` ${COLORS.dim}${JSON.stringify(metaObj)}${COLORS.reset}` : '';
+    // eslint-disable-next-line no-console
+    console.log(`${COLORS.dim}${ts}${COLORS.reset} ${color}${icon} ${level.toUpperCase()}${COLORS.reset}${scopePart} ${message}${metaPart}`);
+  };
+  return {
+    debug: (m, meta) => base('debug', m, meta),
+    info: (m, meta) => base('info', m, meta),
+    success: (m, meta) => base('success', m, meta),
+    warn: (m, meta) => base('warn', m, meta),
+    error: (m, meta) => base('error', m, meta),
+    child: (childScope) => createLogger(scope ? `${scope}:${childScope}` : childScope),
+  };
+}
+
+const logger = createLogger('bot');
+
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds, 
@@ -121,7 +171,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     adapterCreator: guild.voiceAdapterCreator,
                     selfDeaf: true,
                 });
-                console.log('[VoicePresence] Joined configured TTS channel due to user presence', {
+                logger.info('[VoicePresence] Joined configured TTS channel due to user presence', {
                     guildId: guild.id,
                     channelId: voiceChannel.id,
                     nonBotCount,
@@ -131,14 +181,14 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             // Leave if empty
             if (connection) {
                 try { connection.destroy(); } catch {}
-                console.log('[VoicePresence] Left configured TTS channel because it is empty', {
+                logger.info('[VoicePresence] Left configured TTS channel because it is empty', {
                     guildId: guild.id,
                     channelId: voiceChannel.id,
                 });
             }
         }
     } catch (err) {
-        console.error('[VoicePresence] voiceStateUpdate error:', err);
+        logger.error('[VoicePresence] voiceStateUpdate error', err);
     }
 });
 
@@ -153,7 +203,7 @@ setInterval(async () => {
             // If no TTS setup exists but bot is connected
             if (!settings && connection) {
                 connection.destroy();
-                console.log('[PeriodicCheck] Left voice channel - no TTS setup found', { guildId: guild.id });
+                logger.info('[PeriodicCheck] Left voice channel - no TTS setup found', { guildId: guild.id });
                 continue;
             }
             
@@ -174,19 +224,19 @@ setInterval(async () => {
                     adapterCreator: guild.voiceAdapterCreator,
                     selfDeaf: true,
                 });
-                console.log('[PeriodicCheck] Rejoined voice channel', { guildId: guild.id, channelId: voiceChannel.id });
+                logger.info('[PeriodicCheck] Rejoined voice channel', { guildId: guild.id, channelId: voiceChannel.id });
             } else if (nonBotCount === 0 && connection) {
                 connection.destroy();
-                console.log('[PeriodicCheck] Left empty voice channel', { guildId: guild.id, channelId: voiceChannel.id });
+                logger.info('[PeriodicCheck] Left empty voice channel', { guildId: guild.id, channelId: voiceChannel.id });
             }
         }
     } catch (error) {
-        console.error('[PeriodicCheck] Error:', error);
+        logger.error('[PeriodicCheck] Error', error);
     }
 }, 120000); // Check every 2 minutes
 
 client.on('guildCreate', async (guild) => {
-    console.log(`Joined new server: ${guild.name}`);
+    logger.success(`Joined new server: ${guild.name}`);
     
     try {
         const channel = guild.systemChannel || guild.channels.cache.find(c => c.type === 0 && c.permissionsFor(guild.me).has('SEND_MESSAGES'));
@@ -202,7 +252,7 @@ client.on('guildCreate', async (guild) => {
             
         await channel.send({ embeds: [welcomeEmbed] });
     } catch (error) {
-        console.error('Failed to send welcome message:', error);
+        logger.warn('Failed to send welcome message', error);
     }
     
     analyticsService.updateServerList(client);
@@ -213,7 +263,7 @@ client.on(Events.InteractionCreate, async interaction => {
         const command = interaction.client.commands.get(interaction.commandName);
 
         if (!command) {
-            console.error(`No command matching ${interaction.commandName} was found.`);
+            logger.warn(`No command matching ${interaction.commandName} was found.`);
             return;
         }
 
@@ -221,8 +271,7 @@ client.on(Events.InteractionCreate, async interaction => {
             // Execute command directly without deferring
             await command.execute(interaction);
         } catch (error) {
-            console.error(`Error executing ${interaction.commandName}`);
-            console.error(error);
+            logger.error(`Error executing ${interaction.commandName}`, error);
 
             try {
                 if (interaction.replied || interaction.deferred) {
@@ -237,7 +286,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     });
                 }
             } catch (err) {
-                console.error('Error handling command error:', err);
+                logger.error('Error handling command error', err);
             }
         }
     } else if (interaction.isButton()) {
@@ -276,7 +325,7 @@ async function startBot() {
         // Start vote checking service
         voteCheckService.setClient(client);
         voteCheckService.start();
-        console.log('Vote checking service started');
+        logger.info('Vote checking service started');
         
         // Initialize Top.gg AutoPoster if token exists
         if (process.env.TOPGG_TOKEN) {
@@ -291,7 +340,7 @@ async function startBot() {
                 
                 poster.on('posted', () => {
                     const daysRunning = Math.floor((Date.now() - START_DATE) / 86400000);
-                    console.log(`🏆 Top.gg Rank Booster Active | Showing ${
+                    logger.success(`Top.gg Rank Booster Active | Showing ${
                         BASE_SERVER_COUNT + client.guilds.cache.size
                     } servers and ${
                         BASE_VOTE_COUNT + (daysRunning * DAILY_GROWTH)
@@ -307,24 +356,24 @@ async function startBot() {
                 });
 
                 poster.on('error', (error) => {
-                    console.log('Top.gg API Error:', error.message);
+                    logger.warn('Top.gg API Error', error);
                 });
             } catch (error) {
-                console.log('Top.gg Integration Failed:', error.message);
+                logger.warn('Top.gg Integration Failed', error);
             }
         }
         
         // Start admin server
         require('./services/adminServer');
         
-        console.log('Bot started successfully!');
-        console.log('Admin panel will be available once the server starts');
+        logger.success('Bot started successfully!');
+        logger.info('Admin panel will be available once the server starts');
         
         // Start processing queued translations
         translationQueueService.startQueueProcessor((content, targetLanguage) => {
             // Determine which API to use based on targetLanguage
             const apiIndex = targetLanguage.charCodeAt(0) % 2; // Simple hash to distribute
-            console.log(`Using API ${apiIndex + 1} for ${targetLanguage}`);
+            logger.debug(`Using API ${apiIndex + 1} for ${targetLanguage}`);
             return translateTextToMultipleLanguages(
                 content, 
                 [targetLanguage],
@@ -334,7 +383,7 @@ async function startBot() {
             );
         });
     } catch (error) {
-        console.error('Failed to start bot:', error);
+        logger.error('Failed to start bot', error);
         process.exit(1);
     }
 }

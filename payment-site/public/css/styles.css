@@ -1,0 +1,65 @@
+*{box-sizing:border-box}
+:root{
+  --bg: #f7f9fc;
+  --surface: #ffffff;
+  --text: #0f172a;
+  --muted: #4b5563;
+  --border: rgba(17,24,39,.08);
+  --shadow: 0 8px 24px rgba(17,24,39,.06);
+  --shadow-lg: 0 16px 40px rgba(17,24,39,.12);
+  --primary: #2563eb; /* blue-600 */
+  --primary-dark: #1e40af; /* blue-800 */
+  --accent: #0ea5e9; /* sky-500 */
+}
+body{margin:0;font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;color:var(--text);background:var(--bg)}
+.container{max-width:1080px;margin:0 auto;padding:24px}
+header h1{color:#111827;margin:0 0 8px;font-size:32px}
+header p{color:var(--muted);margin:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;margin-top:24px}
+
+/* Floating header */
+.site-header{position:fixed;top:0;left:0;right:0;backdrop-filter:blur(10px);background:rgba(255,255,255,.9);border-bottom:1px solid var(--border);box-shadow:0 6px 20px rgba(17,24,39,.06);z-index:100}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding-top:12px;padding-bottom:12px}
+.brand.small .logo{width:36px;height:36px;border-radius:10px;font-size:14px}
+.brand-name{color:#111827}
+.nav-link{color:#374151;text-decoration:none;font-weight:600}
+.nav-link:hover{color:var(--primary)}
+.spacer-header{height:64px}
+
+/* Hero section */
+.hero{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-top:40px;padding-bottom:8px}
+.brand{display:flex;align-items:center;gap:14px}
+.logo{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,var(--primary) 0%,var(--primary-dark) 100%);color:#fff;font-weight:700;box-shadow:0 8px 24px rgba(37,99,235,.25)}
+.brand-text h1{color:#111827;font-size:30px;line-height:1.1;margin:0}
+.tagline{color:var(--muted);margin:6px 0 0}
+
+/* Buttons */
+.btn{display:inline-block;background:var(--primary);color:#fff;border:none;border-radius:12px;padding:12px 18px;font-weight:600;cursor:pointer;transition:transform .05s ease,opacity .2s ease, box-shadow .2s ease;text-decoration:none;box-shadow:0 6px 16px rgba(37,99,235,.22)}
+.btn:hover{opacity:.95}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--primary-dark)}
+.btn.primary:hover{opacity:.96}
+.btn:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(37,99,235,.25), 0 0 0 1px var(--primary)}
+
+/* Cards */
+.card{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px;box-shadow:var(--shadow);transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease}
+.card:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg);border-color:rgba(17,24,39,.15)}
+.card h2{margin-top:0;color:#0f172a}
+.card ul{color:#374151;padding-left:0;list-style:none;margin:0 0 10px}
+.card ul li{display:flex;align-items:flex-start;gap:8px;margin:6px 0}
+.card ul li::before{content:"";display:inline-block;flex:0 0 18px;height:18px;border-radius:50%;background:linear-gradient(135deg,var(--accent) 0%, var(--primary) 100%);mask: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"white\"><path fill-rule=\"evenodd\" d=\"M16.707 5.293a1 1 0 010 1.414l-7.5 7.5a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414L8.5 12.086l6.793-6.793a1 1 0 011.414 0z\" clip-rule=\"evenodd\"/></svg>') center/14px 14px no-repeat}
+.price{color:#111827;font-size:30px;margin:6px 0 14px}
+.price span{font-size:14px;color:#6b7280}
+.popular{border-color:var(--primary)}
+.badge{position:absolute;top:12px;right:12px;background:linear-gradient(135deg,var(--primary) 0%,var(--primary-dark) 100%);color:#fff;padding:4px 10px;border-radius:999px;font-size:12px;box-shadow:0 6px 16px rgba(37,99,235,.28)}
+
+.foot{margin-top:28px;color:#6b7280}
+
+/* Floating footer */
+.site-footer{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.95);backdrop-filter:blur(10px);border-top:1px solid var(--border);box-shadow:0 -6px 20px rgba(17,24,39,.06);z-index:100}
+.spacer-footer{height:60px}
+
+@media (max-width:640px){
+  .hero{flex-direction:column;align-items:flex-start}
+  .btn.primary{width:100%;text-align:center}
+}

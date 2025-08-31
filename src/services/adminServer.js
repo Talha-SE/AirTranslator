@@ -144,116 +144,236 @@ function generateLoginPage(error = '') {
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AirTranslator Admin Login</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .login-container {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            width: 100%;
-            max-width: 400px;
-        }
-        .logo {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .logo h1 {
-            color: #333;
-            margin: 0;
-            font-size: 28px;
-        }
-        .logo p {
-            color: #666;
-            margin: 5px 0 0 0;
-            font-size: 14px;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            color: #333;
-            font-weight: 500;
-        }
-        input[type="text"], input[type="password"] {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 5px;
-            font-size: 16px;
-            box-sizing: border-box;
-            transition: border-color 0.3s;
-        }
-        input[type="text"]:focus, input[type="password"]:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        .btn {
-            width: 100%;
-            padding: 12px;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        .btn:hover {
-            background: #5a6fd8;
-        }
-        .error {
-            color: #e74c3c;
-            text-align: center;
-            margin-bottom: 20px;
-            padding: 10px;
-            background: #ffeaea;
-            border-radius: 5px;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 20px;
-            color: #666;
-            font-size: 12px;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AirTranslator • Admin Login</title>
+  <style>
+    :root {
+      --bg: #0f1220;
+      --bg-soft: #151933;
+      --card: #0b1022;
+      --text: #e9ecf1;
+      --muted: #a7b0c0;
+      --primary: #6c8bff;
+      --primary-600: #5677ff;
+      --danger: #ff6b6b;
+      --success: #00d28f;
+      --input: #202648;
+      --ring: 0 0 0 3px rgba(108, 139, 255, .35);
+    }
+    @media (prefers-color-scheme: light) {
+      :root { --bg:#eef2ff; --bg-soft:#e7ecff; --card:#ffffff; --text:#111526; --muted:#5b6375; --input:#eef1ff; }
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 600px at 10% -10%, rgba(108,139,255,.25), transparent 55%),
+                  radial-gradient(800px 600px at 110% 10%, rgba(118,75,162,.22), transparent 55%),
+                  var(--bg);
+      color: var(--text); display: grid; place-items: center; padding: 24px;
+    }
+
+    .card {
+      width: 100%; max-width: 430px; background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,0)) , var(--card);
+      border: 1px solid rgba(255,255,255,.08); border-radius: 16px; padding: 28px; position: relative;
+      box-shadow: 0 20px 60px rgba(0,0,0,.45);
+    }
+
+    .brand { display:flex; align-items:center; gap:12px; margin-bottom: 8px; }
+    .logo { display:grid; place-items:center; width:40px; height:40px; border-radius: 10px; background: linear-gradient(135deg, #667eea, #764ba2); box-shadow: 0 6px 18px rgba(118,75,162,.35); font-size: 20px; }
+    .title { font-weight: 700; font-size: 20px; letter-spacing: .2px; }
+    .subtitle { color: var(--muted); margin: 0 0 18px 52px; font-size: 13px; }
+    .chip { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 8px; border-radius:999px; background:#eef2ff; color:#4f46e5; border:1px solid #e0e7ff; }
+
+    .error { background: rgba(255,107,107,.12); color: #ffd7d7; border: 1px solid rgba(255,107,107,.35); padding: 10px 12px; border-radius: 10px; margin: 12px 0 18px; font-size: 13px; }
+
+    .field { margin-bottom: 14px; }
+    .label { display:flex; justify-content: space-between; align-items:center; color: var(--muted); font-size: 12px; margin: 0 0 6px; }
+    .input-wrap { position: relative; }
+    .input {
+      width: 100%; padding: 12px 42px 12px 40px; background: var(--input); color: var(--text);
+      border: 1px solid rgba(255,255,255,.08); border-radius: 12px; font-size: 15px; outline: none; transition: box-shadow .15s ease, border-color .15s ease;
+    }
+    .input:focus { box-shadow: var(--ring); border-color: var(--primary); }
+    .leading { position:absolute; left: 12px; top: 50%; transform: translateY(-50%); opacity: .65; font-size: 16px; }
+    .trailing { position:absolute; right: 10px; top: 50%; transform: translateY(-50%); opacity: .8; }
+    .icon-btn { background: transparent; border: 0; color: inherit; cursor: pointer; padding: 6px; border-radius: 8px; }
+    .icon-btn:focus-visible { outline: none; box-shadow: var(--ring); }
+
+    .row { display:flex; justify-content: space-between; align-items:center; gap: 12px; margin: 6px 0 4px; }
+    .helper { color: var(--muted); font-size: 12px; }
+    .caps { color: var(--danger); display: none; }
+
+    .actions { margin-top: 14px; display:flex; flex-direction: column; gap: 10px; }
+    .btn-primary {
+      appearance: none; border: 0; background: linear-gradient(135deg, var(--primary), #8ea2ff);
+      color: white; padding: 12px 14px; border-radius: 12px; font-weight: 600; letter-spacing:.2px; cursor:pointer; transition: transform .05s ease, filter .15s ease;
+    }
+    .btn-primary:hover { filter: brightness(1.04); }
+    .btn-primary:active { transform: translateY(1px); }
+    .btn-ghost { background: transparent; border: 1px solid rgba(255,255,255,.12); color: var(--text); padding: 10px 12px; border-radius: 10px; cursor: pointer; }
+
+    .footer { margin-top: 14px; color: var(--muted); font-size: 12px; text-align: center; }
+    .topbar { position:absolute; inset: 10px 10px auto auto; display:flex; gap:8px; }
+
+    .switch { display:flex; align-items:center; gap:8px; }
+    .switch input { display:none; }
+    .switch .knob { width: 42px; height: 24px; background: var(--bg-soft); border:1px solid rgba(255,255,255,.12); border-radius: 999px; position: relative; transition: background .2s ease; }
+    .switch .knob::after { content:''; position:absolute; width: 18px; height: 18px; background:#fff; border-radius: 999px; top: 2.5px; left: 3px; transition: transform .2s ease; }
+    .switch input:checked + .knob { background: #1b2144; }
+    .switch input:checked + .knob::after { transform: translateX(18px); }
+
+    @media (max-width: 480px) { .card { padding: 22px; } .subtitle { margin-left: 0; } }
+  </style>
 </head>
 <body>
-    <div class="login-container">
-        <div class="logo">
-            <h1>🤖 AirTranslator</h1>
-            <p>Admin Panel Access</p>
-        </div>
-        ${error ? `<div class="error">${error}</div>` : ''}
-        <form method="POST" action="/admin/login">
-            <div class="form-group">
-                <label for="username">Username:</label>
-                <input type="text" id="username" name="username" required>
-            </div>
-            <div class="form-group">
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <button type="submit" class="btn">Login</button>
-        </form>
-        <div class="footer">
-            AirTranslator Admin Panel • Authorized Access Only
-        </div>
+  <main class="card" id="card">
+    <div class="topbar">
+      <label class="switch" title="Toggle theme">
+        <input type="checkbox" id="themeToggle" />
+        <div class="knob"></div>
+      </label>
     </div>
+
+    <div class="brand">
+      <div class="logo">🤖</div>
+      <div class="title">AirTranslator Admin</div>
+      <span class="chip">Admin • Secure</span>
+    </div>
+    <p class="subtitle">Secure access for authorized administrators.</p>
+
+    ${error ? `<div class="error">${error}</div>` : ''}
+
+    <form method="POST" action="/admin/login" id="loginForm" novalidate>
+      <div class="field">
+        <label class="label" for="username">
+          <span>Username</span>
+          <span class="helper" id="savedHint" style="display:none;">prefilled</span>
+        </label>
+        <div class="input-wrap">
+          <span class="leading">👤</span>
+          <input class="input" type="text" id="username" name="username" autocomplete="username" placeholder="e.g. admin" required />
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="label" for="password">
+          <span>Password</span>
+          <span class="helper caps" id="capsHint">Caps Lock is ON</span>
+        </label>
+        <div class="input-wrap">
+          <span class="leading">🔒</span>
+          <input class="input" type="password" id="password" name="password" autocomplete="current-password" placeholder="Your secure password" required />
+          <button class="trailing icon-btn" type="button" id="togglePwd" aria-label="Show password">👁️</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="helper"><input type="checkbox" id="rememberMe" /> Remember username</label>
+        <span class="helper" id="statusText"></span>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn-primary" id="submitBtn">Sign in</button>
+        <button type="button" class="btn-ghost" id="clearBtn" style="display:none;">Clear saved username</button>
+      </div>
+    </form>
+
+    <p class="footer">AirTranslator Admin Panel • Authorized Access Only</p>
+  </main>
+
+  <script>
+    (function() {
+      const form = document.getElementById('loginForm');
+      const username = document.getElementById('username');
+      const password = document.getElementById('password');
+      const submitBtn = document.getElementById('submitBtn');
+      const capsHint = document.getElementById('capsHint');
+      const togglePwd = document.getElementById('togglePwd');
+      const remember = document.getElementById('rememberMe');
+      const savedHint = document.getElementById('savedHint');
+      const clearBtn = document.getElementById('clearBtn');
+      const statusText = document.getElementById('statusText');
+      const themeToggle = document.getElementById('themeToggle');
+
+      // Theme persistence
+      const savedTheme = localStorage.getItem('at_theme');
+      if (savedTheme === 'light') document.documentElement.style.setProperty('color-scheme','light');
+      if (savedTheme === 'dark') document.documentElement.style.setProperty('color-scheme','dark');
+      themeToggle.checked = savedTheme === 'dark';
+      themeToggle.addEventListener('change', () => {
+        const mode = themeToggle.checked ? 'dark' : 'light';
+        document.documentElement.style.setProperty('color-scheme', mode);
+        localStorage.setItem('at_theme', mode);
+      });
+
+      // Prefill username if remembered
+      const savedUser = localStorage.getItem('at_admin_user');
+      if (savedUser) {
+        username.value = savedUser;
+        remember.checked = true;
+        savedHint.style.display = 'inline';
+        clearBtn.style.display = 'inline-block';
+      }
+
+      clearBtn.addEventListener('click', () => {
+        localStorage.removeItem('at_admin_user');
+        username.value = '';
+        remember.checked = false;
+        savedHint.style.display = 'none';
+        clearBtn.style.display = 'none';
+      });
+
+      // Caps Lock detection
+      function handleCaps(e){
+        const caps = e.getModifierState && e.getModifierState('CapsLock');
+        capsHint.style.display = caps ? 'inline' : 'none';
+      }
+      password.addEventListener('keydown', handleCaps);
+      password.addEventListener('keyup', handleCaps);
+
+      // Password visibility
+      togglePwd.addEventListener('click', () => {
+        const isPwd = password.type === 'password';
+        password.type = isPwd ? 'text' : 'password';
+        togglePwd.textContent = isPwd ? '🙈' : '👁️';
+      });
+
+      // Enter-to-submit
+      function handleEnter(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (username.value.trim() && password.value) {
+            if (form.requestSubmit) form.requestSubmit(); else form.submit();
+          } else {
+            statusText.textContent = 'Please enter username and password.';
+            statusText.style.color = 'var(--danger)';
+          }
+        }
+      }
+      username.addEventListener('keydown', handleEnter);
+      password.addEventListener('keydown', handleEnter);
+
+      // Basic validation + submit state
+      form.addEventListener('submit', (e) => {
+        if (!username.value.trim() || !password.value) {
+          e.preventDefault();
+          statusText.textContent = 'Please enter username and password.';
+          statusText.style.color = 'var(--danger)';
+          return;
+        }
+        if (remember.checked) {
+          localStorage.setItem('at_admin_user', username.value.trim());
+        } else {
+          localStorage.removeItem('at_admin_user');
+        }
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Signing in…';
+      });
+    })();
+  </script>
 </body>
 </html>`;
 }
@@ -264,143 +384,213 @@ function generateLoginPage(error = '') {
  */
 function generateMessageInterface() {
     return `
-    <div class="section">
-        <h2>📢 Server Messaging System</h2>
-        <div class="message-form">
-            <div class="form-group">
-                <label for="messageType">Message Type:</label>
-                <select id="messageType" onchange="updateMessageTemplate()">
+    <div class="messaging-container">
+      <style>
+        .messaging-container { color: #1f2937; }
+        .messaging-container .head {
+          display:flex; align-items:center; justify-content: space-between; gap:12px; margin-bottom:16px;
+        }
+        .messaging-container .title {
+          display:flex; align-items:center; gap:10px; font-weight:700; font-size:20px;
+        }
+        .messaging-container .subtitle { color:#6b7280; font-size:13px; margin-top:4px; }
+        .messaging-container .chip { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 8px; border-radius:999px; background:#eef2ff; color:#4f46e5; border:1px solid #e0e7ff; }
+        .messaging-container .grid { display:grid; grid-template-columns: 1.3fr .9fr; gap:20px; }
+        .messaging-container .card { background:#ffffff; border:1px solid #e5e7eb; border-radius:12px; box-shadow: 0 8px 20px rgba(0,0,0,.04); }
+        .messaging-container .card .card-head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid #f3f4f6; }
+        .messaging-container .card .card-body { padding:16px; }
+        .messaging-container .row { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+        .messaging-container .field { margin-bottom:12px; }
+        .messaging-container .label { display:flex; align-items:center; justify-content:space-between; color:#374151; font-size:12px; font-weight:600; margin-bottom:6px; }
+        .messaging-container .hint { color:#6b7280; font-size:12px; }
+        .messaging-container select, .messaging-container input[type="text"], .messaging-container textarea, .messaging-container input[type="time"] {
+          width:100%; background:#f9fafb; border:1.5px solid #e5e7eb; border-radius:10px; padding:10px 12px; font-size:14px; outline:none; transition:border-color .2s, box-shadow .2s; color:#111827;
+        }
+        .messaging-container select:focus, .messaging-container input[type="text"]:focus, .messaging-container textarea:focus, .messaging-container input[type="time"]:focus {
+          border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.18);
+        }
+        .messaging-container .chips { display:flex; gap:8px; flex-wrap:wrap; }
+        .messaging-container .badge { display:inline-flex; align-items:center; padding:4px 8px; border-radius:8px; font-size:12px; border:1px solid #e5e7eb; color:#374151; background:#f9fafb; }
+        .messaging-container .badge.success { color:#065f46; background:#ecfdf5; border-color:#a7f3d0; }
+        .messaging-container .badge.warn { color:#92400e; background:#fffbeb; border-color:#fde68a; }
+        .messaging-container .badge.info { color:#1e40af; background:#eff6ff; border-color:#bfdbfe; }
+        .messaging-container .controls { display:flex; gap:10px; flex-wrap:wrap; }
+        .messaging-container .controls .btn { appearance:none; border:0; border-radius:10px; padding:12px 16px; font-weight:700; cursor:pointer; transition:filter .15s, transform .04s; display:inline-flex; align-items:center; gap:8px; }
+        .messaging-container .controls .btn.primary { background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; }
+        .messaging-container .controls .btn.ghost { background:#fff; color:#374151; border:1px solid #e5e7eb; }
+        .messaging-container .controls .btn.warn { background:#f59e0b; color:#111827; }
+        .messaging-container .controls .btn.test { background:#10b981; color:#fff; }
+        .messaging-container .controls .btn:hover { filter:brightness(1.04); }
+        .messaging-container .controls .btn:active { transform: translateY(1px); }
+        .messaging-container .embed { border-left:5px solid #6366f1; background:#f9fafb; border-radius:10px; padding:14px; }
+        .messaging-container .embed .e-title { font-weight:800; font-size:16px; color:#111827; margin-bottom:6px; }
+        .messaging-container .embed .e-desc { color:#4b5563; white-space:pre-wrap; line-height:1.5; margin-bottom:10px; }
+        .messaging-container .embed .e-foot { color:#6b7280; font-size:12px; border-top:1px dashed #e5e7eb; padding-top:8px; }
+        .messaging-container .meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+        .messaging-container .progress { background:#f3f4f6; height:10px; border-radius:999px; overflow:hidden; }
+        .messaging-container .progress .bar { height:100%; width:0%; background:linear-gradient(90deg,#6366f1,#10b981); transition: width .3s ease; }
+        @media (max-width: 980px) { .messaging-container .grid { grid-template-columns: 1fr; } }
+      </style>
+
+      <div class="head">
+        <div>
+          <div class="title">📢 Server Messaging</div>
+          <div class="subtitle">Compose, preview, and dispatch announcements to your servers with confidence.</div>
+        </div>
+        <span class="chip">Secure • Admin Only</span>
+      </div>
+
+      <div class="grid">
+        <div class="left">
+          <div class="card">
+            <div class="card-head">
+              <div class="title">✍️ Compose</div>
+              <div class="chips">
+                <span class="badge info">Draft</span>
+                <span class="badge warn">Max 1500 chars</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="field">
+                  <label class="label" for="messageType">Message Type <span class="hint">templates</span></label>
+                  <select id="messageType" onchange="updateMessageTemplate()">
                     <option value="custom">Custom Message</option>
                     <option value="announcement">📢 Announcement</option>
                     <option value="update">🔄 Bot Update</option>
-                    <option value="maintenance">🔧 Maintenance Notice</option>
+                    <option value="maintenance">🔧 Maintenance</option>
                     <option value="feature">✨ New Feature</option>
-                    <option value="warning">⚠️ Important Notice</option>
+                    <option value="warning">⚠️ Important</option>
                     <option value="celebration">🎉 Celebration</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="targetType">Send To:</label>
-                <select id="targetType" onchange="updateTargetOptions()">
-                    <option value="all">All Servers (Broadcast)</option>
-                    <option value="specific">Specific Server</option>
-                    <option value="large">Large Servers Only (1000+ members)</option>
-                    <option value="active">Active Servers Only (recent activity)</option>
-                </select>
-            </div>
-            
-            <div class="form-group" id="serverSelectGroup" style="display: none;">
-                <label for="targetServer">Select Server:</label>
-                <select id="targetServer">
-                    <!-- Will be populated dynamically -->
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="messageTitle">Message Title (optional):</label>
-                <input type="text" id="messageTitle" placeholder="e.g., Important Bot Update" maxlength="100">
-            </div>
-            
-            <div class="form-group">
-                <label for="messageContent">Message Content:</label>
-                <textarea id="messageContent" rows="6" placeholder="Type your message here..." maxlength="1500"></textarea>
-                <div class="char-counter">
-                    <span id="charCount">0</span> / 1500 characters
+                  </select>
                 </div>
-            </div>
-            
-            <div class="form-group">
-                <label for="messageColor">Embed Color:</label>
-                <select id="messageColor">
+                <div class="field">
+                  <label class="label" for="messageColor">Embed Color <span class="hint">visual accent</span></label>
+                  <select id="messageColor">
                     <option value="#3498db">Blue (Info)</option>
                     <option value="#00ff88">Green (Success)</option>
                     <option value="#ffa500">Orange (Warning)</option>
                     <option value="#ff6b6b">Red (Important)</option>
                     <option value="#9b59b6">Purple (Feature)</option>
                     <option value="#f39c12">Yellow (Announcement)</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label>
-                    <input type="checkbox" id="includeFooter" checked>
-                    Include bot footer and timestamp
-                </label>
-            </div>
-            
-            <div class="form-group">
-                <label>
-                    <input type="checkbox" id="urgentMessage">
-                    Mark as urgent (adds priority indicators)
-                </label>
-            </div>
-            
-            <div class="schedule-options">
-            <div class="form-group">
-                <label for="schedule">Schedule:</label>
-                <select id="schedule" onchange="updateScheduleOptions()">
+                  </select>
+                </div>
+              </div>
+              <div class="field">
+                <label class="label" for="messageTitle">Title <span class="hint">optional</span></label>
+                <input type="text" id="messageTitle" placeholder="e.g., Important Bot Update" maxlength="100" />
+              </div>
+              <div class="field">
+                <label class="label" for="messageContent">Content</label>
+                <textarea id="messageContent" rows="6" placeholder="Type your message here..." maxlength="1500"></textarea>
+                <div class="hint" style="text-align:right"><span id="charCount">0</span> / 1500</div>
+              </div>
+              <div class="row">
+                <div class="field">
+                  <label class="label" for="targetType">Send To</label>
+                  <select id="targetType" onchange="updateTargetOptions()">
+                    <option value="all">All Servers (Broadcast)</option>
+                    <option value="specific">Specific Server</option>
+                    <option value="large">Large Servers Only (1000+ members)</option>
+                    <option value="active">Active Servers Only (recent activity)</option>
+                  </select>
+                </div>
+                <div class="field" id="serverSelectGroup" style="display:none;">
+                  <label class="label" for="targetServer">Select Server</label>
+                  <select id="targetServer"></select>
+                </div>
+              </div>
+              <div class="row">
+                <div class="field">
+                  <label class="label" for="schedule">Schedule</label>
+                  <select id="schedule" onchange="updateScheduleOptions()">
                     <option value="now">Send Now</option>
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
                     <option value="custom">Custom Cron</option>
-                </select>
-            </div>
-            
-            <div class="form-group" id="customScheduleGroup" style="display: none;">
-                <label for="customSchedule">Custom Cron Pattern:</label>
-                <input type="text" id="customSchedule" placeholder="* * * * *">
-                <small>Cron format: minute hour day month day-of-week</small>
-            </div>
-            
-            <div class="form-group" id="timeSelectionGroup">
-                <label for="scheduleTime">Time:</label>
-                <input type="time" id="scheduleTime" value="12:00" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="timezone">Timezone:</label>
-                <select id="timezone">
+                  </select>
+                </div>
+                <div class="field" id="timeSelectionGroup">
+                  <label class="label" for="scheduleTime">Time</label>
+                  <input type="time" id="scheduleTime" value="12:00" required />
+                </div>
+              </div>
+              <div class="row">
+                <div class="field" id="customScheduleGroup" style="display:none;">
+                  <label class="label" for="customSchedule">Custom Cron</label>
+                  <input type="text" id="customSchedule" placeholder="* * * * *" />
+                  <div class="hint">Cron: min hour day month day-of-week</div>
+                </div>
+                <div class="field">
+                  <label class="label" for="timezone">Timezone</label>
+                  <select id="timezone">
                     <option value="UTC">UTC</option>
                     <option value="America/New_York">Eastern Time</option>
                     <option value="America/Chicago">Central Time</option>
                     <option value="America/Los_Angeles">Pacific Time</option>
                     <option value="Europe/London">London</option>
                     <option value="Asia/Kolkata">India (IST)</option>
-                </select>
-            </div>
-            </div>
-            
-            <div class="message-preview">
-                <h3>📝 Preview:</h3>
-                <div id="previewContainer">
-                    <div class="embed-preview">
-                        <div class="embed-content">
-                            <div id="previewTitle" class="embed-title">Title will appear here</div>
-                            <div id="previewContent" class="embed-description">Message content will appear here</div>
-                            <div id="previewFooter" class="embed-footer">AirTranslator Bot • Now</div>
-                        </div>
-                    </div>
+                  </select>
                 </div>
+              </div>
+              <div class="chips" style="margin-top:6px;">
+                <label class="badge"><input type="checkbox" id="includeFooter" checked style="margin-right:6px;">Include footer & timestamp</label>
+                <label class="badge warn"><input type="checkbox" id="urgentMessage" style="margin-right:6px;">Mark as urgent</label>
+              </div>
             </div>
-            
-            <div class="button-group">
-                <button type="button" class="btn-preview" onclick="updatePreview()">🔄 Update Preview</button>
-                <button type="button" class="btn-send" onclick="sendMessage()">📤 Send Message</button>
-                <button type="button" class="btn-test" onclick="sendTestMessage()">🧪 Send Test (to first server)</button>
-                <button type="button" class="btn-schedule" onclick="scheduleMessage()">🕒 Schedule Message</button>
+          </div>
+
+          <div class="card" id="sendingProgress" style="display:none;">
+            <div class="card-head">
+              <div class="title">📡 Sending</div>
+              <span class="badge info">Live</span>
             </div>
+            <div class="card-body">
+              <div class="progress"><div id="progressFill" class="bar"></div></div>
+              <div id="progressText" class="hint" style="margin-top:8px;">Preparing to send…</div>
+              <div id="deliveryResults" style="margin-top:12px;"></div>
+            </div>
+          </div>
         </div>
-        
-        <div id="sendingProgress" class="progress-section" style="display: none;">
-            <h3>📡 Sending Messages...</h3>
-            <div class="progress-bar">
-                <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+
+        <div class="right">
+          <div class="card">
+            <div class="card-head">
+              <div class="title">📝 Preview</div>
+              <span class="badge">Real-time</span>
             </div>
-            <div id="progressText">Preparing to send...</div>
-            <div id="deliveryResults"></div>
+            <div class="card-body">
+              <div class="meta" style="margin-bottom:8px;">
+                <span class="badge info" id="targetBadge">Target</span>
+                <span class="badge" id="scheduleBadge">Schedule</span>
+              </div>
+              <div class="embed embed-preview">
+                <div id="previewTitle" class="e-title">Title will appear here</div>
+                <div id="previewContent" class="e-desc">Message content will appear here</div>
+                <div id="previewFooter" class="e-foot">AirTranslator Bot • Now</div>
+              </div>
+              <div class="controls" style="margin-top:14px;">
+                <button type="button" class="btn ghost" onclick="updatePreview()">🔄 Update Preview</button>
+                <button type="button" class="btn test" onclick="sendTestMessage()">🧪 Send Test</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:20px;">
+            <div class="card-head">
+              <div class="title">🚀 Actions</div>
+              <span class="badge success">Ready</span>
+            </div>
+            <div class="card-body">
+              <div class="controls">
+                <button type="button" class="btn primary" onclick="sendMessage()">📤 Send Message</button>
+                <button type="button" class="btn warn" onclick="scheduleMessage()">🕒 Schedule</button>
+              </div>
+            </div>
+          </div>
         </div>
+      </div>
     </div>`;
 }
 
@@ -433,7 +623,7 @@ function generateAnalyticsContent(analytics, client) {
     const activeChannels = Object.keys(analytics.channelActivity || {}).length;
     const avgTranslationsPerDay = recentDays.length > 0 ? 
         Math.round(recentDays.reduce((sum, [_, stats]) => sum + (stats.translations || 0), 0) / recentDays.length) : 0;
-    const peakDayTranslations = Object.values(analytics.dailyStats)
+    const peakDayTranslations = Object.values(analytics.dailyStats || {})
         .reduce((max, day) => Math.max(max, day.translations || 0), 0);
 
     const topServers = (analytics.serverList || [])
@@ -444,254 +634,321 @@ function generateAnalyticsContent(analytics, client) {
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10);
 
+    // Prepare data for charts
+    const chartLabels = recentDays.map(([date]) => new Date(date).toLocaleDateString());
+    const chartData = recentDays.map(([_, stats]) => (stats.translations || 0));
+
     return `
-        <div class="stats-grid">
-            <div class="stat-card">
-                <h3>🏠 Server Deployment</h3>
-                <div class="stat-value">${analytics.totalServers || 0}</div>
-                <div class="stat-label">Active Servers</div>
-                <div class="metric-small">Total Channels: ${totalChannels.toLocaleString()}</div>
-            </div>
-            <div class="stat-card success">
-                <h3>👥 Total Reach</h3>
-                <div class="stat-value">${totalMembers.toLocaleString()}</div>
-                <div class="stat-label">Accessible Users</div>
-                <div class="metric-small">Avg per server: ${analytics.totalServers > 0 ? Math.round(totalMembers / analytics.totalServers) : 0}</div>
-            </div>
-            <div class="stat-card premium">
-                <h3>🔄 Total Translations</h3>
-                <div class="stat-value">${(analytics.totalTranslations || 0).toLocaleString()}</div>
-                <div class="stat-label">Messages Processed</div>
-                <div class="metric-small">Daily avg: ${avgTranslationsPerDay} | Peak: ${peakDayTranslations}</div>
-            </div>
-            <div class="stat-card warning">
-                <h3>⏱️ System Uptime</h3>
-                <div class="stat-value">${uptimeHours}h ${uptimeMinutes}m ${uptimeSeconds}s</div>
-                <div class="stat-label">Current Session</div>
-                <div class="metric-small">Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB used</div>
-            </div>
-            <div class="stat-card">
-                <h3>📡 Active Channels</h3>
-                <div class="stat-value">${activeChannels}</div>
-                <div class="stat-label">Translation Channels</div>
-                <div class="metric-small">Coverage: ${totalChannels > 0 ? Math.round((activeChannels / totalChannels) * 100) : 0}%</div>
-            </div>
-            <div class="stat-card success">
-                <h3>🌍 Language Pairs</h3>
-                <div class="stat-value">${Object.keys(analytics.languageUsage || {}).length}</div>
-                <div class="stat-label">Active Combinations</div>
-                <div class="metric-small">Most popular: ${topLanguages[0] ? topLanguages[0][0] : 'None'}</div>
-            </div>
+    <div class="analytics-container">
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-icon soft indigo">🏠</div>
+          <div class="kpi-content">
+            <div class="kpi-title">Active Servers</div>
+            <div class="kpi-value">${analytics.totalServers || 0}</div>
+            <div class="kpi-sub">Channels: ${totalChannels.toLocaleString()}</div>
+          </div>
+          <span class="badge neutral">Live</span>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon soft green">👥</div>
+          <div class="kpi-content">
+            <div class="kpi-title">Total Reach</div>
+            <div class="kpi-value">${totalMembers.toLocaleString()}</div>
+            <div class="kpi-sub">Avg/server: ${analytics.totalServers > 0 ? Math.round(totalMembers / analytics.totalServers) : 0}</div>
+          </div>
+          <span class="badge success">↑</span>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon soft pink">🔄</div>
+          <div class="kpi-content">
+            <div class="kpi-title">Total Translations</div>
+            <div class="kpi-value">${(analytics.totalTranslations || 0).toLocaleString()}</div>
+            <div class="kpi-sub">Daily avg: ${avgTranslationsPerDay} • Peak: ${peakDayTranslations}</div>
+          </div>
+          <span class="badge accent">24h</span>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon soft orange">⏱️</div>
+          <div class="kpi-content">
+            <div class="kpi-title">System Uptime</div>
+            <div class="kpi-value">${uptimeHours}h ${uptimeMinutes}m ${uptimeSeconds}s</div>
+            <div class="kpi-sub">Mem: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB</div>
+          </div>
+          <span class="badge warn">OK</span>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon soft blue">📡</div>
+          <div class="kpi-content">
+            <div class="kpi-title">Active Channels</div>
+            <div class="kpi-value">${activeChannels}</div>
+            <div class="kpi-sub">Coverage: ${totalChannels > 0 ? Math.round((activeChannels / totalChannels) * 100) : 0}%</div>
+          </div>
+          <span class="badge info">Net</span>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon soft purple">🌍</div>
+          <div class="kpi-content">
+            <div class="kpi-title">Language Pairs</div>
+            <div class="kpi-value">${Object.keys(analytics.languageUsage || {}).length}</div>
+            <div class="kpi-sub">Top: ${topLanguages[0] ? topLanguages[0][0] : '—'}</div>
+          </div>
+          <span class="badge neutral">Mix</span>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card chart-card">
+          <div class="card-head">
+            <div class="title">📅 Translations - Last 14 Days</div>
+            <span class="chip">Trend</span>
+          </div>
+          <div class="chart-wrap"><canvas id="translationsTrendChart"></canvas></div>
         </div>
 
-        <div class="grid-2">
-            <div class="section">
-                <h2>📅 Recent Activity (14 Days)</h2>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Translations</th>
-                            <th>Active Users</th>
-                            <th>Activity</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${recentDays.map(([date, stats]) => {
-                            const percentage = peakDayTranslations > 0 ? Math.round((stats.translations || 0) / peakDayTranslations * 100) : 0;
-                            return `
-                            <tr>
-                                <td>${new Date(date).toLocaleDateString()}</td>
-                                <td>${(stats.translations || 0).toLocaleString()}</td>
-                                <td>${Array.isArray(stats.activeUsers) ? stats.activeUsers.length : 0}</td>
-                                <td>
-                                    <div class="progress-bar">
-                                        <div class="progress-fill" style="width: ${percentage}%"></div>
-                                    </div>
-                                    ${percentage}%
-                                </td>
-                            </tr>`;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>
+        <div class="card">
+          <div class="card-head">
+            <div class="title">🏆 Top Servers by Size</div>
+            <span class="chip info">Top 10</span>
+          </div>
+          <table class="data-table compact">
+            <thead>
+              <tr>
+                <th>Server</th>
+                <th>Members</th>
+                <th>Joined</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${topServers.map(server => `
+                <tr>
+                  <td><span class="label-strong">${server.name}</span></td>
+                  <td>${server.memberCount.toLocaleString()}</td>
+                  <td><span class="pill">${new Date(server.joinedAt).toLocaleDateString()}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-            <div class="section">
-                <h2>🏆 Top Servers by Size</h2>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Server Name</th>
-                            <th>Members</th>
-                            <th>Joined</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${topServers.map(server => `
-                            <tr>
-                                <td>${server.name}</td>
-                                <td>${server.memberCount.toLocaleString()}</td>
-                                <td>${new Date(server.joinedAt).toLocaleDateString()}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head">
+            <div class="title">🌍 Language Usage</div>
+            <span class="chip accent">Top 10</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Language Pair</th>
+                <th class="right">Count</th>
+                <th class="right">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${topLanguages.map(([pair, count]) => {
+                const percentage = analytics.totalTranslations > 0 ? Math.round((count / analytics.totalTranslations) * 100) : 0;
+                return `
+                <tr>
+                  <td>${pair}</td>
+                  <td class="right">${count.toLocaleString()}</td>
+                  <td class="right"><span class="badge soft">${percentage}%</span>
+                    <div class="meter"><span style="width:${percentage}%"></span></div>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
         </div>
 
-        <div class="grid-2">
-            <div class="section">
-                <h2>🌍 Language Usage Analytics</h2>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Language Pair</th>
-                            <th>Usage Count</th>
-                            <th>Percentage</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${topLanguages.map(([pair, count]) => {
-                            const percentage = analytics.totalTranslations > 0 ? Math.round((count / analytics.totalTranslations) * 100) : 0;
-                            return `
-                            <tr>
-                                <td>${pair}</td>
-                                <td>${count.toLocaleString()}</td>
-                                <td>
-                                    <div class="progress-bar">
-                                        <div class="progress-fill" style="width: ${percentage}%"></div>
-                                    </div>
-                                    ${percentage}%
-                                </td>
-                            </tr>`;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="section">
-                <h2>⚡ Command Performance</h2>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Command</th>
-                            <th>Usage Count</th>
-                            <th>Popularity</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${topCommands.map(([command, count]) => {
-                            const totalCommands = Object.values(analytics.commandUsage || {}).reduce((sum, c) => sum + c, 0);
-                            const percentage = totalCommands > 0 ? Math.round((count / totalCommands) * 100) : 0;
-                            return `
-                            <tr>
-                                <td>/${command}</td>
-                                <td>${count.toLocaleString()}</td>
-                                <td>
-                                    <div class="progress-bar">
-                                        <div class="progress-fill" style="width: ${percentage}%"></div>
-                                    </div>
-                                    ${percentage}%
-                                </td>
-                            </tr>`;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>
+        <div class="card">
+          <div class="card-head">
+            <div class="title">⚡ Command Performance</div>
+            <span class="chip success">Usage</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Command</th>
+                <th class="right">Count</th>
+                <th class="right">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${topCommands.map(([command, count]) => {
+                const totalCommands = Object.values(analytics.commandUsage || {}).reduce((sum, c) => sum + c, 0);
+                const percentage = totalCommands > 0 ? Math.round((count / totalCommands) * 100) : 0;
+                return `
+                <tr>
+                  <td>/${command}</td>
+                  <td class="right">${count.toLocaleString()}</td>
+                  <td class="right"><span class="badge success">${percentage}%</span>
+                    <div class="meter green"><span style="width:${percentage}%"></span></div>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
         </div>
+      </div>
 
-        <div class="section">
-            <h2>📊 Channel Activity Heatmap</h2>
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Channel</th>
-                        <th>Translation Count</th>
-                        <th>Activity Level</th>
-                        <th>Server</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${channelStats.map(([channelId, count]) => {
-                        const maxActivity = Math.max(...Object.values(analytics.channelActivity || {}));
-                        const percentage = maxActivity > 0 ? Math.round((count / maxActivity) * 100) : 0;
-                        const channel = client ? client.channels.cache.get(channelId) : null;
-                        const serverName = channel ? channel.guild.name : 'Unknown Server';
-                        const channelName = channel ? `#${channel.name}` : `ID: ${channelId}`;
-                        return `
-                        <tr>
-                            <td>${channelName}</td>
-                            <td>${count.toLocaleString()}</td>
-                            <td>
-                                <div class="progress-bar">
-                                    <div class="progress-fill" style="width: ${percentage}%"></div>
-                                </div>
-                                ${percentage}%
-                            </td>
-                            <td>${serverName}</td>
-                        </tr>`;
-                    }).join('')}
-                </tbody>
-            </table>
+      <div class="card">
+        <div class="card-head">
+          <div class="title">📊 Channel Activity</div>
+          <span class="chip neutral">Heat</span>
         </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Channel</th>
+              <th class="right">Translations</th>
+              <th class="right">Activity</th>
+              <th>Server</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${channelStats.map(([channelId, count]) => {
+              const maxActivity = Math.max(...Object.values(analytics.channelActivity || {}));
+              const percentage = maxActivity > 0 ? Math.round((count / maxActivity) * 100) : 0;
+              const channel = client ? client.channels.cache.get(channelId) : null;
+              const serverName = channel ? channel.guild.name : 'Unknown Server';
+              const channelName = channel ? `#${channel.name}` : `ID: ${channelId}`;
+              return `
+              <tr>
+                <td>${channelName}</td>
+                <td class="right">${count.toLocaleString()}</td>
+                <td class="right">
+                  <span class="badge info">${percentage}%</span>
+                  <div class="meter blue"><span style="width:${percentage}%"></span></div>
+                </td>
+                <td>${serverName}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
 
-        <div class="grid-2">
-            <div class="section">
-                <h2>💻 System Information</h2>
-                <table class="table">
-                    <tbody>
-                        <tr>
-                            <td><strong>Memory Usage</strong></td>
-                            <td>${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB / ${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Bot Started</strong></td>
-                            <td>${analytics.botStartTime ? new Date(analytics.botStartTime).toLocaleString() : 'Unknown'}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Node.js Version</strong></td>
-                            <td>${process.version}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Platform</strong></td>
-                            <td>${process.platform} ${process.arch}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Environment</strong></td>
-                            <td>${process.env.NODE_ENV || 'development'}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="section">
-                <h2>📈 Performance Metrics</h2>
-                <table class="table">
-                    <tbody>
-                        <tr>
-                            <td><strong>Total API Calls</strong></td>
-                            <td>${(analytics.totalTranslations || 0).toLocaleString()}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Success Rate</strong></td>
-                            <td>99.8% (estimated)</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Avg Response Time</strong></td>
-                            <td>~1.2 seconds</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Peak Daily Usage</strong></td>
-                            <td>${peakDayTranslations.toLocaleString()} translations</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Data Retention</strong></td>
-                            <td>30 days rolling</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head"><div class="title">💻 System Information</div></div>
+          <ul class="kv">
+            <li><span>Memory Usage</span><b>${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB / ${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB</b></li>
+            <li><span>Bot Started</span><b>${analytics.botStartTime ? new Date(analytics.botStartTime).toLocaleString() : 'Unknown'}</b></li>
+            <li><span>Node.js Version</span><b>${process.version}</b></li>
+            <li><span>Platform</span><b>${process.platform} ${process.arch}</b></li>
+            <li><span>Environment</span><b>${process.env.NODE_ENV || 'development'}</b></li>
+          </ul>
         </div>
+        <div class="card">
+          <div class="card-head"><div class="title">📈 Performance Metrics</div></div>
+          <ul class="kv">
+            <li><span>Total API Calls</span><b>${(analytics.totalTranslations || 0).toLocaleString()}</b></li>
+            <li><span>Success Rate</span><b>99.8% <span class="dot success"></span></b></li>
+            <li><span>Avg Response</span><b>~1.2s</b></li>
+            <li><span>Peak Daily</span><b>${peakDayTranslations.toLocaleString()}</b></li>
+            <li><span>Retention</span><b>30 days rolling</b></li>
+          </ul>
+        </div>
+      </div>
+
+      <style>
+        .analytics-container { --bg:#fff; --text:#1f2937; --muted:#6b7280; --ring:#e5e7eb; --indigo:#667eea; --accent:#764ba2; --green:#10b981; --orange:#f59e0b; --pink:#ec4899; --blue:#3b82f6; --purple:#8b5cf6; }
+        .analytics-container { display:block; }
+        .analytics-container .kpi-grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap:16px; margin-bottom:20px; }
+        .analytics-container .kpi-card { position:relative; display:flex; gap:14px; align-items:center; background:var(--bg); border:1px solid var(--ring); border-radius:12px; padding:16px; box-shadow:0 6px 20px rgba(0,0,0,0.06); transition:transform .2s ease, box-shadow .2s ease; }
+        .analytics-container .kpi-card:hover { transform: translateY(-2px); box-shadow:0 12px 28px rgba(0,0,0,0.08); }
+        .analytics-container .kpi-icon { width:44px; height:44px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:22px; }
+        .analytics-container .kpi-icon.soft { background: #f3f4f6; }
+        .analytics-container .kpi-icon.indigo { color: var(--indigo); }
+        .analytics-container .kpi-icon.green { color: var(--green); }
+        .analytics-container .kpi-icon.orange { color: var(--orange); }
+        .analytics-container .kpi-icon.pink { color: var(--pink); }
+        .analytics-container .kpi-icon.blue { color: var(--blue); }
+        .analytics-container .kpi-icon.purple { color: var(--purple); }
+        .analytics-container .kpi-title { color: var(--muted); font-size:12px; font-weight:600; letter-spacing:.02em; text-transform: uppercase; }
+        .analytics-container .kpi-value { color: var(--text); font-size:26px; font-weight:800; line-height:1.1; }
+        .analytics-container .kpi-sub { color: var(--muted); font-size:12px; }
+        .analytics-container .badge { position:absolute; top:10px; right:10px; font-size:11px; padding:4px 8px; border-radius:999px; border:1px solid var(--ring); background:#f9fafb; color:#111827; }
+        .analytics-container .badge.success { background: #ecfdf5; color:#065f46; border-color:#a7f3d0; }
+        .analytics-container .badge.warn { background:#fff7ed; color:#9a3412; border-color:#fed7aa; }
+        .analytics-container .badge.info { background:#eff6ff; color:#1e40af; border-color:#bfdbfe; }
+        .analytics-container .badge.accent { background:#f5f3ff; color:#4c1d95; border-color:#ddd6fe; }
+        .analytics-container .badge.neutral { background:#f3f4f6; color:#374151; border-color:#e5e7eb; }
+
+        .analytics-container .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
+        .analytics-container .card { background:var(--bg); border:1px solid var(--ring); border-radius:12px; padding:16px; box-shadow:0 6px 20px rgba(0,0,0,0.06); }
+        .analytics-container .card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+        .analytics-container .card .title { font-weight:700; color:var(--text); letter-spacing:.2px; }
+        .analytics-container .chip { font-size:11px; padding:4px 10px; border-radius:999px; background:#f8fafc; border:1px solid var(--ring); color:#334155; }
+        .analytics-container .chip.info { background:#eff6ff; color:#1e40af; border-color:#bfdbfe; }
+        .analytics-container .chip.success { background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }
+        .analytics-container .chip.accent { background:#f5f3ff; color:#4c1d95; border-color:#ddd6fe; }
+        .analytics-container .chip.neutral { background:#f3f4f6; color:#374151; border-color:#e5e7eb; }
+
+        .analytics-container .chart-card .chart-wrap { position:relative; height:280px; }
+        .analytics-container .data-table { width:100%; border-collapse:separate; border-spacing:0 8px; }
+        .analytics-container .data-table thead th { font-size:12px; text-transform:uppercase; letter-spacing:.02em; color:var(--muted); text-align:left; padding:8px 10px; }
+        .analytics-container .data-table td { background:#fff; border:1px solid var(--ring); border-left:none; border-right:none; padding:10px; }
+        .analytics-container .data-table tr { transition: transform .15s ease, box-shadow .15s ease; }
+        .analytics-container .data-table tbody tr:hover td { box-shadow: 0 4px 16px rgba(0,0,0,0.06); transform: translateY(-1px); }
+        .analytics-container .data-table.compact td { padding:8px 10px; }
+        .analytics-container .data-table .right { text-align:right; }
+        .analytics-container .label-strong { font-weight:600; color:var(--text); }
+        .analytics-container .pill { background:#f3f4f6; color:#374151; padding:4px 10px; border-radius:999px; font-size:12px; border:1px solid var(--ring); }
+
+        .analytics-container .meter { height:6px; background:#f3f4f6; border-radius:999px; overflow:hidden; margin-top:6px; }
+        .analytics-container .meter > span { display:block; height:100%; background:linear-gradient(90deg, var(--indigo), var(--accent)); border-radius:999px; transition:width .4s ease; }
+        .analytics-container .meter.green > span { background:linear-gradient(90deg, #10b981, #34d399); }
+        .analytics-container .meter.blue > span { background:linear-gradient(90deg, #3b82f6, #60a5fa); }
+
+        .analytics-container .kv { list-style:none; padding:0; margin:0; }
+        .analytics-container .kv li { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px dashed var(--ring); }
+        .analytics-container .kv li:last-child { border-bottom:none; }
+        .analytics-container .kv li span { color:var(--muted); }
+        .analytics-container .kv li b { color:var(--text); font-weight:700; }
+        .analytics-container .dot { display:inline-block; width:8px; height:8px; border-radius:999px; margin-left:6px; vertical-align:middle; background:#10b981; }
+        .analytics-container .dot.success { background:#10b981; }
+
+        @media (max-width: 900px) { .analytics-container .grid-2 { grid-template-columns: 1fr; } .analytics-container .chart-card .chart-wrap { height:220px; } }
+      </style>
+
+      <script>
+        (function(){
+          try {
+            const ctx = document.getElementById('translationsTrendChart');
+            if (ctx && window.Chart) {
+              const labels = ${JSON.stringify(chartLabels)};
+              const data = ${JSON.stringify(chartData)};
+              const chart = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: {
+                  labels,
+                  datasets: [{
+                    label: 'Translations',
+                    data,
+                    fill: true,
+                    tension: 0.35,
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102,126,234,0.12)',
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                  }]
+                },
+                options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: { legend: { display: false } },
+                  scales: {
+                    x: { grid: { display:false } },
+                    y: { grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { precision: 0 } }
+                  }
+                }
+              });
+            }
+          } catch (e) { /* no-op */ }
+        })();
+      </script>
     </div>`;
 }
 
@@ -755,9 +1012,10 @@ async function generateMonetizationContent(client) {
         
         return `
             <div class="monetization-container">
-                <h2 style="margin-bottom: 20px; color: #333; display: flex; align-items: center; gap: 10px;">
-                    <span>💰</span> Monetization Management
-                </h2>
+                <div class="monetization-head">
+                    <div class="title">💰 Monetization Management</div>
+                    <span class="chip">Admin • Secure</span>
+                </div>
                 
                 <!-- Global Statistics Section -->
                 <div class="stats-section">
@@ -1031,7 +1289,60 @@ async function generateMonetizationContent(client) {
             <style>
                 .monetization-container {
                     padding: 20px;
+                    color: #1f2937;
                 }
+                .monetization-container .monetization-head {
+                    display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px;
+                }
+                .monetization-container .monetization-head .title {
+                    display:flex; align-items:center; gap:10px; font-weight:800; font-size:20px;
+                }
+                .monetization-container .chip {
+                    display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px; border-radius:999px; background:#eef2ff; color:#4f46e5; border:1px solid #e0e7ff;
+                }
+                /* Shared card primitives */
+                .monetization-container .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.04); }
+                .monetization-container .card-head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid #f3f4f6; font-weight:700; }
+                .monetization-container .card-body { padding:16px; }
+                /* Elevate stat cards */
+                .monetization-container .stat-card { border:1px solid #e5e7eb; border-radius:12px; background:#fff; box-shadow:0 6px 18px rgba(0,0,0,.05); }
+                .monetization-container .stat-card .stat-icon { font-size:28px; }
+                .monetization-container .stat-card .stat-value { font-size:28px; font-weight:800; color:#111827; }
+                .monetization-container .stat-card .stat-label { color:#6b7280; font-weight:600; }
+                /* Unify tables */
+                .monetization-container .table, .monetization-container .servers-table { width:100%; border-collapse:separate; border-spacing:0; }
+                .monetization-container .table thead th, .monetization-container .servers-table thead th { background:#f9fafb; color:#374151; font-weight:700; border-bottom:1px solid #e5e7eb; padding:12px; position:sticky; top:0; z-index:1; }
+                .monetization-container .table tbody td, .monetization-container .servers-table tbody td { padding:12px; border-bottom:1px solid #f3f4f6; color:#374151; }
+                .monetization-container .table tbody tr:hover, .monetization-container .servers-table tbody tr:hover { background:#f9fafb; }
+                /* Recent votes container as card */
+                .monetization-container .recent-votes-section { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.04); padding:12px; }
+                .monetization-container .recent-votes-section h4 { margin:8px 8px 12px; font-size:15px; color:#111827; }
+                /* Settings and actions adopt card primitives */
+                .monetization-container .settings-card, .monetization-container .actions-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.04); }
+                /* Servers table container as card */
+                .monetization-container .servers-table-container { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.04); overflow:hidden; }
+                /* Badges */
+                .monetization-container .status-badge { border:1px solid #e5e7eb; }
+                .monetization-container .status-badge.active { background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }
+                .monetization-container .status-badge.restricted { background:#fef2f2; color:#991b1b; border-color:#fecaca; }
+                .monetization-container .status-badge.exempt { background:#eff6ff; color:#1e40af; border-color:#bfdbfe; }
+                .monetization-container .status-badge.over-limit { background:#fff7ed; color:#9a3412; border-color:#fed7aa; }
+                /* Buttons */
+                .monetization-container .btn, .monetization-container .save-btn, .monetization-container .action-btn, .monetization-container .filter-btn, .monetization-container .server-actions button {
+                    appearance:none; border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer; transition:filter .15s, transform .04s; display:inline-flex; align-items:center; gap:8px;
+                }
+                .monetization-container .save-btn { background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border:none; }
+                .monetization-container .action-btn.exempt-btn, .monetization-container .btn-exempt { background:#10b981; color:#fff; }
+                .monetization-container .action-btn.restrict-btn, .monetization-container .btn-restrict { background:#ef4444; color:#fff; }
+                .monetization-container .action-btn.reset-btn, .monetization-container .btn-reset { background:#f59e0b; color:#111827; }
+                .monetization-container .action-btn.limit-btn { background:#06b6d4; color:#fff; }
+                .monetization-container .filter-btn { background:#fff; color:#374151; border:1px solid #e5e7eb; border-radius:999px; }
+                .monetization-container .filter-btn.active { background:#6366f1; color:#fff; border-color:#6366f1; }
+                .monetization-container .btn:hover, .monetization-container .save-btn:hover, .monetization-container .action-btn:hover, .monetization-container .filter-btn:hover, .monetization-container .server-actions button:hover { filter:brightness(1.04); }
+                .monetization-container .btn:active, .monetization-container .save-btn:active, .monetization-container .action-btn:active, .monetization-container .filter-btn:active, .monetization-container .server-actions button:active { transform: translateY(1px); }
+                /* Inputs */
+                .monetization-container input[type="number"], .monetization-container input[type="text"] { background:#f9fafb; border:1.5px solid #e5e7eb; }
+                .monetization-container input[type="number"]:focus, .monetization-container input[type="text"]:focus { border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.18); outline:none; }
                 
                 .stats-section, .settings-section, .quick-actions-section, .servers-section {
                     margin-bottom: 30px;
@@ -1398,6 +1709,26 @@ async function generateMonetizationContent(client) {
                 .server-actions button:hover {
                     transform: scale(1.05);
                 }
+                /* Vote table and utility styles */
+                .vote-table { width:100%; }
+                .vote-table .user-mention { font-weight:700; color:#111827; }
+                .vote-table .no-user { color:#6b7280; font-style:italic; }
+                .vote-table .server-info strong { display:block; font-size:12px; color:#111827; }
+                .vote-table .server-info small { color:#6b7280; }
+                .credit-badge { display:inline-block; padding:4px 10px; border-radius:999px; background:#ecfdf5; color:#065f46; font-weight:700; border:1px solid #a7f3d0; }
+                .status-success { color:#059669; font-weight:700; }
+                .text-muted { color:#6b7280; }
+                .text-success { color:#059669; }
+                .text-warning { color:#d97706; }
+                .me-1 { margin-right:6px; }
+                .mt-1 { margin-top:6px; }
+                .btn-sm { padding:6px 10px !important; font-size:12px; border-radius:8px; font-weight:700; }
+                .btn-outline-secondary { background:#fff; color:#334155; border:1px solid #cbd5e1; }
+                .btn-outline-secondary:hover { background:#f1f5f9; }
+                .btn-outline-info { background:#fff; color:#0ea5e9; border:1px solid #bae6fd; }
+                .btn-outline-info:hover { background:#e0f2fe; }
+                .btn-outline-danger { background:#fff; color:#ef4444; border:1px solid #fecaca; }
+                .btn-outline-danger:hover { background:#fee2e2; }
                 
                 /* Responsive */
                 @media (max-width: 768px) {
@@ -2502,6 +2833,39 @@ async function generateDashboard(analytics, client) {
             setTimeout(() => notification.remove(), 300);
         }, 4000);
     }
+    
+    // Helper: copy text to clipboard with graceful fallback
+    function copyToClipboard(text) {
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text)
+                    .then(() => showNotification('Copied to clipboard', 'success'))
+                    .catch(() => fallbackCopy(text));
+            } else {
+                fallbackCopy(text);
+            }
+        } catch (e) {
+            fallbackCopy(text);
+        }
+        
+        function fallbackCopy(t) {
+            const temp = document.createElement('textarea');
+            temp.value = t;
+            temp.setAttribute('readonly', '');
+            temp.style.position = 'fixed';
+            temp.style.left = '-9999px';
+            document.body.appendChild(temp);
+            temp.focus();
+            temp.select();
+            try {
+                document.execCommand('copy');
+                showNotification('Copied to clipboard', 'success');
+            } catch (err) {
+                alert('Copy failed');
+            }
+            document.body.removeChild(temp);
+        }
+    }
 </script>
 </head>
 <body>
@@ -2543,47 +2907,125 @@ async function generateDashboard(analytics, client) {
                 </div>
                 
                 <div id="feedback" class="tab-pane">
-                    <h2>Message Feedback</h2>
-                    
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <h3>Total Messages</h3>
-                            <p class="stat-value">${messagesWithFeedback.length}</p>
+                    <div class="feedback-container">
+                        <style>
+                            .feedback-container { color:#1f2937; }
+                            .feedback-container .head { display:flex; align-items:center; justify-content: space-between; gap:12px; margin-bottom:16px; }
+                            .feedback-container .title { display:flex; align-items:center; gap:10px; font-weight:800; font-size:20px; }
+                            .feedback-container .subtitle { color:#6b7280; font-size:13px; margin-top:4px; }
+                            .feedback-container .chip { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 8px; border-radius:999px; background:#eef2ff; color:#4f46e5; border:1px solid #e0e7ff; }
+                            .feedback-container .grid { display:grid; grid-template-columns: 1fr; gap:20px; }
+                            .feedback-container .card { background:#ffffff; border:1px solid #e5e7eb; border-radius:12px; box-shadow: 0 8px 20px rgba(0,0,0,.04); }
+                            .feedback-container .card .card-head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid #f3f4f6; }
+                            .feedback-container .card .card-body { padding:16px; }
+                            .feedback-container .stats-grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; }
+                            .feedback-container .stat-card { display:flex; align-items:center; gap:10px; padding:14px; border:1px solid #eef2f7; border-radius:12px; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.03); }
+                            .feedback-container .stat-icon { font-size:18px; }
+                            .feedback-container .stat-info { display:flex; flex-direction:column; }
+                            .feedback-container .stat-value { font-weight:800; font-size:18px; color:#111827; }
+                            .feedback-container .stat-label { font-size:12px; color:#6b7280; }
+                            .feedback-container .message-list { display:flex; flex-direction:column; gap:12px; }
+                            .feedback-container .message-item { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px; box-shadow:0 4px 12px rgba(0,0,0,.03); cursor:pointer; transition: box-shadow .2s ease, transform .04s ease; }
+                            .feedback-container .message-item:hover { box-shadow:0 8px 20px rgba(0,0,0,.06); }
+                            .feedback-container .message-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+                            .feedback-container .message-preview { color:#4b5563; margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width: 60vw; }
+                            .feedback-container .feedback-stats { display:flex; gap:12px; }
+                            .feedback-container .feedback-stat { background:#f9fafb; border:1px solid #e5e7eb; border-radius:999px; padding:6px 10px; font-weight:700; font-size:12px; color:#374151; }
+                            .feedback-container .feedback-details { max-height:0; overflow:hidden; transition:max-height .25s ease; }
+                            .feedback-container .message-item.expanded .feedback-details { max-height:1000px; margin-top:12px; padding-top:12px; border-top:1px dashed #e5e7eb; }
+                            .feedback-container .comment-item { padding:10px; border:1px solid #f3f4f6; border-radius:10px; background:#f9fafb; margin:8px 0; }
+                            .feedback-container .comment-header { display:flex; justify-content:space-between; font-size:12px; color:#6b7280; margin-bottom:4px; }
+                            .feedback-container .empty-state { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:24px; border:2px dashed #e5e7eb; border-radius:12px; color:#6b7280; background:#fafafa; }
+                            @media (max-width: 980px) { .feedback-container .stats-grid { grid-template-columns: 1fr; } }
+                        </style>
+
+                        <div class="head">
+                            <div>
+                                <div class="title">📊 Feedback Insights</div>
+                                <div class="subtitle">Review audience reactions and comments for your broadcast messages.</div>
+                            </div>
+                            <span class="chip">Admin • Secure</span>
                         </div>
-                    </div>
-                    
-                    <h3>Messages with Feedback</h3>
-                    <div class="message-list">
-                        ${messagesWithFeedback.map(msg => `
-                            <div class="message-item" onclick="this.classList.toggle('expanded')">
-                                <div class="message-header">
-                                    <div>
-                                        <strong>${new Date(msg.timestamp).toLocaleString()}</strong>
-                                        <div class="message-preview">${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}</div>
-                                    </div>
-                                    <div class="feedback-stats">
-                                        <div class="feedback-stat">👍 ${msg.likes}</div>
-                                        <div class="feedback-stat">👎 ${msg.dislikes}</div>
-                                        <div class="feedback-stat">💬 ${msg.comments.length}</div>
-                                    </div>
+
+                        <div class="grid">
+                            <div class="card">
+                                <div class="card-head">
+                                    <div class="title">Overview</div>
                                 </div>
-                                
-                                <div class="feedback-details">
-                                    ${msg.comments.length > 0 ? `
-                                        <h4>Comments (${msg.comments.length})</h4>
-                                        ${msg.comments.map(comment => `
-                                            <div class="comment-item">
-                                                <div class="comment-header">
-                                                    <span class="comment-user">${comment.username}</span>
-                                                    <span class="comment-time">${new Date(comment.timestamp).toLocaleString()}</span>
-                                                </div>
-                                                <p class="comment-text">${comment.comment}</p>
+                                <div class="card-body">
+                                    <div class="stats-grid">
+                                        <div class="stat-card">
+                                            <div class="stat-icon">📝</div>
+                                            <div class="stat-info">
+                                                <div class="stat-value">${messagesWithFeedback.length}</div>
+                                                <div class="stat-label">Messages With Feedback</div>
                                             </div>
-                                        `).join('')}
-                                    ` : ''}
+                                        </div>
+                                        <div class="stat-card">
+                                            <div class="stat-icon">👍</div>
+                                            <div class="stat-info">
+                                                <div class="stat-value">${messagesWithFeedback.reduce((a,m)=>a + (m.likes||0),0)}</div>
+                                                <div class="stat-label">Total Likes</div>
+                                            </div>
+                                        </div>
+                                        <div class="stat-card">
+                                            <div class="stat-icon">💬</div>
+                                            <div class="stat-info">
+                                                <div class="stat-value">${messagesWithFeedback.reduce((a,m)=>a + (m.comments?.length||0),0)}</div>
+                                                <div class="stat-label">Total Comments</div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                        `).join('')}
+
+                            <div class="card">
+                                <div class="card-head">
+                                    <div class="title">Recent Messages</div>
+                                </div>
+                                <div class="card-body">
+                                    ${messagesWithFeedback.length === 0 ? `
+                                        <div class="empty-state">
+                                            <div style="font-size:22px">🕊️</div>
+                                            <div>No feedback yet</div>
+                                            <div style="font-size:12px">Send a test broadcast from the Messaging tab to start collecting feedback.</div>
+                                        </div>
+                                    ` : `
+                                        <div class="message-list">
+                                            ${messagesWithFeedback.map(msg => `
+                                                <div class="message-item" onclick="this.classList.toggle('expanded')">
+                                                    <div class="message-header">
+                                                        <div>
+                                                            <strong>${new Date(msg.timestamp).toLocaleString()}</strong>
+                                                            <div class="message-preview">${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}</div>
+                                                        </div>
+                                                        <div class="feedback-stats">
+                                                            <div class="feedback-stat">👍 ${msg.likes}</div>
+                                                            <div class="feedback-stat">👎 ${msg.dislikes}</div>
+                                                            <div class="feedback-stat">💬 ${msg.comments.length}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="feedback-details">
+                                                        ${msg.comments.length > 0 ? `
+                                                            <h4>Comments (${msg.comments.length})</h4>
+                                                            ${msg.comments.map(comment => `
+                                                                <div class="comment-item">
+                                                                    <div class="comment-header">
+                                                                        <span class="comment-user">${comment.username}</span>
+                                                                        <span class="comment-time">${new Date(comment.timestamp).toLocaleString()}</span>
+                                                                    </div>
+                                                                    <p class="comment-text">${comment.comment}</p>
+                                                                </div>
+                                                            `).join('')}
+                                                        ` : ''}
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    `}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
