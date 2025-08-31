@@ -8,8 +8,8 @@ module.exports = {
     .setDescription('Configure Text-to-Speech for quick-setup translations (max 2 languages)')
     .addChannelOption(opt =>
       opt.setName('text_channel')
-        .setDescription('Text channel to read translations from')
-        .addChannelTypes(ChannelType.GuildText)
+        .setDescription('Text channel to read translations from (voice channels also have text chat)')
+        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildVoice)
         .setRequired(true)
     )
     .addChannelOption(opt =>

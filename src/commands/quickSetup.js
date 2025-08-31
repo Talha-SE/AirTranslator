@@ -10,7 +10,7 @@ module.exports = {
         .addChannelOption(option => 
             option.setName('channel1')
                 .setDescription('First channel for translation')
-                .addChannelTypes(ChannelType.GuildText)
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildVoice)
                 .setRequired(true))
         .addStringOption(option => 
             option.setName('language1')
@@ -24,22 +24,22 @@ module.exports = {
         .addChannelOption(option => 
             option.setName('channel2')
                 .setDescription('Second channel (optional)')
-                .addChannelTypes(ChannelType.GuildText)
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildVoice)
                 .setRequired(false))
         .addChannelOption(option => 
             option.setName('channel3')
                 .setDescription('Third channel (optional)')
-                .addChannelTypes(ChannelType.GuildText)
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildVoice)
                 .setRequired(false))
         .addChannelOption(option => 
             option.setName('channel4')
                 .setDescription('Fourth channel (optional)')
-                .addChannelTypes(ChannelType.GuildText)
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildVoice)
                 .setRequired(false))
         .addChannelOption(option => 
             option.setName('channel5')
                 .setDescription('Fifth channel (optional)')
-                .addChannelTypes(ChannelType.GuildText)
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildVoice)
                 .setRequired(false))
         .addStringOption(option => 
             option.setName('language2')

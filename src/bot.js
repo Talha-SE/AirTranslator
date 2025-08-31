@@ -45,6 +45,7 @@ const autoCleanupCommand = require('./commands/autoCleanup');
 const personalBuddyCommand = require('./commands/personalBuddy');
 const styleCommand = require('./commands/style');
 const ttsSetupCommand = require('./commands/ttsSetup');
+const ttsDeleteCommand = require('./commands/ttsDelete');
 
 client.commands.set('quicksetup', quickSetupCommand);
 client.commands.set('addchannel', addChannelCommand);
@@ -60,6 +61,7 @@ client.commands.set('autocleanup', autoCleanupCommand);
 client.commands.set('personalbuddy', personalBuddyCommand);
 client.commands.set('style', styleCommand);
 client.commands.set('ttssetup', ttsSetupCommand);
+client.commands.set('ttsdelete', ttsDeleteCommand);
 
 // Load events
 const ready = require('./events/ready');
@@ -139,6 +141,49 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         console.error('[VoicePresence] voiceStateUpdate error:', err);
     }
 });
+
+// Periodic check for voice channel presence
+setInterval(async () => {
+    try {
+        const guilds = client.guilds.cache;
+        for (const guild of guilds.values()) {
+            const settings = await TTSSettings.findOne({ guildId: guild.id, enabled: true }).lean();
+            const connection = getVoiceConnection(guild.id);
+            
+            // If no TTS setup exists but bot is connected
+            if (!settings && connection) {
+                connection.destroy();
+                console.log('[PeriodicCheck] Left voice channel - no TTS setup found', { guildId: guild.id });
+                continue;
+            }
+            
+            if (!settings?.voiceChannelId) continue;
+            
+            const voiceChannel = guild.channels.cache.get(settings.voiceChannelId);
+            if (!voiceChannel) {
+                if (connection) connection.destroy();
+                continue;
+            }
+            
+            const nonBotCount = voiceChannel.members.filter(m => !m.user.bot).size;
+            
+            if (nonBotCount > 0 && !connection) {
+                joinVoiceChannel({
+                    channelId: voiceChannel.id,
+                    guildId: guild.id,
+                    adapterCreator: guild.voiceAdapterCreator,
+                    selfDeaf: true,
+                });
+                console.log('[PeriodicCheck] Rejoined voice channel', { guildId: guild.id, channelId: voiceChannel.id });
+            } else if (nonBotCount === 0 && connection) {
+                connection.destroy();
+                console.log('[PeriodicCheck] Left empty voice channel', { guildId: guild.id, channelId: voiceChannel.id });
+            }
+        }
+    } catch (error) {
+        console.error('[PeriodicCheck] Error:', error);
+    }
+}, 120000); // Check every 2 minutes
 
 client.on('guildCreate', async (guild) => {
     console.log(`Joined new server: ${guild.name}`);
