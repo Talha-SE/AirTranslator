@@ -42,3 +42,6 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+
+# Project sub-sites
+payment-site/
