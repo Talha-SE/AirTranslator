@@ -333,8 +333,7 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
 const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
-// Optional fast mode: set env MISTRAL_FAST_MODE=1 to use a smaller, faster model
-const TRANSLATION_MODEL = process.env.MISTRAL_FAST_MODE === '1' ? 'mistral-small-latest' : 'mistral-medium-latest';
+const TRANSLATION_MODEL = 'mistral-medium-latest';
 
 /**
  * Detects the language of a given text
@@ -492,8 +491,8 @@ KOREAN TRANSLATION ACCURACY RULES:
 - For elongated casual expressions: Use ㅇ or vowel repetition (아아아, 야야야, 우우우)
 - Affectionate terms: 자기야 (honey), 베이비 (baby), 애기야 (baby), 사랑아 (love)
 - Casual emphasis: Add ㅋㅋ for laughter, ㅎㅎ for soft laughter, ㅠㅠ for crying
-- Preserve playful elongation: "babyyy" → "베이비이이" or "자기야야야"
-- ELONGATION EXAMPLES: "heyyyyyy" → "야야야야야" or "어이이이이", "babyyyyy" → "베이비이이이이" or "자기야야야야"
+- Preserve playful elongation: "babyyy" → "베이비이이~~♡" or "자기야야야~~~ㅎㅎ" or "애기야야~~~ㅋㅋ"
+- ELONGATION EXAMPLES: "heyyyyyy" → "야야야야야" or "어이이이이~~ㅋㅋ" or "안뇽~~~"
 - KOREAN CHATTING STYLE: Add cute elements like ~, ㅋㅋㅋ, ♡, ㅎㅎㅎ
 - KOREAN ELONGATED CHATTING: "heyyyyyy" → "야야야야~~~" or "어이이이이~~ㅋㅋ" or "안뇽~~~"
 - KOREAN CUTE PATTERNS: Use ~~, ♡, ㅋㅋ, ㅎㅎ, ㅠㅠ, >< for extra cuteness
@@ -539,60 +538,10 @@ ADVANCED TONE PRESERVATION:
   * Arabic: Add ـ (tatweel) or repeat final letters for emphasis
   * Chinese: Repeat characters (嗨嗨嗨嗨, 宝贝贝贝贝) or particles (啊啊啊啊)
 CRITICAL: Match the LENGTH of elongation from original text!`;
-        }
 
-        // Add contextual tone analysis for enhanced understanding when tone mode is enabled
-        let toneContextPrompt = '';
-        if (useToneUnderstanding) {
-            const toneAnalysis = analyzeToneContext(normalizedText);
-            
-            const contextParts = [];
-            
-            if (toneAnalysis.emotions.length > 0) {
-                contextParts.push(`Emotions detected: ${toneAnalysis.emotions.join(', ')}`);
-            }
-            
-            if (toneAnalysis.formality !== 'neutral') {
-                contextParts.push(`Formality level: ${toneAnalysis.formality}`);
-            }
-            
-            if (toneAnalysis.intensity !== 'medium') {
-                contextParts.push(`Message intensity: ${toneAnalysis.intensity}`);
-            }
-            
-            if (toneAnalysis.features.length > 0) {
-                const featureDescriptions = {
-                    'elongation': 'text has elongated words (showing emphasis/emotion)',
-                    'affectionate_elongation': 'contains elongated affectionate terms like "babyyy", "heyyyy" (preserve playful intimacy)',
-                    'extreme_elongation': 'contains heavily elongated words like "heyyyyyyyy", "babyyyyy" (use language-specific elongation techniques)',
-                    'emojis': 'contains emojis (preserve their emotional context)',
-                    'ellipsis': 'uses ellipsis (indicating pause, uncertainty, or continuation)',
-                    'emphasis': 'uses multiple exclamation marks (high emotional emphasis)',
-                    'mentions': 'contains @mentions (preserve exactly)',
-                    'hashtags': 'contains #hashtags (preserve exactly)',
-                    'caps': 'uses CAPS for emphasis (preserve intensity)',
-                    'multiple_questions': 'uses multiple question marks (showing confusion/urgency)',
-                    'tildes': 'uses tildes ~~~ for playful/cute tone (preserve cuteness)',
-                    'affectionate_tildes': 'combines affectionate terms with tildes like "babyyy~~~" (extra cute/playful tone)',
-                    'korean_chatting': 'uses Korean chat symbols like ㅋㅋ, ㅎㅎ, ㅠㅠ, ♡, >< (preserve Korean texting style)',
-                    'asterisk_emphasis': 'uses *asterisks* for emphasis',
-                    'laughter': 'contains laughter expressions (preserve humor)',
-                    'hyphenated_words': 'uses hyphenated expressions',
-                    'text_numbers': 'mixes numbers with text (preserve style)'
-                };
-                
-                const featureDetails = toneAnalysis.features
-                    .map(feature => featureDescriptions[feature] || feature)
-                    .join('; ');
-                contextParts.push(`Special features: ${featureDetails}`);
-            }
-            
-            if (contextParts.length > 0) {
-                toneContextPrompt = `\n\nIMPORTANT CONTEXT FOR THIS SPECIFIC MESSAGE: ${contextParts.join('. ')}. Use this context to ensure your translation perfectly captures these nuances in the target language's cultural and linguistic patterns.`;
-                
-                // Add specific elongation instructions if elongation is detected
-                if (toneAnalysis.features.includes('elongation') || toneAnalysis.features.includes('affectionate_elongation') || toneAnalysis.features.includes('extreme_elongation')) {
-                    toneContextPrompt += `\n\nELONGATION TRANSLATION GUIDE:
+            // Add specific elongation instructions if elongation is detected
+            if (/(.)\1{4,}/.test(text)) {
+                systemContent += `\n\nELONGATION TRANSLATION GUIDE:
 - Korean: Use vowel/consonant repetition + chatting elements (야야야야~~~, 베이비이이이~~ㅋㅋ, 어이이이이~~~♡)
 - Japanese: Use ー for long vowels (ベイビーーー, おーーい) or 〜 for casual tone
 - Spanish: Repeat vowels with intensity (hoooolaaaa, bebééééé, amorrrrrr)
@@ -600,11 +549,11 @@ CRITICAL: Match the LENGTH of elongation from original text!`;
 - Arabic: Use tatweel ـ to extend (هــــاي, حبيبـــــي) or repeat letters
 - Chinese: Repeat characters (嗨嗨嗨嗨, 宝贝贝贝贝) or particles (啊啊啊啊)
 CRITICAL: Match the LENGTH of elongation from original text!`;
-                }
-                
-                // Add specific tilde instructions if tildes are detected
-                if (toneAnalysis.features.includes('tildes') || toneAnalysis.features.includes('affectionate_tildes')) {
-                    toneContextPrompt += `\n\nTILDE CUTENESS GUIDE:
+            }
+            
+            // Add specific tilde instructions if tildes are detected
+            if (/(~{2,})/.test(text)) {
+                systemContent += `\n\nTILDE CUTENESS GUIDE:
 - Korean: Add cute chatting elements (야야야~~~, 베이비이이~~ㅋㅋ, 안뇽~~~♡, 자기야야~~~ㅎㅎ)
 - Japanese: Use 〜 naturally (ベイビー〜〜, かわいい〜〜〜)
 - Spanish: Keep tildes or use cute endings (bebé~~~, lindooo~~~)
@@ -612,18 +561,17 @@ CRITICAL: Match the LENGTH of elongation from original text!`;
 - Arabic: Use decorative marks or sweet expressions (حبيبي~~~, يا قمر~~~)
 - Chinese: Add cute particles (宝贝~~~, 可爱~~~)
 PRESERVE the playful, cute, affectionate feeling of tildes!`;
-                }
+            }
 
-                // Add specific Korean chatting instructions if Korean chatting elements are detected OR if elongation + affection is detected
-                if (toneAnalysis.features.includes('korean_chatting') || 
-                    (toneAnalysis.features.includes('affectionate_elongation') && toneAnalysis.emotions.includes('affectionate'))) {
-                    toneContextPrompt += `\n\nKOREAN CHATTING STYLE MANDATORY:
+            // Add specific Korean chatting instructions if Korean chatting elements are detected OR if elongation + affection is detected
+            if (/(ㅋㅋ|ㅎㅎ|ㅠㅠ|ㅜㅜ|><|♡)/i.test(text) || 
+                (/(.)\1{4,}/.test(text) && /(baby+y+|love+|cute+|sweet+)/i.test(text))) {
+                systemContent += `\n\nKOREAN CHATTING STYLE MANDATORY:
 For Korean translations, you MUST add cute chatting elements:
 - "hey babyyy" → "야야야 베이비이이~~~♡" or "어이이 자기야야~~ㅎㅎ" 
 - Add ~~~, ㅋㅋ, ㅎㅎ, ♡, or >< to show cuteness
 - Never translate elongated affectionate terms to plain Korean without chat elements
 - Example: WRONG: "야 자기야야" → CORRECT: "야야야~~~ 베이비이이♡" or "어이이 자기야야~~~ㅎㅎ"`;
-                }
             }
         }
 
@@ -733,7 +681,7 @@ For Korean translations, you MUST add cute chatting elements:
         }
 
         // Prepare system content without placeholder instructions if no placeholders are needed
-        let finalSystemContent = systemContent + toneContextPrompt + dynamicHardConstraints;
+        let finalSystemContent = systemContent + dynamicHardConstraints;
         if (nameMap.size > 0) {
             finalSystemContent += '\n\nCRITICAL: You will see placeholder text that looks like "__PRESERVE_0_1__" or "__PRESERVE_1_2__" etc. These are special markers for technical content. Keep these placeholders EXACTLY as they appear - do not modify the numbers, underscores, or any part of them. Do not create your own placeholders.';
         } else {
