@@ -1094,7 +1094,7 @@ async function generateMonetizationContent(client) {
                         <div class="stat-card vote-card">
                             <div class="stat-icon">⚡</div>
                             <div class="stat-info">
-                                <div class="stat-value">${voteStats.recentVotesCount}</div>
+                                <div class="stat-value" id="recentActivityCount">${voteStats.recentVotesCount}</div>
                                 <div class="stat-label">Recent Activity</div>
                             </div>
                         </div>
@@ -1102,7 +1102,22 @@ async function generateMonetizationContent(client) {
                     
                     <!-- Recent Votes Table -->
                     <div class="recent-votes-section">
-                        <h4>Recent Vote Activity (Last 20)</h4>
+                        <div class="section-head">
+                            <h4>Recent Vote Activity (Last 20)</h4>
+                            <button class="refresh-btn" onclick="refreshRecentVotes()">↻ Refresh</button>
+                        </div>
+                        <div class="filters" style="display:flex; gap:10px; align-items:center; margin: 8px 0 12px 0;">
+                            <label for="voteStatusFilter" style="font-size:12px; color:#6b7280;">Status</label>
+                            <select id="voteStatusFilter" style="padding:6px 10px; border:1px solid #e5e7eb; border-radius:6px; background:#fff;">
+                                <option value="all" selected>All</option>
+                                <option value="granted">Granted</option>
+                                <option value="blocked">Blocked</option>
+                            </select>
+                            <label for="voteServerFilter" style="font-size:12px; color:#6b7280;">Server ID</label>
+                            <input id="voteServerFilter" type="text" placeholder="e.g. 1234567890" style="flex:0 1 220px; padding:6px 10px; border:1px solid #e5e7eb; border-radius:6px;" />
+                            <button id="clearVoteFilters" class="btn btn-sm btn-outline-secondary" style="margin-left:auto;" title="Clear filters">Clear</button>
+                        </div>
+                        <div class="table-scroll" id="recentVotesContainer">
                         <table class="table vote-table">
                             <thead>
                                 <tr>
@@ -1114,7 +1129,7 @@ async function generateMonetizationContent(client) {
                                     <th>Actions</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="recentVotesTbody">
                                 ${enrichedRecentVotes.map(vote => {
                                     const server = client ? client.guilds.cache.get(vote.serverId) : null;
                                     const serverName = server ? server.name : 'Unknown Server';
@@ -1163,6 +1178,7 @@ async function generateMonetizationContent(client) {
                                 }).join('')}
                             </tbody>
                         </table>
+                        </div>
                         <script>
                             async function deleteVoteRecord(voteId) {
                                 if (!voteId) return;
@@ -1175,8 +1191,10 @@ async function generateMonetizationContent(client) {
                                     });
                                     const data = await res.json();
                                     if (data.success) {
-                                        alert('Vote record deleted.');
-                                        location.reload();
+                                        if (typeof showNotification === 'function') {
+                                            showNotification('Vote record deleted.', 'success');
+                                        }
+                                        await refreshRecentVotes(true);
                                     } else {
                                         alert('Failed to delete: ' + (data.message || 'Unknown error'));
                                     }
@@ -1184,6 +1202,46 @@ async function generateMonetizationContent(client) {
                                     alert('Error deleting vote: ' + e.message);
                                 }
                             }
+
+                            function debounce(fn, delay){ let t; return function(...args){ clearTimeout(t); t=setTimeout(()=>fn.apply(this,args), delay); }; }
+
+                            async function refreshRecentVotes(silent = false) {
+                                try {
+                                    const statusEl = document.getElementById('voteStatusFilter');
+                                    const serverEl = document.getElementById('voteServerFilter');
+                                    const status = statusEl ? statusEl.value : 'all';
+                                    const serverId = serverEl ? serverEl.value.trim() : '';
+                                    const qs = new URLSearchParams({ ts: Date.now().toString(), status, serverId }).toString();
+                                    const res = await fetch('/admin/monetization/recent-votes?' + qs, { headers: { 'Accept': 'application/json' } });
+                                    if (!res.ok) throw new Error('Failed to fetch');
+                                    const payload = await res.json();
+                                    if (!payload || !payload.success) throw new Error(payload?.message || 'Unknown error');
+                                    const tbody = document.getElementById('recentVotesTbody');
+                                    if (tbody) tbody.innerHTML = payload.tbody || '';
+                                    const countEl = document.getElementById('recentActivityCount');
+                                    if (countEl && typeof payload.count === 'number') countEl.textContent = payload.count;
+                                    if (!silent && typeof showNotification === 'function') {
+                                        showNotification('Recent votes updated', 'success');
+                                    }
+                                } catch (err) {
+                                    if (!silent) alert('Could not refresh votes: ' + err.message);
+                                }
+                            }
+
+                            // Auto-refresh every 30s to keep the list up to date
+                            setInterval(() => refreshRecentVotes(true), 30000);
+
+                            // Wire filters
+                            document.getElementById('voteStatusFilter')?.addEventListener('change', () => refreshRecentVotes(true));
+                            const debouncedFilter = debounce(() => refreshRecentVotes(true), 400);
+                            document.getElementById('voteServerFilter')?.addEventListener('input', debouncedFilter);
+                            document.getElementById('clearVoteFilters')?.addEventListener('click', () => {
+                                const s = document.getElementById('voteStatusFilter');
+                                const sv = document.getElementById('voteServerFilter');
+                                if (s) s.value = 'all';
+                                if (sv) sv.value = '';
+                                refreshRecentVotes(true);
+                            });
                         </script>
                     </div>
                 </div>
@@ -1317,6 +1375,11 @@ async function generateMonetizationContent(client) {
                 /* Recent votes container as card */
                 .monetization-container .recent-votes-section { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.04); padding:12px; }
                 .monetization-container .recent-votes-section h4 { margin:8px 8px 12px; font-size:15px; color:#111827; }
+                .monetization-container .section-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin: 8px 6px 10px; }
+                .monetization-container .table-scroll { max-height: 420px; overflow-y: auto; border:1px solid #f3f4f6; border-radius:10px; }
+                .monetization-container .table-scroll table { margin: 0; }
+                .monetization-container .refresh-btn { appearance:none; border:1px solid #e5e7eb; background:#fff; border-radius:8px; padding:6px 10px; font-size:12px; cursor:pointer; color:#374151; }
+                .monetization-container .refresh-btn:hover { background:#f9fafb; }
                 /* Settings and actions adopt card primitives */
                 .monetization-container .settings-card, .monetization-container .actions-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.04); }
                 /* Servers table container as card */
@@ -3717,7 +3780,125 @@ const server = http.createServer(async (req, res) => {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: false, message: 'Server error' }));
             }
-        
+
+        // Recent votes JSON (bypass dashboard cache)
+        } else if (pathname === '/admin/monetization/recent-votes' && req.method === 'GET') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            try {
+                const client = global.discordClient;
+                // Read filters from query params
+                const statusFilter = (reqUrl.searchParams.get('status') || 'all').toLowerCase();
+                const serverFilter = (reqUrl.searchParams.get('serverId') || '').trim();
+                const voteStats = await monetizationService.getVoteStats();
+                let recent = voteStats.recentVotes.slice(0, 20);
+                if (client && recent.length) {
+                    recent = await Promise.all(recent.map(async (vote) => {
+                        const uid = vote?.user?.id;
+                        if (!uid) return vote;
+                        const currentName = vote.user.displayName || vote.user.username || '';
+                        const needsEnrich = !currentName || /^\d+$/.test(currentName);
+                        if (!needsEnrich) return vote;
+                        try {
+                            const cached = client.users.cache.get(uid);
+                            if (cached) {
+                                return {
+                                    ...vote,
+                                    user: {
+                                        ...vote.user,
+                                        username: cached.username || vote.user.username,
+                                        displayName: cached.displayName || cached.username || vote.user.displayName || vote.user.username
+                                    }
+                                };
+                            }
+                            const fetched = await client.users.fetch(uid);
+                            return {
+                                ...vote,
+                                user: {
+                                    ...vote.user,
+                                    username: fetched?.username || vote.user.username,
+                                    displayName: fetched?.displayName || fetched?.username || vote.user.displayName || vote.user.username
+                                }
+                            };
+                        } catch (_) {
+                            return vote;
+                        }
+                    }));
+                }
+
+                // Apply filters
+                if (statusFilter === 'granted') {
+                    recent = recent.filter(v => Number(v.creditsGranted) > 0);
+                } else if (statusFilter === 'blocked') {
+                    recent = recent.filter(v => !Number(v.creditsGranted) || Number(v.creditsGranted) <= 0);
+                }
+                if (serverFilter) {
+                    recent = recent.filter(v => (v.serverId || '').toString().includes(serverFilter));
+                }
+
+                const tbody = recent.map(vote => {
+                    const server = client ? client.guilds.cache.get(vote.serverId) : null;
+                    const serverName = server ? server.name : 'Unknown Server';
+                    const timeAgo = new Date(vote.timestamp).toLocaleString();
+                    const rawName = vote.user ? (vote.user.displayName || vote.user.username || '') : '';
+                    const isNumericOnly = /^\d+$/.test(rawName);
+                    const safeName = vote.user ? (
+                        isNumericOnly
+                            ? `user_${(vote.user.id || '').toString().slice(-4)}`
+                            : rawName || `user_${(vote.user.id || '').toString().slice(-4)}`
+                    ) : 'unknown_user';
+                    const isGranted = Number(vote.creditsGranted) > 0;
+                    const statusCell = isGranted 
+                        ? '<span class="status-success">✅ Granted</span>' 
+                        : '<span class="status-warning">⏳ Blocked</span>';
+                    const userDisplay = vote.user ? 
+                        `<td>
+                            <span class="user-mention">@${safeName}</span>
+                            <br>
+                            <small class="text-muted">ID: ${vote.user.id}</small>
+                            <br><small class="${vote.creditsGranted > 0 ? 'text-success' : 'text-warning'}">
+                                Status: ${vote.creditsGranted > 0 ? 'Credits Granted' : 'Blocked (Cooldown)'}
+                            </small>
+                            <div class="mt-1">
+                                <button class="btn btn-sm btn-outline-secondary me-1" onclick="copyToClipboard('${vote.user.id}')">
+                                    Copy ID
+                                </button>
+                                <button class="btn btn-sm btn-outline-info" onclick="window.open('https://discord.com/users/${vote.user.id}', '_blank')">
+                                    Profile
+                                </button>
+                            </div>
+                        </td>` : 
+                        '<td><span class="no-user">Unknown User</span></td>';
+                    return `
+                    <tr>
+                        <td>
+                            <div class="server-info">
+                                <strong>${vote.serverId}</strong>
+                                <small>${serverName}</small>
+                            </div>
+                        </td>
+                        <td>${userDisplay}</td>
+                        <td><span class="credit-badge">+${vote.creditsGranted}</span></td>
+                        <td>${timeAgo}</td>
+                        <td>${statusCell}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteVoteRecord('${vote.id}')">Delete</button>
+                        </td>
+                    </tr>`;
+                }).join('');
+
+                res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+                res.end(JSON.stringify({ success: true, tbody, count: voteStats.recentVotesCount }));
+            } catch (error) {
+                console.error('Error fetching recent votes JSON:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Server error' }));
+            }
+
         // Vote webhook endpoint for top.gg
         } else if (pathname === '/webhook/vote' && req.method === 'POST') {
             console.log('🔔 Webhook received at /webhook/vote');
@@ -3772,7 +3953,7 @@ const server = http.createServer(async (req, res) => {
                                             const { EmbedBuilder } = require('discord.js');
                                             const confirmEmbed = new EmbedBuilder()
                                                 .setTitle('🎉 Vote Reward Received!')
-                                                .setDescription(`Thank you <@${userId}> for voting on Top.gg!\\n\\n**Your server has received 10 bonus translations!**`)
+                                                .setDescription(`Thank you <@${userId}> for voting on Top.gg!\n\n**Your server has received 10 bonus translations!**`)
                                                 .setColor('#28a745')
                                                 .setFooter({
                                                     text: 'You can vote again in 12 hours for more rewards!',

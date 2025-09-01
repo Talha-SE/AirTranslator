@@ -1,6 +1,36 @@
 const axios = require('axios');
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+// High-performance HTTP agents and a dedicated Axios instance to reuse TCP/TLS connections
+const http = require('http');
+const https = require('https');
+const keepAliveHttpAgent = new http.Agent({
+    keepAlive: true,
+    maxSockets: 256,
+    maxFreeSockets: 64,
+    timeout: 180000,
+    keepAliveMsecs: 150000,
+    freeSocketTimeout: 180000,
+});
+const keepAliveHttpsAgent = new https.Agent({
+    keepAlive: true,
+    maxSockets: 256,
+    maxFreeSockets: 64,
+    timeout: 180000,
+    keepAliveMsecs: 150000,
+    freeSocketTimeout: 180000,
+});
+const axiosMistral = axios.create({
+    httpAgent: keepAliveHttpAgent,
+    httpsAgent: keepAliveHttpsAgent,
+    timeout: 150000,
+    decompress: true,
+    headers: {
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+    },
+});
+
 /**
  * Detects and marks proper names for transliteration (not translation)
  * @param {string} text - The original text
@@ -269,7 +299,7 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
     let attempt = 0;
     while (true) {
         try {
-            return await axios.post(mistralAPIUrl, payload, {
+            return await axiosMistral.post(mistralAPIUrl, payload, {
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json'
@@ -292,7 +322,7 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
             }
             const jitter = Math.random() * 500;
             const expBackoff = (2 ** attempt) * 1000 + jitter;
-            const backoff = Math.min(60000, Math.max(retryAfterMs, expBackoff));
+            const backoff = Math.min(120000, Math.max(retryAfterMs, expBackoff));
             console.warn(`Mistral request failed (status ${status}). Retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})`);
             await sleep(backoff);
             attempt++;
@@ -303,6 +333,8 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
 const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
+// Optional fast mode: set env MISTRAL_FAST_MODE=1 to use a smaller, faster model
+const TRANSLATION_MODEL = process.env.MISTRAL_FAST_MODE === '1' ? 'mistral-small-latest' : 'mistral-medium-latest';
 
 /**
  * Detects the language of a given text
@@ -383,9 +415,7 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
                 chunks.push(remaining);
             }
 
-            // Translate each chunk individually and concatenate the results
-            const translatedChunks = [];
-            
+            // Translate each processed chunk in parallel and concatenate the results
             // Only preserve technical items across all chunks
             const { processedText: allProcessedText, nameMap } = markNamesForTransliteration(normalizedText);
             
@@ -407,12 +437,12 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
                 processedChunks.push(processedRemaining);
             }
             
-            // Translate each processed chunk
-            for (const chunk of processedChunks) {
-                // Recursive call but with shorter text (won't trigger chunking again)
-                const translatedChunk = await translateText(chunk, targetLanguage, sourceLanguage, useToneUnderstanding, apiKey);
-                translatedChunks.push(translatedChunk);
-            }
+            // Translate each processed chunk (shorter text won't trigger chunking again)
+            const translatedChunks = await Promise.all(
+                processedChunks.map(chunk => 
+                    translateText(chunk, targetLanguage, sourceLanguage, useToneUnderstanding, apiKey)
+                )
+            );
             
             // Restore preserved items in the final result
             const finalTranslation = translatedChunks.join('');
@@ -447,6 +477,9 @@ CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - Focus on delivering translations that capture not just what was said, but how it was said - including humor, emotion, and subtle implications.
 
 KOREAN TRANSLATION ACCURACY RULES:
+- SUBJECT & PRONOUN POLICY: If the Korean sentence omits the subject, do NOT invent or guess "I/you/he/she/we". Prefer a subject-neutral English rendering when natural (e.g., "Left and came back, so ...", "Went out and came back, so ..."). Only add a subject if it is explicitly present or unambiguously required by explicit markers.
+- FIRST-PERSON DETECTION: Translate as "I/me" ONLY when explicit first‑person tokens appear as standalone words or with particles/inflections: 나/저/내/제/나는/나는/난/저는/전/내가/제가/나를/저를, etc. Do NOT misread verb stems beginning with "나" (e.g., 나가다, 나오다) as the pronoun "나".
+- SECOND-PERSON: Use "you" only when explicit 2nd‑person indicators exist (너/당신/그쪽, vocatives, @mentions directly addressing the listener) or the context in the same message makes it unequivocal.
 - 나 = I/me (NOT "you")
 - 저 = I/me (formal, NOT "you") 
 - 너 = you (informal)
@@ -708,7 +741,7 @@ For Korean translations, you MUST add cute chatting elements:
         }
 
         const response = await postMistralWithRetry({
-            model: 'mistral-medium-latest',
+            model: TRANSLATION_MODEL,
             messages: [
                 {
                     role: 'system',
@@ -816,15 +849,17 @@ const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLan
         // Fallback to null if detection fails; translateText will handle auto-detect
         detected = sourceLanguage;
     }
-    for (const targetLanguage of targetLanguages) {
-        translations[targetLanguage] = await translateText(
-            text,
-            targetLanguage,
-            detected,
-            useToneUnderstanding,
-            apiKey
-        );
-    }
+    await Promise.all(
+        targetLanguages.map(async (targetLanguage) => {
+            translations[targetLanguage] = await translateText(
+                text,
+                targetLanguage,
+                detected,
+                useToneUnderstanding,
+                apiKey
+            );
+        })
+    );
     return translations;
 };
 
@@ -839,7 +874,7 @@ const analyzeAndTranslateImage = async (imageUrl, targetLanguage, apiKey = MISTR
     try {
         console.log(`🖼️ Extracting and translating text from image to ${targetLanguage}`);
         
-        const response = await axios.post(
+        const response = await axiosMistral.post(
             'https://api.mistral.ai/v1/chat/completions',
             {
                 model: 'mistral-small-latest', // Using Mistral Medium model for better vision capabilities
