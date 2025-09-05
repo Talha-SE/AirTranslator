@@ -347,7 +347,7 @@ const detectLanguage = async (text) => {
         const normalizedText = normalizeElongatedText(text);
         
         const response = await postMistralWithRetry({
-            model: 'mistral-tiny-latest',
+            model: 'mistral-small-latest',
             messages: [
                 {
                     role: 'system',
