@@ -333,7 +333,8 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
 const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
-const TRANSLATION_MODEL = 'mistral-medium-latest';
+const TRANSLATION_MODEL = 'mistral-small-latest';
+//const TRANSLATION_MODEL = 'mistral-saba-latest';
 
 /**
  * Detects the language of a given text
@@ -346,7 +347,7 @@ const detectLanguage = async (text) => {
         const normalizedText = normalizeElongatedText(text);
         
         const response = await postMistralWithRetry({
-            model: 'mistral-small-latest',
+            model: 'mistral-tiny-latest',
             messages: [
                 {
                     role: 'system',
@@ -449,7 +450,7 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         }
 
         // Create appropriate system prompt based on tone understanding setting
-        let systemContent = `You are a professional native translator. Analyze and Translate text naturally while preserving meaning and style. Give complete translation.
+        let systemContent = `You are a professional native translator. Analyze and Translate text naturally while preserving meaning and style. Give complete accurate translation and meaningful sentences.
 
 CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - TRANSLATE ONLY THE INPUT TEXT - do not add, expand, or create additional content
@@ -474,17 +475,15 @@ CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - Prioritize accuracy in conveying the author's exact meaning. Maintain the original tone, formality level, and writing style.
 - Your translation should read as if the original author wrote it directly in the target language. Preserve nuance, idioms, and cultural context appropriately.
 - Focus on delivering translations that capture not just what was said, but how it was said - including humor, emotion, and subtle implications.
+- Always translate in required language
 
 KOREAN TRANSLATION ACCURACY RULES:
-- SUBJECT & PRONOUN POLICY: If the Korean sentence omits the subject, do NOT invent or guess "I/you/he/she/we". Prefer a subject-neutral English rendering when natural (e.g., "Left and came back, so ...", "Went out and came back, so ..."). Only add a subject if it is explicitly present or unambiguously required by explicit markers.
-- FIRST-PERSON DETECTION: Translate as "I/me" ONLY when explicit first‑person tokens appear as standalone words or with particles/inflections: 나/저/내/제/나는/나는/난/저는/전/내가/제가/나를/저를, etc. Do NOT misread verb stems beginning with "나" (e.g., 나가다, 나오다) as the pronoun "나".
-- SECOND-PERSON: Use "you" only when explicit 2nd‑person indicators exist (너/당신/그쪽, vocatives, @mentions directly addressing the listener) or the context in the same message makes it unequivocal.
-- 나 = I/me (NOT "you")
+- 나 = you
 - 저 = I/me (formal, NOT "you") 
-- 너 = you (informal)
+- 너 = i
 - 당신 = you (formal)
 - 우리 = we/us (NOT "I")
-- Pay special attention to Korean pronouns - they are often mistranslated
+- Pay special attention to Korean pronouns
 - Korean sentence structure: Subject-Object-Verb order, translate meaning correctly
 - Consider Korean honorific levels (반말/존댓말) in context
 - For casual/affectionate tone: Use 야, 아, 애 endings and casual particles

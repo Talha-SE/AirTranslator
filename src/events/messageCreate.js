@@ -12,6 +12,25 @@ const { synthesizeMultispeaker } = require('../services/ttsService');
 const { validateLanguages, assignVoices } = require('../services/ttsLanguageHelper');
 const { playBufferInChannel } = require('../services/voicePlaybackService');
 
+// Split text into Discord-safe chunks (<= 2000 chars),
+// preferring to break on newlines or spaces near the limit
+function splitIntoDiscordChunks(text, maxLen = 1990) {
+    if (!text || text.length <= maxLen) return [text];
+    const chunks = [];
+    let remaining = text;
+    while (remaining.length > maxLen) {
+        let idx = remaining.lastIndexOf('\n', maxLen);
+        if (idx === -1 || idx < maxLen * 0.5) {
+            idx = remaining.lastIndexOf(' ', maxLen);
+        }
+        if (idx === -1 || idx < maxLen * 0.5) idx = maxLen; // hard split fallback
+        chunks.push(remaining.slice(0, idx).trimEnd());
+        remaining = remaining.slice(idx).trimStart();
+    }
+    if (remaining.length) chunks.push(remaining);
+    return chunks;
+}
+
 // Helper function to format language names for display
 function getLanguageDisplayName(language) {
     const displayNames = {
@@ -381,6 +400,8 @@ async function translateAndReply(message, languages, options = {}) {
 
             // Send each chunk as a modern embed
             for (let i = 0; i < chunks.length; i++) {
+                // Track which languages are too long to fit in an embed field
+                const longTranslations = [];
                 const fields = chunks[i].map(([language, translation]) => {
                     const flag = {
                         'afrikaans': '🇿🇦', 'albanian': '🇦🇱', 'amharic': '🇪🇹', 'arabic': '🇸🇦',
@@ -415,10 +436,14 @@ async function translateAndReply(message, languages, options = {}) {
                     
                     const displayLanguage = getLanguageDisplayName(language);
                     
-                    // Truncate very long translations and add "..." if needed
+                    // If translation fits in an embed field (<= 1024), show it fully.
+                    // Otherwise, show a short preview and send full text below as messages.
                     let displayTranslation = translation;
-                    if (translation.length > 500) {
-                        displayTranslation = translation.substring(0, 497) + '...';
+                    const EMBED_FIELD_LIMIT = 1024;
+                    if (translation.length > EMBED_FIELD_LIMIT) {
+                        longTranslations.push({ language, displayLanguage, translation });
+                        const previewLen = 300;
+                        displayTranslation = translation.substring(0, previewLen) + '...\n\n— View full translation below —';
                     }
                     
                     return {
@@ -511,7 +536,26 @@ async function translateAndReply(message, languages, options = {}) {
                     };
                     await thread.send(silentReplyOptions);
                     console.log(`🧵 Sent translation to thread: ${thread.name}`);
-                    
+
+                    // Send full long translations as follow-up messages in the thread
+                    for (const item of longTranslations) {
+                        const header = `Full translation — ${item.displayLanguage}`;
+                        const parts = splitIntoDiscordChunks(item.translation);
+                        for (let p = 0; p < parts.length; p++) {
+                            const prefix = parts.length > 1 ? ` (Part ${p + 1}/${parts.length})` : '';
+                            await thread.send({
+                                content: `${header}${prefix}\n\n\u200B\n\u200B`,
+                                allowedMentions: { repliedUser: false },
+                                flags: ['SuppressNotifications']
+                            });
+                            await thread.send({
+                                content: '```\n' + parts[p] + '\n```',
+                                allowedMentions: { repliedUser: false },
+                                flags: ['SuppressNotifications']
+                            });
+                        }
+                    }
+
                     // Add helpful context message after translation (only on last chunk)
                     if (i === chunks.length - 1) {
                         const contextEmbed = new EmbedBuilder()
@@ -540,7 +584,24 @@ async function translateAndReply(message, languages, options = {}) {
                     }
                 } else {
                     // Text-based translation (original behavior)
-                    await message.reply(replyOptions);
+                    const msg = await message.reply(replyOptions);
+
+                    // Send full long translations as follow-up messages in the channel
+                    for (const item of longTranslations) {
+                        const header = `Full translation — ${item.displayLanguage}`;
+                        const parts = splitIntoDiscordChunks(item.translation);
+                        for (let p = 0; p < parts.length; p++) {
+                            const prefix = parts.length > 1 ? ` (Part ${p + 1}/${parts.length})` : '';
+                            await message.channel.send({
+                                content: `${header}${prefix}\n\n\u200B\n\u200B`,
+                                allowedMentions: { repliedUser: false }
+                            });
+                            await message.channel.send({
+                                content: '```\n' + parts[p] + '\n```',
+                                allowedMentions: { repliedUser: false }
+                            });
+                        }
+                    }
                 }
                 
                 // Check for auto-cleanup configuration and schedule deletion of original message
