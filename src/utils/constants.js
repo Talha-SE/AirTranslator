@@ -1,6 +1,4 @@
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_API_KEY_2 = process.env.GROQ_API_KEY_2;
 const DEFAULT_LANGUAGE = 'en';
 const SUPPORTED_LANGUAGES = ['en', 'fr', 'es', 'de', 'it', 'pt', 'ko', 'ur', 'ar', 'ja', 'zh', 'hi', 'ru', 'auto'];
 const MIN_CHANNELS_REQUIRED = 2;
@@ -11,8 +9,6 @@ const MAX_TRANSLATION_LENGTH_RATIO = 5; // Maximum ratio of translation length t
 
 module.exports = {
     MISTRAL_API_KEY,
-    GROQ_API_KEY,
-    GROQ_API_KEY_2,
     DEFAULT_LANGUAGE,
     SUPPORTED_LANGUAGES,
     MIN_CHANNELS_REQUIRED,

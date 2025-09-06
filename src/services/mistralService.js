@@ -1,6 +1,4 @@
 const axios = require('axios');
-const GroqLib = require('groq-sdk');
-const Groq = GroqLib.default || GroqLib;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // High-performance HTTP agents and a dedicated Axios instance to reuse TCP/TLS connections
@@ -332,63 +330,11 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
     }
 };
 
-const { MISTRAL_API_KEY, GROQ_API_KEY, GROQ_API_KEY_2, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
+const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'mistral-small-latest';
 const TRANSLATION_MODEL = 'mistral-medium-latest';
-
-// --- Groq client and model configuration ---
-const groqPrimary = new Groq({ apiKey: GROQ_API_KEY });
-const groqSecondary = (typeof GROQ_API_KEY_2 !== 'undefined' && GROQ_API_KEY_2) ? new Groq({ apiKey: GROQ_API_KEY_2 }) : null;
-const GROQ_TRANSLATION_MODEL = 'openai/gpt-oss-120b';
-const GROQ_DETECTION_MODEL = 'llama-3.1-8b-instant';
-
-// Optional per-batch override map for client selection (set by translateTextToMultipleLanguages)
-let batchClientOverride = null; // Map<string, Groq>
-
-// Choose a Groq client. Prefer batch override; otherwise fall back to deterministic hash on language.
-const getGroqClientForLanguage = (langCode) => {
-    if (batchClientOverride && batchClientOverride.has(langCode)) {
-        return batchClientOverride.get(langCode);
-    }
-    if (!groqSecondary) return groqPrimary;
-    const s = String(langCode || '');
-    let sum = 0;
-    for (let i = 0; i < s.length; i++) sum = (sum + s.charCodeAt(i)) | 0;
-    return (Math.abs(sum) % 2 === 0) ? groqPrimary : groqSecondary;
-};
-
-/**
- * Helper to call Groq chat.completions with automatic retries on 429 or network errors
- */
-const callGroqWithRetry = async (payload, client, maxRetries = 5) => {
-    let attempt = 0;
-    while (true) {
-        try {
-            return await client.chat.completions.create(payload);
-        } catch (err) {
-            const status = err?.status || err?.response?.status;
-            if (attempt >= maxRetries || (status && status !== 429)) {
-                throw err;
-            }
-            let retryAfterMs = 0;
-            const retryAfterHeader = err?.response?.headers?.['retry-after'];
-            if (retryAfterHeader) {
-                const parsed = parseFloat(retryAfterHeader);
-                if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
-                    retryAfterMs = parsed * 1000;
-                }
-            }
-            const jitter = Math.random() * 500;
-            const expBackoff = (2 ** attempt) * 1000 + jitter;
-            const backoff = Math.min(120000, Math.max(retryAfterMs, expBackoff));
-            console.warn(`Groq request failed (status ${status}). Retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})`);
-            await sleep(backoff);
-            attempt++;
-        }
-    }
-};
 
 /**
  * Detects the language of a given text
@@ -400,8 +346,8 @@ const detectLanguage = async (text) => {
         // Normalize the text before detection
         const normalizedText = normalizeElongatedText(text);
         
-        const response = await callGroqWithRetry({
-            model: GROQ_DETECTION_MODEL,
+        const response = await postMistralWithRetry({
+            model: 'mistral-small-latest',
             messages: [
                 {
                     role: 'system',
@@ -413,12 +359,10 @@ const detectLanguage = async (text) => {
                 }
             ],
             temperature: 0.1,
-            top_p: 1,
-            stream: false,
             max_tokens: 10
-        }, groqPrimary);
+        });
 
-        let langCode = response.choices[0].message.content.trim().toLowerCase();
+        let langCode = response.data.choices[0].message.content.trim().toLowerCase();
         
         // Clean up the language code (remove quotes, punctuation, etc.)
         langCode = langCode.replace(/[^\w]/g, '');
@@ -430,7 +374,7 @@ const detectLanguage = async (text) => {
     }
 };
 
-const translateText = async (text, targetLanguage, sourceLanguage = null, useToneUnderstanding = false, apiKey = GROQ_API_KEY) => {
+const translateText = async (text, targetLanguage, sourceLanguage = null, useToneUnderstanding = false, apiKey = MISTRAL_API_KEY) => {
     try {
         // If target language is "auto", we don't need to translate
         if (targetLanguage === AUTO_DETECT_LANGUAGE) {
@@ -534,7 +478,7 @@ CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - Always translate in required language
 
 KOREAN TRANSLATION ACCURACY RULES:
-- Pay special attention to Korean pronouns, it might change based on the context
+- Pay special attention to Korean pronouns,  it might change based on the context
 - Korean sentence structure: Subject-Object-Verb order, translate meaning correctly
 - Consider Korean honorific levels (반말/존댓말) in context
 - For casual/affectionate tone: Use 야, 아, 애 endings and casual particles
@@ -738,10 +682,8 @@ For Korean translations, you MUST add cute chatting elements:
             finalSystemContent += '\n\nIMPORTANT: Do not create any placeholder text or markers. Translate the text directly and naturally.';
         }
 
-        const groqClient = getGroqClientForLanguage(targetLanguage);
-        try { console.log(`[Groq Split] Using ${groqClient === groqPrimary ? 'PRIMARY' : 'SECONDARY'} key for target language: ${targetLanguage}`); } catch (_) {}
-        const response = await callGroqWithRetry({
-            model: GROQ_TRANSLATION_MODEL,
+        const response = await postMistralWithRetry({
+            model: TRANSLATION_MODEL,
             messages: [
                 {
                     role: 'system',
@@ -752,15 +694,12 @@ For Korean translations, you MUST add cute chatting elements:
                     content: `Translate to ${targetLangName}: "${processedText}"`
                 }
             ],
-            temperature: 0.1,
-            top_p: 1,
-            stream: false,
-            // Use dynamic tokens; include both properties for compatibility
-            max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2))),
-            max_completion_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2)))
-        }, groqClient);
+            temperature: 0.1,  // Lower temperature for more precise, less creative translations
+            // Dynamically set max_tokens but cap it to avoid hitting hard limits
+            max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2))) // Allow sufficient tokens while preventing truncation
+        }, apiKey);
 
-        let translation = response.choices[0].message.content.trim();
+        let translation = response.data.choices[0].message.content.trim();
         
         // Remove quotes if they exist around the translation
         if ((translation.startsWith('"') && translation.endsWith('"')) || 
@@ -789,16 +728,13 @@ For Korean translations, you MUST add cute chatting elements:
                     { role: 'system', content: finalSystemContent + '\n\nHARD CONSTRAINT: Your output must contain the full textual translation. Do NOT reply with emojis only.' },
                     { role: 'user', content: `Translate to ${targetLangName}: "${processedText}"` }
                 ];
-                const retryResponse = await callGroqWithRetry({
-                    model: GROQ_TRANSLATION_MODEL,
+                const retryResponse = await postMistralWithRetry({
+                    model: 'mistral-small-latest',
                     messages: retryMessages,
                     temperature: 0.1,
-                    top_p: 1,
-                    stream: false,
-                    max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2))),
-                    max_completion_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2)))
-                }, groqClient);
-                let retryTranslation = retryResponse.choices[0].message.content.trim();
+                    max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2)))
+                }, apiKey);
+                let retryTranslation = retryResponse.data.choices[0].message.content.trim();
                 if ((retryTranslation.startsWith('"') && retryTranslation.endsWith('"')) ||
                     (retryTranslation.startsWith("'") && retryTranslation.endsWith("'"))) {
                     retryTranslation = retryTranslation.slice(1, -1);
@@ -844,7 +780,7 @@ For Korean translations, you MUST add cute chatting elements:
     }
 };
 
-const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLanguage = null, useToneUnderstanding = false, apiKey = GROQ_API_KEY) => {
+const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLanguage = null, useToneUnderstanding = false, apiKey = MISTRAL_API_KEY) => {
     const translations = {};
     let detected = sourceLanguage;
     try {
@@ -855,34 +791,17 @@ const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLan
         // Fallback to null if detection fails; translateText will handle auto-detect
         detected = sourceLanguage;
     }
-    // Build a per-batch override map to ensure even split across two keys by index (round-robin)
-    if (groqSecondary) {
-        batchClientOverride = new Map();
-        targetLanguages.forEach((lang, idx) => {
-            const client = (idx % 2 === 0) ? groqPrimary : groqSecondary;
-            batchClientOverride.set(lang, client);
-            try { console.log(`[Groq Split Map] ${lang} -> ${client === groqPrimary ? 'PRIMARY' : 'SECONDARY'}`); } catch (_) {}
-        });
-    } else {
-        batchClientOverride = null;
-    }
-
-    try {
-        await Promise.all(
-            targetLanguages.map(async (targetLanguage, idx) => {
-                translations[targetLanguage] = await translateText(
-                    text,
-                    targetLanguage,
-                    detected,
-                    useToneUnderstanding,
-                    apiKey
-                );
-            })
-        );
-    } finally {
-        // Clear override after batch completes to avoid affecting other calls
-        batchClientOverride = null;
-    }
+    await Promise.all(
+        targetLanguages.map(async (targetLanguage) => {
+            translations[targetLanguage] = await translateText(
+                text,
+                targetLanguage,
+                detected,
+                useToneUnderstanding,
+                apiKey
+            );
+        })
+    );
     return translations;
 };
 
