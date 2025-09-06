@@ -31,6 +31,7 @@
     "fastq": "^1.19.1",
     "ffmpeg-static": "^5.2.0",
     "form-data": "^4.0.4",
+    "groq-sdk": "^0.7.0",
     "geoip-lite": "^1.4.10",
     "jsonwebtoken": "^9.0.2",
     "libsodium-wrappers": "^0.7.15",
