@@ -470,6 +470,7 @@ CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - Do NOT add new emojis that are not in the source. Only preserve existing emojis.
 - Preserve all line breaks and spacing exactly
 - Preserve punctuation and special characters
+- Return in good punctuation and spacing and good grammar according to the context
 - Preserve the author's exact voice and style
 - NUMBERS: Preserve numeric digits exactly as digits. Do not spell out numbers (5 stays 5). If the source spells a number in words ("five"), translate it as words. For mixed forms (e.g., "5th", "5/10", times, dates, codes), keep the numerals and translate only the linguistic parts/suffixes.
 - Prioritize accuracy in conveying the author's exact meaning. Maintain the original tone, formality level, and writing style.
