@@ -16,6 +16,7 @@ const flagToLanguage = {
     '🇧🇷': 'portuguese',   // Brazil
     '🇷🇺': 'russian',      // Russia
     '🇨🇳': 'chinese',      // China
+    '🇹🇼': 'zh-TW',        // Taiwan (Chinese Traditional)
     '🇯🇵': 'japanese',     // Japan
     '🇰🇷': 'korean',       // South Korea
     '🇮🇳': 'hindi',        // India
@@ -111,7 +112,7 @@ function getSupportedFlags() {
  * @returns {string[]} Array of popular flag emojis
  */
 function getPopularFlags() {
-    return ['🇺🇸', '🇪🇸', '🇫🇷', '🇩🇪', '🇮🇹', '🇵🇹', '🇷🇺', '🇨🇳', '🇯🇵', '🇰🇷', '🇮🇳', '🇸🇦', '🇹🇷', '🇳🇱'];
+    return ['🇺🇸', '🇪🇸', '🇫🇷', '🇩🇪', '🇮🇹', '🇵🇹', '🇷🇺', '🇨🇳', '🇹🇼', '🇯🇵', '🇰🇷', '🇮🇳', '🇸🇦', '🇹🇷', '🇳🇱'];
 }
 
 /**
@@ -129,6 +130,7 @@ function getLanguageDisplayName(languageCode) {
         'portuguese': 'Portuguese',
         'russian': 'Russian',
         'chinese': 'Chinese',
+        'zh-TW': 'Chinese (Traditional)',
         'japanese': 'Japanese',
         'korean': 'Korean',
         'hindi': 'Hindi',

@@ -421,7 +421,7 @@ async function messageReactionAdd(client, reaction, user) {
             'afrikaans': '🇿🇦', 'albanian': '🇦🇱', 'amharic': '🇪🇹', 'arabic': '🇸🇦',
             'armenian': '🇦🇲', 'azerbaijani': '🇦🇿', 'basque': '🇪🇸', 'belarusian': '🇧🇾',
             'bengali': '🇧🇩', 'bosnian': '🇧🇦', 'bulgarian': '🇧🇬', 'catalan': '🇪🇸',
-            'cebuano': '🇵🇭', 'chichewa': '🇲🇼', 'chinese': '🇨🇳', 'corsican': '🇫🇷',
+            'cebuano': '🇵🇭', 'chichewa': '🇲🇼', 'chinese': '🇨🇳', 'chinese (traditional)': '🇹🇼', 'zh-TW': '🇹🇼', 'zh-tw': '🇹🇼', 'corsican': '🇫🇷',
             'croatian': '🇭🇷', 'czech': '🇨🇿', 'danish': '🇩🇰', 'dutch': '🇳🇱',
             'english': '🇺🇸', 'esperanto': '🌍', 'estonian': '🇪🇪', 'filipino': '🇵🇭',
             'finnish': '🇫🇮', 'french': '🇫🇷', 'frisian': '🇳🇱', 'galician': '🇪🇸',
