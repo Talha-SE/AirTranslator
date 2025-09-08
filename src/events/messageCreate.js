@@ -269,8 +269,13 @@ async function sendLimitReachedMessage(message) {
             .setLabel('💎 Premium Plans')
             .setStyle(ButtonStyle.Primary);
 
+        const supportLinkButton = new ButtonBuilder()
+            .setLabel('Premium Plans')
+            .setStyle(ButtonStyle.Link)
+            .setURL('https://www.patreon.com/c/TSIO/membership');
+
         const actionRow = new ActionRowBuilder()
-            .addComponents(voteButton, supportButton);
+            .addComponents(voteButton, supportButton, supportLinkButton);
 
         // Try to send to the current channel, fallback to system channel
         let targetChannel = message.channel;
