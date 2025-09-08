@@ -313,18 +313,11 @@ async function messageReactionAdd(client, reaction, user) {
                 const supportButton = new ButtonBuilder()
                     .setLabel('💎 Premium Plans')
                     .setStyle(ButtonStyle.Link)
-                    .setURL('https://your-website.com/premium');
+                    .setURL('https://www.patreon.com/cw/TSIO/membership');
 
                 const actionRow = new ActionRowBuilder().addComponents(voteButton, supportButton);
 
-                // Start vote tracking similar to message limit flow
-                const userInfo = {
-                    id: user.id,
-                    username: user.username,
-                    displayName: user.displayName || user.username,
-                    displayAvatarURL: () => user.displayAvatarURL({ dynamic: true, size: 64 })
-                };
-                startVoteTrackingForServer(serverId, userInfo, client);
+                // Note: Do not auto-grant credits here. Vote rewards are handled by Top.gg vote processing only.
 
                 // Try to send to the current channel, fallback to system channel or first text channel with perms
                 let targetChannel = message.channel;
@@ -335,6 +328,29 @@ async function messageReactionAdd(client, reaction, user) {
 
                 if (targetChannel) {
                     await targetChannel.send({ embeds: [embed], components: [actionRow] });
+                }
+
+                // DM the user the private approval button
+                try {
+                    const dmEmbed = new EmbedBuilder()
+                        .setTitle('💎 Premium Payment Review')
+                        .setDescription('If you have completed the premium payment, press the button below to request approval. Our team will review and exempt your server shortly.')
+                        .setColor('#5865F2')
+                        .addFields(
+                            { name: 'Server', value: message.guild.name, inline: true },
+                            { name: 'Server ID', value: message.guild.id, inline: true }
+                        )
+                        .setTimestamp();
+
+                    const requestApprovalButton = new ButtonBuilder()
+                        .setCustomId(`premium_request:${message.guild.id}`)
+                        .setLabel('✅ I Paid - Request Approval')
+                        .setStyle(ButtonStyle.Primary);
+
+                    const dmRow = new ActionRowBuilder().addComponents(requestApprovalButton);
+                    await user.send({ embeds: [dmEmbed], components: [dmRow] });
+                } catch (dmErr) {
+                    console.log('Could not DM user about premium request button (flag path). DMs may be closed.');
                 }
             } catch (limitMsgError) {
                 console.error('Error sending limit reached message (flag path):', limitMsgError);

@@ -963,6 +963,8 @@ async function generateMonetizationContent(client) {
         const serversStatus = await monetizationService.getAllServersStatus(client);
         // Get vote statistics
         const voteStats = await monetizationService.getVoteStats();
+        // Get pending premium requests
+        const pendingPremium = await databaseService.getPendingPremiumRequests(50);
         // Enrich recent votes with Discord user info (only up to 20) to show proper @username
         let enrichedRecentVotes = voteStats.recentVotes.slice(0, 20);
         if (client && enrichedRecentVotes.length) {
@@ -1246,6 +1248,84 @@ async function generateMonetizationContent(client) {
                     </div>
                 </div>
                 
+                <!-- Premium Requests Section -->
+                <div class="stats-section">
+                    <h3>💳 Premium Requests</h3>
+                    <div class="stats-grid" style="margin-bottom:12px;">
+                        <div class="stat-card">
+                            <div class="stat-icon">⏳</div>
+                            <div class="stat-info">
+                                <div class="stat-value">${pendingPremium.length}</div>
+                                <div class="stat-label">Pending Reviews</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="recent-votes-section">
+                        <div class="section-head">
+                            <h4>Pending Premium Requests</h4>
+                        </div>
+                        <div class="table-scroll">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Request ID</th>
+                                        <th>Server</th>
+                                        <th>Server ID</th>
+                                        <th>Requester</th>
+                                        <th>Created</th>
+                                        <th style="min-width:220px">Approve</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${pendingPremium.map(pr => `
+                                        <tr>
+                                            <td><code>${pr._id}</code></td>
+                                            <td>${pr.serverName || 'Unknown'}</td>
+                                            <td>${pr.serverId}</td>
+                                            <td>${(pr.requesterDisplayName || pr.requesterUsername || 'user') + ' (' + pr.requesterUserId + ')'}</td>
+                                            <td>${new Date(pr.createdAt).toLocaleString()}</td>
+                                            <td>
+                                                <div style="display:flex; gap:8px; align-items:center;">
+                                                    <input type="number" min="1" max="3650" value="30" id="dur_${pr._id}" style="width:90px; padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px;" title="Duration in days" />
+                                                    <button class="btn btn-exempt" onclick="approvePremium('${pr._id}', '${pr.serverId}')">Approve</button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                    ${pendingPremium.length === 0 ? '<tr><td colspan="5" style="text-align:center; color:#6b7280;">No pending requests</td></tr>' : ''}
+                                </tbody>
+                            </table>
+                        </div>
+                        <script>
+                          async function approvePremium(reqId, serverId){
+                            try{
+                              const input = document.getElementById('dur_' + reqId);
+                              const days = parseInt(input && input.value ? input.value : '30', 10);
+                              const res = await fetch('/admin/monetization/premium/approve', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ requestId: reqId, durationDays: isNaN(days)?30:days })
+                              });
+                              const data = await res.json();
+                              if(data.success){
+                                if (typeof showNotification === 'function') {
+                                  showNotification('Premium approved for ' + (data.serverName||serverId), 'success');
+                                } else {
+                                  alert('Approved!');
+                                }
+                                // Simple refresh to update pending list
+                                window.location.reload();
+                              } else {
+                                alert('Failed to approve: ' + (data.message || 'Unknown error'));
+                              }
+                            } catch(err){
+                              alert('Error approving: ' + err.message);
+                            }
+                          }
+                        </script>
+                    </div>
+                </div>
+                
                 <!-- Global Settings Section -->
                 <div class="settings-section">
                     <h3>Global Settings</h3>
@@ -1309,6 +1389,15 @@ async function generateMonetizationContent(client) {
                     
                     <div class="servers-table-container">
                         <table class="servers-table">
+                            <colgroup>
+                                <col style="width:28%" />
+                                <col style="width:18%" />
+                                <col style="width:8%" />
+                                <col style="width:12%" />
+                                <col style="width:10%" />
+                                <col style="width:14%" />
+                                <col style="width:10%" />
+                            </colgroup>
                             <thead>
                                 <tr>
                                     <th>Server Name</th>
@@ -1316,6 +1405,7 @@ async function generateMonetizationContent(client) {
                                     <th>Members</th>
                                     <th>Translations</th>
                                     <th>Status</th>
+                                    <th>Exemption</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -1332,6 +1422,25 @@ async function generateMonetizationContent(client) {
                                             <span class="status-badge ${getServerStatusClass(server)}">
                                                 ${getServerStatusText(server)}
                                             </span>
+                                        </td>
+                                        <td class="exempt-cell">
+                                            ${(() => {
+                                                if (server.isExempt) {
+                                                    if (server.exemptUntil) {
+                                                        const until = new Date(server.exemptUntil);
+                                                        const now = new Date();
+                                                        const diffMs = until - now;
+                                                        if (diffMs > 0) {
+                                                            const daysLeft = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+                                                            return `<span title="Exemption expires ${until.toLocaleString()}" class="status-badge exempt">Until ${until.toLocaleDateString()} (${daysLeft}d left)</span>`;
+                                                        } else {
+                                                            return `<span class="status-badge">Expired</span>`;
+                                                        }
+                                                    }
+                                                    return `<span class="status-badge exempt">Unlimited</span>`;
+                                                }
+                                                return '<span class="status-badge">—</span>';
+                                            })()}
                                         </td>
                                         <td class="server-actions">
                                             ${generateServerActions(server)}
@@ -1383,7 +1492,15 @@ async function generateMonetizationContent(client) {
                 /* Settings and actions adopt card primitives */
                 .monetization-container .settings-card, .monetization-container .actions-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.04); }
                 /* Servers table container as card */
-                .monetization-container .servers-table-container { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.04); overflow:hidden; }
+                .monetization-container .servers-table-container { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.04); overflow-x:auto; overflow-y:hidden; }
+                .monetization-container .servers-table { width:100%; min-width: 980px; table-layout: fixed; }
+                .monetization-container .servers-table thead th { position: sticky; top: 0; z-index: 2; }
+                .monetization-container .servers-table td, .monetization-container .servers-table th { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; vertical-align: middle; }
+                .monetization-container .servers-table td.exempt-cell { white-space: normal !important; text-overflow: clip; overflow: visible; min-width: 240px; }
+                .monetization-container .servers-table .server-name { max-width: 240px; }
+                .monetization-container .servers-table .server-id { max-width: 180px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+                .monetization-container .servers-table .member-count, .monetization-container .servers-table .translation-count { text-align: right; }
+                .monetization-container .server-actions { display:flex; gap:8px; flex-wrap: wrap; }
                 /* Badges */
                 .monetization-container .status-badge { border:1px solid #e5e7eb; }
                 .monetization-container .status-badge.active { background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }
@@ -1505,6 +1622,26 @@ async function generateMonetizationContent(client) {
                     color: #666;
                     margin-top: 5px;
                     font-size: 12px;
+                }
+
+                /* Responsive tweaks */
+                @media (max-width: 1200px) {
+                  .monetization-container .servers-table { min-width: 900px; }
+                }
+                @media (max-width: 992px) {
+                  .monetization-container .servers-table { min-width: 820px; }
+                  .monetization-container .server-actions .btn { padding:8px 10px; font-size:12px; }
+                  .monetization-container .stat-card .stat-value { font-size:22px; }
+                }
+                @media (max-width: 768px) {
+                  .monetization-container { padding: 14px; }
+                  .monetization-container .servers-table { min-width: 720px; }
+                  .monetization-container .servers-table td, .monetization-container .servers-table th { padding:10px; font-size: 13px; }
+                  .monetization-container .server-actions { gap:6px; }
+                }
+                @media (max-width: 560px) {
+                  .monetization-container .servers-table { min-width: 640px; }
+                  .monetization-container .servers-table td, .monetization-container .servers-table th { padding:8px; font-size: 12px; }
                 }
                 
                 /* Toggle Switch Styles */
@@ -3635,6 +3772,48 @@ const server = http.createServer(async (req, res) => {
                 res.end(JSON.stringify({ success: true }));
             } catch (error) {
                 console.error('Error adding exempt server:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+        } else if (pathname === '/admin/monetization/premium/approve' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+
+            try {
+                const postData = await parsePostData(req);
+                const data = JSON.parse(postData.body || '{}');
+                const { requestId, durationDays } = data;
+                if (!requestId) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Missing requestId' }));
+                    return;
+                }
+
+                // Approve in DB with optional duration
+                const approved = await databaseService.approvePremiumRequest(requestId, (sessions.get(sessionToken)?.username || 'admin'), Number(durationDays));
+                if (!approved) {
+                    res.writeHead(404, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Request not found' }));
+                    return;
+                }
+
+                // Exempt server for duration
+                await monetizationService.addExemptServer(approved.serverId, Number(durationDays));
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ 
+                    success: true, 
+                    serverId: approved.serverId, 
+                    serverName: approved.serverName, 
+                    durationDays: Number(durationDays) || null,
+                    expiresAt: approved.expiresAt || null 
+                }));
+            } catch (error) {
+                console.error('Error approving premium request (admin):', error);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: false, message: error.message }));
             }

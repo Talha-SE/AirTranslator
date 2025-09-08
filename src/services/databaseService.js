@@ -4,6 +4,7 @@ const MonetizationSettings = require('../models/MonetizationSettings');
 const VoteCooldown = require('../models/VoteCooldown');
 const VoteEvent = require('../models/VoteEvent');
 const PersonalTranslation = require('../models/PersonalTranslation');
+const PremiumRequest = require('../models/PremiumRequest');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
@@ -729,6 +730,95 @@ const shouldUseThreadTranslation = async (serverId, channelId) => {
     }
 };
 
+// ---- Premium Requests Helpers ----
+async function createPremiumRequest(serverId, serverName, requester) {
+    try {
+        // Avoid duplicate pending requests per server
+        const existing = await PremiumRequest.findOne({ serverId, status: 'pending' });
+        if (existing) return existing.toObject();
+
+        const doc = new PremiumRequest({
+            serverId,
+            serverName: serverName || 'Unknown Server',
+            requesterUserId: requester?.id,
+            requesterUsername: requester?.username || `user_${requester?.id || 'unknown'}`,
+            requesterDisplayName: requester?.displayName || requester?.username,
+            status: 'pending'
+        });
+        const saved = await doc.save();
+        return saved.toObject();
+    } catch (error) {
+        console.error('Error creating premium request:', error);
+        throw error;
+    }
+}
+
+async function getPendingPremiumRequests(limit = 20) {
+    try {
+        const list = await PremiumRequest.find({ status: 'pending' })
+            .sort({ createdAt: -1 })
+            .limit(limit)
+            .lean();
+        return list;
+    } catch (error) {
+        console.error('Error fetching pending premium requests:', error);
+        return [];
+    }
+}
+
+async function approvePremiumRequest(requestId, approverUserId, durationDays = null) {
+    try {
+        const update = { status: 'approved', approvedBy: approverUserId, approvedAt: new Date() };
+        if (durationDays && Number.isFinite(durationDays) && durationDays > 0) {
+            update.durationDays = durationDays;
+            update.expiresAt = new Date(Date.now() + Math.floor(durationDays * 24 * 60 * 60 * 1000));
+        }
+        const req = await PremiumRequest.findByIdAndUpdate(requestId, { $set: update }, { new: true });
+        return req?.toObject() || null;
+    } catch (error) {
+        console.error('Error approving premium request:', error);
+        return null;
+    }
+}
+
+async function rejectPremiumRequest(requestId, approverUserId) {
+    try {
+        const req = await PremiumRequest.findByIdAndUpdate(
+            requestId,
+            { $set: { status: 'rejected', approvedBy: approverUserId, approvedAt: new Date() } },
+            { new: true }
+        );
+        return req?.toObject() || null;
+    } catch (error) {
+        console.error('Error rejecting premium request:', error);
+        return null;
+    }
+}
+
+async function getLatestPremiumRequestByServer(serverId) {
+    try {
+        const req = await PremiumRequest.findOne({ serverId })
+            .sort({ createdAt: -1 })
+            .lean();
+        return req;
+    } catch (error) {
+        console.error('Error fetching latest premium request:', error);
+        return null;
+    }
+}
+
+async function getRecentPremiumRequestsByStatus(status = 'approved', limit = 20) {
+    try {
+        return await PremiumRequest.find({ status })
+            .sort({ updatedAt: -1 })
+            .limit(limit)
+            .lean();
+    } catch (error) {
+        console.error('Error fetching recent premium requests:', error);
+        return [];
+    }
+}
+
 module.exports = {
     connectDB,
     saveServerConfig,
@@ -762,5 +852,11 @@ module.exports = {
     saveVoteEvent,
     getVoteStats,
     getRecentVoteEvents,
-    deleteVoteEventById
+    // Premium requests
+    createPremiumRequest,
+    getPendingPremiumRequests,
+    approvePremiumRequest,
+    rejectPremiumRequest,
+    getLatestPremiumRequestByServer,
+    getRecentPremiumRequestsByStatus
 };

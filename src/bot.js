@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, Partials } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus } = require('@discordjs/voice');
 const TTSSettings = require('./models/TTSSettings');
-const { connectDB } = require('./services/databaseService');
+const databaseService = require('./services/databaseService');
 const analyticsService = require('./services/analyticsService');
 const translationQueueService = require('./services/translationQueueService');
 const voteCheckService = require('./services/voteCheckService');
@@ -290,11 +290,53 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         }
     } else if (interaction.isButton()) {
-        // No button interactions currently handled
-        await interaction.reply({
-            content: 'This button interaction is not recognized.',
-            flags: MessageFlags.Ephemeral
-        });
+        try {
+            const customId = interaction.customId || '';
+            // Debug log to trace unknown button issues
+            logger.debug('[Button] Received button interaction', { customId, inGuild: interaction.inGuild(), userId: interaction.user?.id });
+
+            if (customId.startsWith('premium_request')) {
+                // Extract serverId if provided after ':' else fallback to recent mapping
+                let serverId = customId.includes(':') ? customId.split(':')[1] : null;
+                if (!serverId) {
+                    // Fallback: try to use last known server the user interacted in
+                    if (global.userServerTracking && interaction.user) {
+                        serverId = global.userServerTracking.get(interaction.user.id) || null;
+                    }
+                }
+                // As a last resort, use current guild if available
+                if (!serverId) serverId = interaction.guildId || null;
+                const serverName = interaction.guild?.name || 'Unknown Server';
+                const requester = {
+                    id: interaction.user.id,
+                    username: interaction.user.username,
+                    displayName: interaction.user.displayName || interaction.user.username
+                };
+
+                const created = await databaseService.createPremiumRequest(serverId, serverName, requester);
+
+                const msg = `✅ Your premium payment review request has been recorded for server "${serverName}".\nRequest ID: ${created?._id || 'N/A'}\nOur team will review and approve it shortly.`;
+                if (interaction.inGuild()) {
+                    await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+                } else {
+                    await interaction.reply({ content: msg });
+                }
+                return;
+            }
+
+            // Default handler for unknown buttons
+            await interaction.reply({
+                content: 'This button interaction is not recognized.',
+                flags: MessageFlags.Ephemeral
+            });
+        } catch (e) {
+            try {
+                await interaction.reply({
+                    content: '❌ Failed to process your request. Please try again later.',
+                    flags: MessageFlags.Ephemeral
+                });
+            } catch {}
+        }
     } else if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('commentModal_')) {
             const messageId = interaction.customId.split('_')[1];
@@ -319,7 +361,7 @@ client.on(Events.InteractionCreate, async interaction => {
 // Connect to database and start bot
 async function startBot() {
     try {
-        await connectDB();
+        await databaseService.connectDB();
         await client.login(process.env.DISCORD_TOKEN);
         
         // Start vote checking service

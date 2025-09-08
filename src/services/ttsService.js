@@ -190,37 +190,36 @@ async function originalSynthesis(text, { voice1, voice2 } = {}) {
     console.log('[TTS] Audio verification: first16B(hex)=', preview, '| sha1(first4KB)=', hash);
     return out;
   } else {
-    console.error('[TTS-DEBUG] No audio generated!');
+    console.warn('[TTS] No audio from stream. Retrying once with non-streaming call...');
+    try {
+      const resp = await ai.models.generateContent({ model, config, contents });
+      const cand = resp?.response?.candidates?.[0];
+      const part = cand?.content?.parts?.[0];
+      if (cand?.finishReason) console.log('[TTS] Fallback finishReason:', cand.finishReason);
+      if (Array.isArray(cand?.safetyRatings)) console.log('[TTS] Fallback safety ratings count:', cand.safetyRatings.length);
+      if (part?.inlineData) {
+        const inlineData = part.inlineData;
+        const ext = getExtFromMime(inlineData.mimeType || '');
+        let buffer = Buffer.from(inlineData.data || '', 'base64');
+        if (ext === 'wav') {
+          if (!inlineData.mimeType || inlineData.mimeType.startsWith('audio/L')) {
+            buffer = convertToWav(inlineData.data || '', inlineData.mimeType || 'audio/L16;rate=24000');
+          }
+        }
+        const preview = buffer.subarray(0, 16).toString('hex');
+        const hash = crypto.createHash('sha1').update(buffer.subarray(0, 4096)).digest('hex');
+        console.log('[TTS] Fallback produced bytes:', buffer.length, 'mime:', inlineData.mimeType || 'unknown', '| first16B(hex)=', preview, '| sha1(first4KB)=', hash);
+        return buffer.length > 0 ? buffer : null;
+      } else {
+        console.error('[TTS] Fallback returned no inlineData. No audio generated.');
+      }
+    } catch (fallbackErr) {
+      console.error('[TTS] Fallback non-streaming call failed:', fallbackErr?.message || fallbackErr);
+    }
+
+    console.error('[TTS-DEBUG] No audio generated after fallback.');
     return null;
   }
-
-  // Fallback: try non-streaming generateContent once
-  console.warn('[TTS] No audio from stream. Retrying once with non-streaming call...');
-  try {
-    const resp = await ai.models.generateContent({ model, config, contents });
-    const cand = resp?.response?.candidates?.[0];
-    const part = cand?.content?.parts?.[0];
-    if (cand?.finishReason) console.log('[TTS] Fallback finishReason:', cand.finishReason);
-    if (Array.isArray(cand?.safetyRatings)) console.log('[TTS] Fallback safety ratings count:', cand.safetyRatings.length);
-    if (part?.inlineData) {
-      const inlineData = part.inlineData;
-      const ext = getExtFromMime(inlineData.mimeType || '');
-      let buffer = Buffer.from(inlineData.data || '', 'base64');
-      if (ext === 'wav') {
-        if (!inlineData.mimeType || inlineData.mimeType.startsWith('audio/L')) {
-          buffer = convertToWav(inlineData.data || '', inlineData.mimeType || 'audio/L16;rate=24000');
-        }
-      }
-      const preview = buffer.subarray(0, 16).toString('hex');
-      const hash = crypto.createHash('sha1').update(buffer.subarray(0, 4096)).digest('hex');
-      console.log('[TTS] Fallback produced bytes:', buffer.length, 'mime:', inlineData.mimeType || 'unknown', '| first16B(hex)=', preview, '| sha1(first4KB)=', hash);
-      return buffer.length > 0 ? buffer : null;
-    }
-  } catch (fallbackErr) {
-    console.error('[TTS] Fallback non-streaming call failed:', fallbackErr?.message || fallbackErr);
-  }
-
-  return null;
 }
 
 async function synthesizeMultispeaker(text, { voice1, voice2 } = {}) {

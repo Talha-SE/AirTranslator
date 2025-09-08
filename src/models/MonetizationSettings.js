@@ -8,7 +8,7 @@ const monetizationSettingsSchema = new mongoose.Schema({
     },
     defaultFreeTranslationLimit: {
         type: Number,
-        default: 20
+        default: 50
     },
     enableGlobalRestriction: {
         type: Boolean,

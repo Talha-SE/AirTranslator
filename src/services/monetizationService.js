@@ -114,9 +114,16 @@ class MonetizationService {
             const serverSettings = await this.getServerSettings(serverId);
             const translationCount = server.translationCount || 0;
 
-            // Check if server is exempt
+            // Check if server is exempt with optional expiry
             if (serverSettings.isExempt) {
-                return true;
+                // If there's an expiry and it has passed, clear exemption lazily
+                if (serverSettings.exemptUntil && new Date(serverSettings.exemptUntil).getTime() < Date.now()) {
+                    serverSettings.isExempt = false;
+                    serverSettings.exemptUntil = null;
+                    await this.updateServerSettings(serverId, serverSettings);
+                } else {
+                    return true;
+                }
             }
 
             // Get the effective limit (custom or global default)
@@ -157,6 +164,7 @@ class MonetizationService {
                 translationCount: server?.translationCount || 0,
                 isRestricted: serverSettings.isRestricted || this.globalSettings.enableGlobalRestriction,
                 isExempt: serverSettings.isExempt,
+                exemptUntil: serverSettings.exemptUntil || null,
                 canTranslate: await this.canTranslate(serverId),
                 freeTranslationLimit: serverSettings.customLimit || serverSettings.freeTranslationLimit,
                 lastReset: serverSettings.lastReset
@@ -185,10 +193,16 @@ class MonetizationService {
     /**
      * Add server to exempt list
      */
-    async addExemptServer(serverId) {
+    async addExemptServer(serverId, durationDays = null) {
         const serverSettings = await this.getServerSettings(serverId);
         serverSettings.isExempt = true;
         serverSettings.isRestricted = false;
+        if (durationDays && Number.isFinite(durationDays) && durationDays > 0) {
+            const ms = Math.floor(durationDays * 24 * 60 * 60 * 1000);
+            serverSettings.exemptUntil = new Date(Date.now() + ms);
+        } else {
+            serverSettings.exemptUntil = null;
+        }
         await this.updateServerSettings(serverId, serverSettings);
     }
 
@@ -281,6 +295,7 @@ class MonetizationService {
                     canTranslate,
                     freeTranslationLimit: effectiveLimit,
                     lastReset: sMon.lastReset,
+                    exemptUntil: sMon.exemptUntil || null,
                     memberCount: undefined
                 };
 
@@ -311,6 +326,7 @@ class MonetizationService {
                             canTranslate: !sMonDefault.isRestricted || 0 < effectiveLimit,
                             freeTranslationLimit: effectiveLimit,
                             lastReset: sMonDefault.lastReset,
+                            exemptUntil: null,
                             memberCount: guild.memberCount
                         };
                         merged.push(info);

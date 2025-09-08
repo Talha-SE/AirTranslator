@@ -75,6 +75,10 @@ const serverSchema = new mongoose.Schema({
             type: Boolean,
             default: false
         },
+        exemptUntil: {
+            type: Date,
+            default: null
+        },
         lastReset: {
             type: Date,
             default: Date.now
