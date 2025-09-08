@@ -237,7 +237,7 @@ async function sendLimitReachedMessage(message) {
         const embed = new EmbedBuilder()
             .setTitle('🚫 Translation Limit Reached')
             .setDescription(`Your server has reached the free translation limit of **${serverStats.freeTranslationLimit} messages**.`)
-            .setColor('#5865F2')
+            .setColor('#e74c3c')
             .addFields(
                 {
                     name: '🎯 Get More Translations',
@@ -259,7 +259,7 @@ async function sendLimitReachedMessage(message) {
         // Note: Do not auto-grant credits here. Vote rewards are handled by Top.gg vote processing.
         
         const voteButton = new ButtonBuilder()
-            .setLabel('Vote on Top.gg')
+            .setLabel('🗳️ Vote on Top.gg')
             .setEmoji('🗳️')
             .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${message.guild.id}`)
             .setStyle(ButtonStyle.Link);
@@ -269,13 +269,8 @@ async function sendLimitReachedMessage(message) {
             .setLabel('💎 Premium Plans')
             .setStyle(ButtonStyle.Primary);
 
-        const supportLinkButton = new ButtonBuilder()
-            .setLabel('Premium Plans')
-            .setStyle(ButtonStyle.Link)
-            .setURL('https://www.patreon.com/c/TSIO/membership');
-
         const actionRow = new ActionRowBuilder()
-            .addComponents(voteButton, supportButton, supportLinkButton);
+            .addComponents(voteButton, supportButton);
 
         // Try to send to the current channel, fallback to system channel
         let targetChannel = message.channel;
