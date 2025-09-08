@@ -237,7 +237,7 @@ async function sendLimitReachedMessage(message) {
         const embed = new EmbedBuilder()
             .setTitle('🚫 Translation Limit Reached')
             .setDescription(`Your server has reached the free translation limit of **${serverStats.freeTranslationLimit} messages**.`)
-            .setColor('#e74c3c')
+            .setColor('#5865F2')
             .addFields(
                 {
                     name: '🎯 Get More Translations',
@@ -259,7 +259,7 @@ async function sendLimitReachedMessage(message) {
         // Note: Do not auto-grant credits here. Vote rewards are handled by Top.gg vote processing.
         
         const voteButton = new ButtonBuilder()
-            .setLabel('🗳️ Vote on Top.gg')
+            .setLabel('Vote on Top.gg')
             .setEmoji('🗳️')
             .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${message.guild.id}`)
             .setStyle(ButtonStyle.Link);

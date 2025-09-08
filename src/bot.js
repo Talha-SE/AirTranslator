@@ -306,7 +306,8 @@ client.on(Events.InteractionCreate, async interaction => {
                         description: 'If you have completed the premium payment, press the button below to request approval. Our team will review and exempt your server shortly.',
                         fields: [
                             { name: 'Server', value: serverName, inline: true },
-                            { name: 'Server ID', value: serverId || 'N/A', inline: true }
+                            { name: 'Server ID', value: serverId || 'N/A', inline: true },
+                            { name: 'Membership', value: 'https://www.patreon.com/c/TSIO/membership', inline: false }
                         ],
                         timestamp: new Date().toISOString()
                     };
@@ -323,11 +324,11 @@ client.on(Events.InteractionCreate, async interaction => {
                     };
 
                     await interaction.user.send({ embeds: [embed], components: [row] });
-                    // Acknowledge in channel ephemerally
+                    // Acknowledge in channel ephemerally and include the membership link
                     if (interaction.inGuild()) {
-                        await interaction.reply({ content: '📩 I sent you a DM with the premium approval button.', flags: MessageFlags.Ephemeral });
+                        await interaction.reply({ content: '📩 I sent you a DM with the premium approval button. Membership link: https://www.patreon.com/c/TSIO/membership', flags: MessageFlags.Ephemeral });
                     } else {
-                        await interaction.reply({ content: '📩 Check this DM for the premium approval button.' });
+                        await interaction.reply({ content: '📩 Check this DM for the premium approval button. Membership link: https://www.patreon.com/c/TSIO/membership' });
                     }
                 } catch (dmErr) {
                     if (interaction.inGuild()) {
