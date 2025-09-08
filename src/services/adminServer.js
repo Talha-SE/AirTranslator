@@ -964,8 +964,14 @@ async function generateMonetizationContent(client) {
         const serversStatus = await monetizationService.getAllServersStatus(client);
         // Get vote statistics
         const voteStats = await monetizationService.getVoteStats();
-        // Get pending premium requests
-        const pendingPremium = await databaseService.getPendingPremiumRequests(50);
+        // Get all pending premium requests (limit 0 = no limit)
+        const pendingPremium = await databaseService.getPendingPremiumRequests(0);
+        // Calculate duplicates by serverId
+        const duplicateCounts = pendingPremium.reduce((acc, pr) => {
+            const sid = pr.serverId || 'unknown';
+            acc[sid] = (acc[sid] || 0) + 1;
+            return acc;
+        }, {});
         // Enrich recent votes with Discord user info (only up to 20) to show proper @username
         let enrichedRecentVotes = voteStats.recentVotes.slice(0, 20);
         if (client && enrichedRecentVotes.length) {
@@ -1280,7 +1286,7 @@ async function generateMonetizationContent(client) {
                                 <tbody>
                                     ${pendingPremium.map(pr => `
                                         <tr>
-                                            <td><code>${pr._id}</code></td>
+                                            <td><code>${pr._id}</code> ${ (duplicateCounts[pr.serverId]||0) > 1 ? '<span class="badge dup" title="Duplicate request for same server">Duplicate</span>' : '' }</td>
                                             <td>${pr.serverName || 'Unknown'}</td>
                                             <td>${pr.serverId}</td>
                                             <td>${(pr.requesterDisplayName || pr.requesterUsername || 'user') + ' (' + pr.requesterUserId + ')'}</td>
@@ -1481,6 +1487,9 @@ async function generateMonetizationContent(client) {
                 .monetization-container .table-scroll table { margin: 0; }
                 .monetization-container .refresh-btn { appearance:none; border:1px solid #e5e7eb; background:#fff; border-radius:8px; padding:6px 10px; font-size:12px; cursor:pointer; color:#374151; }
                 .monetization-container .refresh-btn:hover { background:#f9fafb; }
+                /* Small badges */
+                .monetization-container .badge { display:inline-block; padding:2px 6px; border-radius:999px; font-size:10px; font-weight:700; vertical-align:middle; }
+                .monetization-container .badge.dup { background:#fff7ed; color:#9a3412; border:1px solid #fed7aa; margin-left:6px; }
                 /* Settings and actions adopt card primitives */
                 .monetization-container .settings-card, .monetization-container .actions-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.04); }
                 /* Servers table container as card */
