@@ -306,7 +306,8 @@ async function messageReactionAdd(client, reaction, user) {
                     .setTimestamp();
 
                 const voteButton = new ButtonBuilder()
-                    .setLabel('🗳️ Vote on Top.gg')
+                    .setLabel('Vote on Top.gg')
+                    .setEmoji('🗳️')
                     .setStyle(ButtonStyle.Link)
                     .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${message.guild.id}`);
 

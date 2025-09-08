@@ -259,7 +259,7 @@ async function sendLimitReachedMessage(message) {
         // Note: Do not auto-grant credits here. Vote rewards are handled by Top.gg vote processing.
         
         const voteButton = new ButtonBuilder()
-            .setLabel('🗳️ Vote on Top.gg')
+            .setLabel('Vote on Top.gg')
             .setEmoji('🗳️')
             .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${message.guild.id}`)
             .setStyle(ButtonStyle.Link);
