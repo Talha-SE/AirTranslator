@@ -1389,15 +1389,6 @@ async function generateMonetizationContent(client) {
                     
                     <div class="servers-table-container">
                         <table class="servers-table">
-                            <colgroup>
-                                <col style="width:28%" />
-                                <col style="width:18%" />
-                                <col style="width:8%" />
-                                <col style="width:12%" />
-                                <col style="width:10%" />
-                                <col style="width:14%" />
-                                <col style="width:10%" />
-                            </colgroup>
                             <thead>
                                 <tr>
                                     <th>Server Name</th>
@@ -1423,7 +1414,7 @@ async function generateMonetizationContent(client) {
                                                 ${getServerStatusText(server)}
                                             </span>
                                         </td>
-                                        <td class="exempt-cell">
+                                        <td>
                                             ${(() => {
                                                 if (server.isExempt) {
                                                     if (server.exemptUntil) {
@@ -1492,15 +1483,7 @@ async function generateMonetizationContent(client) {
                 /* Settings and actions adopt card primitives */
                 .monetization-container .settings-card, .monetization-container .actions-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.04); }
                 /* Servers table container as card */
-                .monetization-container .servers-table-container { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.04); overflow-x:auto; overflow-y:hidden; }
-                .monetization-container .servers-table { width:100%; min-width: 980px; table-layout: fixed; }
-                .monetization-container .servers-table thead th { position: sticky; top: 0; z-index: 2; }
-                .monetization-container .servers-table td, .monetization-container .servers-table th { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; vertical-align: middle; }
-                .monetization-container .servers-table td.exempt-cell { white-space: normal !important; text-overflow: clip; overflow: visible; min-width: 240px; }
-                .monetization-container .servers-table .server-name { max-width: 240px; }
-                .monetization-container .servers-table .server-id { max-width: 180px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-                .monetization-container .servers-table .member-count, .monetization-container .servers-table .translation-count { text-align: right; }
-                .monetization-container .server-actions { display:flex; gap:8px; flex-wrap: wrap; }
+                .monetization-container .servers-table-container { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.04); overflow:hidden; }
                 /* Badges */
                 .monetization-container .status-badge { border:1px solid #e5e7eb; }
                 .monetization-container .status-badge.active { background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }
@@ -1622,26 +1605,6 @@ async function generateMonetizationContent(client) {
                     color: #666;
                     margin-top: 5px;
                     font-size: 12px;
-                }
-
-                /* Responsive tweaks */
-                @media (max-width: 1200px) {
-                  .monetization-container .servers-table { min-width: 900px; }
-                }
-                @media (max-width: 992px) {
-                  .monetization-container .servers-table { min-width: 820px; }
-                  .monetization-container .server-actions .btn { padding:8px 10px; font-size:12px; }
-                  .monetization-container .stat-card .stat-value { font-size:22px; }
-                }
-                @media (max-width: 768px) {
-                  .monetization-container { padding: 14px; }
-                  .monetization-container .servers-table { min-width: 720px; }
-                  .monetization-container .servers-table td, .monetization-container .servers-table th { padding:10px; font-size: 13px; }
-                  .monetization-container .server-actions { gap:6px; }
-                }
-                @media (max-width: 560px) {
-                  .monetization-container .servers-table { min-width: 640px; }
-                  .monetization-container .servers-table td, .monetization-container .servers-table th { padding:8px; font-size: 12px; }
                 }
                 
                 /* Toggle Switch Styles */
@@ -3803,6 +3766,41 @@ const server = http.createServer(async (req, res) => {
 
                 // Exempt server for duration
                 await monetizationService.addExemptServer(approved.serverId, Number(durationDays));
+
+                // Notify requester via DM and post to server (best effort)
+                try {
+                    const client = global.discordClient;
+                    const days = Number(durationDays) || null;
+                    const expAt = approved.expiresAt ? new Date(approved.expiresAt) : null;
+                    const expStr = expAt ? `${expAt.toLocaleDateString()} ${expAt.toLocaleTimeString()}` : 'until further notice';
+                    const dmText = `✅ Your premium request for "${approved.serverName || approved.serverId}" has been approved!\n\n` +
+                                   (days ? `Duration: ${days} day(s). Expires: ${expStr}.\n` : `No expiry set (unlimited).\n`) +
+                                   `Thanks for supporting Air Translator. Enjoy unlimited translations for the approved period.`;
+
+                    if (client && approved.requesterUserId) {
+                        try {
+                            const user = await client.users.fetch(approved.requesterUserId);
+                            if (user) await user.send(dmText);
+                        } catch (e) {
+                            console.warn('Failed to DM requester on approval:', e?.message || e);
+                        }
+
+                        try {
+                            const guild = await client.guilds.fetch(approved.serverId);
+                            if (guild) {
+                                // pick a suitable text channel
+                                let ch = guild.systemChannel || guild.channels.cache.find(c => c.type === 0 && /general|chat|announce/i.test(c.name));
+                                if (!ch) ch = guild.channels.cache.find(c => c.type === 0 && c.permissionsFor(client.user)?.has(['SendMessages']));
+                                if (ch && ch.permissionsFor(client.user)?.has(['SendMessages'])) {
+                                    const serverMsg = `💎 Premium enabled for this server${days ? ` for ${days} day(s)` : ''}. ${expAt ? `Expires: ${expStr}.` : ''}`.trim();
+                                    await ch.send(serverMsg);
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('Failed to post approval message in server:', e?.message || e);
+                        }
+                    }
+                } catch (_) { /* non-fatal */ }
 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ 
