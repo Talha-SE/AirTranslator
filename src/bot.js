@@ -295,6 +295,50 @@ client.on(Events.InteractionCreate, async interaction => {
             // Debug log to trace unknown button issues
             logger.debug('[Button] Received button interaction', { customId, inGuild: interaction.inGuild(), userId: interaction.user?.id });
 
+            if (customId.startsWith('premium_plans')) {
+                // User explicitly clicked Premium Plans; DM them the review card with the "I Paid" button
+                try {
+                    const serverId = customId.includes(':') ? customId.split(':')[1] : (interaction.guildId || null);
+                    const serverName = interaction.guild?.name || 'Unknown Server';
+                    const embed = {
+                        color: 0x5865F2,
+                        title: '💎 Premium Payment Review',
+                        description: 'If you have completed the premium payment, press the button below to request approval. Our team will review and exempt your server shortly.',
+                        fields: [
+                            { name: 'Server', value: serverName, inline: true },
+                            { name: 'Server ID', value: serverId || 'N/A', inline: true }
+                        ],
+                        timestamp: new Date().toISOString()
+                    };
+                    const row = {
+                        type: 1,
+                        components: [
+                            {
+                                type: 2,
+                                custom_id: `premium_request:${serverId || ''}`,
+                                label: '✅ I Paid - Request Approval',
+                                style: 1
+                            }
+                        ]
+                    };
+
+                    await interaction.user.send({ embeds: [embed], components: [row] });
+                    // Acknowledge in channel ephemerally
+                    if (interaction.inGuild()) {
+                        await interaction.reply({ content: '📩 I sent you a DM with the premium approval button.', flags: MessageFlags.Ephemeral });
+                    } else {
+                        await interaction.reply({ content: '📩 Check this DM for the premium approval button.' });
+                    }
+                } catch (dmErr) {
+                    if (interaction.inGuild()) {
+                        await interaction.reply({ content: '⚠️ I could not DM you. Please enable DMs from server members and try again.', flags: MessageFlags.Ephemeral });
+                    } else {
+                        await interaction.reply({ content: '⚠️ I could not send the DM. Please try again later.' });
+                    }
+                }
+                return;
+            }
+
             if (customId.startsWith('premium_request')) {
                 // Extract serverId if provided after ':' else fallback to recent mapping
                 let serverId = customId.includes(':') ? customId.split(':')[1] : null;
