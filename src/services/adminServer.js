@@ -4,6 +4,7 @@ const analyticsService = require('./analyticsService');
 const monetizationService = require('./monetizationService');
 const databaseService = require('./databaseService');
 const nodeCron = require('node-cron');
+const { EmbedBuilder } = require('discord.js');
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'AirTranslator2024!';
@@ -3777,10 +3778,32 @@ const server = http.createServer(async (req, res) => {
                                    (days ? `Duration: ${days} day(s). Expires: ${expStr}.\n` : `No expiry set (unlimited).\n`) +
                                    `Thanks for supporting Air Translator. Enjoy unlimited translations for the approved period.`;
 
+                    // Build a modern confirmation embed using the same text content
+                    const buildApprovalEmbed = (targetName) => {
+                        const descriptionLines = [
+                            `✅ Your premium request for "${targetName}" has been approved!`,
+                            '',
+                            days ? `Duration: ${days} day(s). Expires: ${expStr}.` : 'No expiry set (unlimited).',
+                            'Thanks for supporting Air Translator. Enjoy unlimited translations for the approved period.'
+                        ];
+                        return new EmbedBuilder()
+                            .setColor('#6C8BFF')
+                            .setTitle('💎 Premium Enabled')
+                            .setDescription(descriptionLines.join('\n'))
+                            .setTimestamp(new Date())
+                            .setFooter({ text: 'Air Translator • Confirmation' });
+                    };
+
                     if (client && approved.requesterUserId) {
                         try {
                             const user = await client.users.fetch(approved.requesterUserId);
-                            if (user) await user.send(dmText);
+                            if (user) {
+                                const dmEmbed = buildApprovalEmbed(approved.serverName || approved.serverId);
+                                await user.send({ embeds: [dmEmbed] }).catch(async () => {
+                                    // Fallback to plain text if embed fails
+                                    await user.send(dmText);
+                                });
+                            }
                         } catch (e) {
                             console.warn('Failed to DM requester on approval:', e?.message || e);
                         }
@@ -3790,10 +3813,16 @@ const server = http.createServer(async (req, res) => {
                             if (guild) {
                                 // pick a suitable text channel
                                 let ch = guild.systemChannel || guild.channels.cache.find(c => c.type === 0 && /general|chat|announce/i.test(c.name));
-                                if (!ch) ch = guild.channels.cache.find(c => c.type === 0 && c.permissionsFor(client.user)?.has(['SendMessages']));
+                                if (!ch) ch = guild.channels.cache.find(c => c.type === 0 && c.permissionsFor(client.user)?.has(['SendMessages','EmbedLinks']));
                                 if (ch && ch.permissionsFor(client.user)?.has(['SendMessages'])) {
-                                    const serverMsg = `💎 Premium enabled for this server${days ? ` for ${days} day(s)` : ''}. ${expAt ? `Expires: ${expStr}.` : ''}`.trim();
-                                    await ch.send(serverMsg);
+                                    const serverEmbed = buildApprovalEmbed(guild.name || approved.serverId);
+                                    if (ch.permissionsFor(client.user)?.has(['EmbedLinks'])) {
+                                        await ch.send({ embeds: [serverEmbed] });
+                                    } else {
+                                        // Fallback to plain text if no EmbedLinks permission
+                                        const serverMsg = `💎 Premium enabled for this server${days ? ` for ${days} day(s)` : ''}. ${expAt ? `Expires: ${expStr}.` : ''}`.trim();
+                                        await ch.send(serverMsg);
+                                    }
                                 }
                             }
                         } catch (e) {

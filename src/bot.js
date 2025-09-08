@@ -316,10 +316,17 @@ client.on(Events.InteractionCreate, async interaction => {
                 const created = await databaseService.createPremiumRequest(serverId, serverName, requester);
 
                 const msg = `✅ Your premium payment review request has been recorded for server "${serverName}".\nRequest ID: ${created?._id || 'N/A'}\nOur team will review and approve it shortly.`;
+                const embed = {
+                    color: 0x6C8BFF,
+                    title: '💎 Premium Request Recorded',
+                    description: msg,
+                    timestamp: new Date().toISOString(),
+                    footer: { text: 'Air Translator • Confirmation' }
+                };
                 if (interaction.inGuild()) {
-                    await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+                    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
                 } else {
-                    await interaction.reply({ content: msg });
+                    await interaction.reply({ embeds: [embed] });
                 }
                 return;
             }
