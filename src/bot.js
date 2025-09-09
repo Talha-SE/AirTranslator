@@ -323,6 +323,70 @@ client.on(Events.InteractionCreate, async interaction => {
                     timestamp: new Date().toISOString(),
                     footer: { text: 'Air Translator • Confirmation' }
                 };
+                // Notify admin(s) immediately in the background
+                (async () => {
+                    try {
+                        const adminUserId = process.env.ADMIN_NOTIFY_USER_ID;
+                        const adminGuildId = process.env.ADMIN_NOTIFY_GUILD_ID;
+                        const adminChannelId = process.env.ADMIN_NOTIFY_CHANNEL_ID;
+
+                        const adminEmbed = new EmbedBuilder()
+                            .setColor('#f59e0b')
+                            .setTitle('📥 New Premium Review Request')
+                            .setDescription('A server has requested premium payment review.')
+                            .addFields(
+                                { name: 'Server', value: `${serverName} (${serverId})`, inline: false },
+                                { name: 'Requester', value: `${requester.displayName || requester.username} (${requester.id})`, inline: false },
+                                { name: 'Request ID', value: `${created?._id || 'N/A'}`, inline: false }
+                            )
+                            .setTimestamp(new Date())
+                            .setFooter({ text: 'Air Translator • Admin Alert' });
+
+                        // DM the admin user, if configured
+                        if (adminUserId && client) {
+                            try {
+                                const adminUser = await client.users.fetch(adminUserId);
+                                if (adminUser) {
+                                    await adminUser.send({ embeds: [adminEmbed] }).catch(async () => {
+                                        await adminUser.send(`New premium request: ${serverName} (${serverId}) by ${requester.displayName || requester.username} (${requester.id})\nRequest ID: ${created?._id || 'N/A'}`);
+                                    });
+                                }
+                            } catch (e) {
+                                logger.warn('Failed to DM admin for premium request', { error: e?.message || e });
+                            }
+                        }
+
+                        // Post to an admin channel if provided
+                        if (client && (adminChannelId || adminGuildId)) {
+                            try {
+                                let targetChannel = null;
+                                if (adminChannelId) {
+                                    try {
+                                        targetChannel = await client.channels.fetch(adminChannelId);
+                                    } catch {}
+                                }
+                                if (!targetChannel && adminGuildId) {
+                                    try {
+                                        const g = await client.guilds.fetch(adminGuildId);
+                                        if (g) {
+                                            targetChannel = g.systemChannel || g.channels.cache.find(c => c.type === 0 && /general|chat|announce/i.test(c.name));
+                                            if (!targetChannel) targetChannel = g.channels.cache.find(c => c.type === 0 && c.permissionsFor(client.user)?.has(['SendMessages','EmbedLinks']));
+                                        }
+                                    } catch {}
+                                }
+                                if (targetChannel && targetChannel.permissionsFor(client.user)?.has(['SendMessages'])) {
+                                    if (targetChannel.permissionsFor(client.user)?.has(['EmbedLinks'])) {
+                                        await targetChannel.send({ embeds: [adminEmbed] });
+                                    } else {
+                                        await targetChannel.send(`New premium request: ${serverName} (${serverId}) by ${requester.displayName || requester.username} (${requester.id})\nRequest ID: ${created?._id || 'N/A'}`);
+                                    }
+                                }
+                            } catch (e) {
+                                logger.warn('Failed to send admin channel alert for premium request', { error: e?.message || e });
+                            }
+                        }
+                    } catch (_) { /* non-fatal */ }
+                })();
                 if (interaction.inGuild()) {
                     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
                 } else {

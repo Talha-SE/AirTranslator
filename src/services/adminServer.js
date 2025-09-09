@@ -1295,6 +1295,7 @@ async function generateMonetizationContent(client) {
                                                 <div style="display:flex; gap:8px; align-items:center;">
                                                     <input type="number" min="1" max="3650" value="30" id="dur_${pr._id}" style="width:90px; padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px;" title="Duration in days" />
                                                     <button class="btn btn-exempt" onclick="approvePremium('${pr._id}', '${pr.serverId}')">Approve</button>
+                                                    <button class="btn warn" style="background:#ef4444;color:#fff;" onclick="rejectPremium('${pr._id}', '${pr.serverId}')">Reject</button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -1327,6 +1328,30 @@ async function generateMonetizationContent(client) {
                               }
                             } catch(err){
                               alert('Error approving: ' + err.message);
+                            }
+                          }
+
+                          async function rejectPremium(reqId, serverId){
+                            try {
+                              const reason = prompt('Optional: Provide a reason for rejection (shown to requester).', '');
+                              const res = await fetch('/admin/monetization/premium/reject', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ requestId: reqId, reason: reason || null })
+                              });
+                              const data = await res.json();
+                              if (data.success) {
+                                if (typeof showNotification === 'function') {
+                                  showNotification('Premium request rejected for ' + (data.serverName || serverId), 'warn');
+                                } else {
+                                  alert('Rejected');
+                                }
+                                window.location.reload();
+                              } else {
+                                alert('Failed to reject: ' + (data.message || 'Unknown error'));
+                              }
+                            } catch (err) {
+                              alert('Error rejecting: ' + err.message);
                             }
                           }
                         </script>
@@ -3850,6 +3875,97 @@ const server = http.createServer(async (req, res) => {
                 }));
             } catch (error) {
                 console.error('Error approving premium request (admin):', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+        } else if (pathname === '/admin/monetization/premium/reject' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+
+            try {
+                const postData = await parsePostData(req);
+                const data = JSON.parse(postData.body || '{}');
+                const { requestId, reason } = data;
+                if (!requestId) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Missing requestId' }));
+                    return;
+                }
+
+                const rejected = await databaseService.rejectPremiumRequest(requestId, (sessions.get(sessionToken)?.username || 'admin'), reason || null);
+                if (!rejected) {
+                    res.writeHead(404, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Request not found' }));
+                    return;
+                }
+
+                // Notify requester via DM and post to server (best effort)
+                try {
+                    const client = global.discordClient;
+                    const reasonText = reason && String(reason).trim() ? String(reason).trim() : null;
+                    const dmText = `❌ Your premium request for "${rejected.serverName || rejected.serverId}" has been rejected.` + (reasonText ? `\nReason: ${reasonText}` : '');
+
+                    const buildRejectionEmbed = (targetName) => {
+                        const lines = [
+                            `❌ Your premium request for "${targetName}" has been rejected.`,
+                        ];
+                        if (reasonText) {
+                            lines.push('', `Reason: ${reasonText}`);
+                        }
+                        lines.push('', 'If you believe this is a mistake, please contact support.');
+                        return new EmbedBuilder()
+                            .setColor('#ef4444')
+                            .setTitle('Premium Request Rejected')
+                            .setDescription(lines.join('\n'))
+                            .setTimestamp(new Date())
+                            .setFooter({ text: 'Air Translator • Notification' });
+                    };
+
+                    if (client && rejected.requesterUserId) {
+                        try {
+                            const user = await client.users.fetch(rejected.requesterUserId);
+                            if (user) {
+                                const dmEmbed = buildRejectionEmbed(rejected.serverName || rejected.serverId);
+                                await user.send({ embeds: [dmEmbed] }).catch(async () => {
+                                    await user.send(dmText);
+                                });
+                            }
+                        } catch (e) {
+                            console.warn('Failed to DM requester on rejection:', e?.message || e);
+                        }
+
+                        try {
+                            const guild = await client.guilds.fetch(rejected.serverId);
+                            if (guild) {
+                                let ch = guild.systemChannel || guild.channels.cache.find(c => c.type === 0 && /general|chat|announce/i.test(c.name));
+                                if (!ch) ch = guild.channels.cache.find(c => c.type === 0 && c.permissionsFor(client.user)?.has(['SendMessages','EmbedLinks']));
+                                if (ch && ch.permissionsFor(client.user)?.has(['SendMessages'])) {
+                                    const embed = buildRejectionEmbed(guild.name || rejected.serverId);
+                                    if (ch.permissionsFor(client.user)?.has(['EmbedLinks'])) {
+                                        await ch.send({ embeds: [embed] });
+                                    } else {
+                                        await ch.send(dmText);
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('Failed to post rejection message in server:', e?.message || e);
+                        }
+                    }
+                } catch (_) { /* non-fatal */ }
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ 
+                    success: true, 
+                    serverId: rejected.serverId, 
+                    serverName: rejected.serverName
+                }));
+            } catch (error) {
+                console.error('Error rejecting premium request (admin):', error);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: false, message: error.message }));
             }

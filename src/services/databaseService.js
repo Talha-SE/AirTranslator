@@ -781,11 +781,15 @@ async function approvePremiumRequest(requestId, approverUserId, durationDays = n
     }
 }
 
-async function rejectPremiumRequest(requestId, approverUserId) {
+async function rejectPremiumRequest(requestId, approverUserId, reason = null) {
     try {
+        const set = { status: 'rejected', approvedBy: approverUserId, approvedAt: new Date() };
+        if (reason && String(reason).trim()) {
+            set.notes = String(reason).trim();
+        }
         const req = await PremiumRequest.findByIdAndUpdate(
             requestId,
-            { $set: { status: 'rejected', approvedBy: approverUserId, approvedAt: new Date() } },
+            { $set: set },
             { new: true }
         );
         return req?.toObject() || null;
