@@ -306,15 +306,15 @@ async function messageReactionAdd(client, reaction, user) {
                     .setTimestamp();
 
                 const voteButton = new ButtonBuilder()
+                    .setCustomId(`vote_on_topgg:${message.guild.id}`)
                     .setLabel('Vote on Top.gg')
                     .setEmoji('🗳️')
-                    .setStyle(ButtonStyle.Link)
-                    .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${message.guild.id}`);
+                    .setStyle(ButtonStyle.Success);
 
                 const supportButton = new ButtonBuilder()
-                    .setLabel('💎 Premium Plans')
-                    .setStyle(ButtonStyle.Link)
-                    .setURL('https://www.patreon.com/cw/TSIO/membership');
+                    .setCustomId(`see_payment_options:${message.guild.id}`)
+                    .setLabel('See Payment Options')
+                    .setStyle(ButtonStyle.Primary);
 
                 const actionRow = new ActionRowBuilder().addComponents(voteButton, supportButton);
 
@@ -484,7 +484,7 @@ async function messageReactionAdd(client, reaction, user) {
             })
             
             .setFooter({
-                text: 'Auto-deletes in 1 min',
+                text: 'Auto-deletes in 15 min',
                 iconURL: client.user.displayAvatarURL()
             });
 
@@ -494,15 +494,15 @@ async function messageReactionAdd(client, reaction, user) {
             allowedMentions: { repliedUser: false }
         });
 
-        // Auto-delete flag translation after 1 minute
+        // Auto-delete flag translation after 15 minutes
         setTimeout(async () => {
             try {
                 await translationReply.delete();
-                console.log(`🗑️ Auto-deleted flag translation after 1 minute`);
+                console.log(`🗑️ Auto-deleted flag translation after 15 minutes`);
             } catch (deleteError) {
                 console.log('Could not delete flag translation (message may already be deleted)');
             }
-        }, 60000); // 1 minute
+        }, 900000); // 15 minutes
 
         // Update user-server tracking for vote rewards
         if (!global.userServerTracking) {

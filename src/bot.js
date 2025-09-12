@@ -1,8 +1,9 @@
-const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, Partials } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, Partials } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus } = require('@discordjs/voice');
 const TTSSettings = require('./models/TTSSettings');
 const databaseService = require('./services/databaseService');
 const analyticsService = require('./services/analyticsService');
+const monetizationService = require('./services/monetizationService');
 const translationQueueService = require('./services/translationQueueService');
 const voteCheckService = require('./services/voteCheckService');
 const { translateTextToMultipleLanguages } = require('./services/mistralService');
@@ -294,6 +295,167 @@ client.on(Events.InteractionCreate, async interaction => {
             const customId = interaction.customId || '';
             // Debug log to trace unknown button issues
             logger.debug('[Button] Received button interaction', { customId, inGuild: interaction.inGuild(), userId: interaction.user?.id });
+
+            // Handle Top.gg vote click -> schedule 50-credit grant after 25 seconds and provide link
+            if (customId.startsWith('vote_on_topgg')) {
+                try {
+                    const BONUS = 50;
+                    const DELAY_MS = 25 * 1000; // 25 seconds delay
+                    // Extract serverId if provided after ':' else fallback to recent mapping or current guild
+                    let serverId = customId.includes(':') ? customId.split(':')[1] : null;
+                    if (!serverId && global.userServerTracking && interaction.user) {
+                        serverId = global.userServerTracking.get(interaction.user.id) || null;
+                    }
+                    if (!serverId) serverId = interaction.guildId || null;
+
+                    if (!serverId) {
+                        await interaction.reply({
+                            content: '❌ Could not determine the target server. Please click this button from within your server.',
+                            flags: MessageFlags.Ephemeral
+                        });
+                        return;
+                    }
+
+                    // Always provide the Top.gg link so the user can actually vote
+                    const voteLinkRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setLabel('Open Top.gg Voting')
+                            .setEmoji('🗳️')
+                            .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${serverId}`)
+                            .setStyle(ButtonStyle.Link)
+                    );
+
+                    // Acknowledge immediately and schedule the grant
+                    const pendingEmbed = new EmbedBuilder()
+                        .setColor('#129af5')
+                        .setTitle('🗳️ Thanks for supporting!')
+                        .setDescription(`We\'ll add **${BONUS} free translations** to this server in about **${Math.floor(DELAY_MS/1000)} seconds**.\nPlease complete the vote on Top.gg in the meantime.`)
+                        .setFooter({ text: 'Air Translator • Vote rewards', iconURL: interaction.client.user.displayAvatarURL() })
+                        .setTimestamp(new Date());
+
+                    await interaction.reply({ embeds: [pendingEmbed], components: [voteLinkRow], flags: MessageFlags.Ephemeral });
+
+                    // Prepare requester info for audit logging and cooldown tracking
+                    const requester = {
+                        id: interaction.user.id,
+                        username: interaction.user.username,
+                        displayName: interaction.user.displayName || interaction.user.username,
+                        displayAvatarURL: (...args) => interaction.user.displayAvatarURL(...args)
+                    };
+
+                    // Schedule the reward after delay
+                    setTimeout(async () => {
+                        try {
+                            const result = await monetizationService.handleVoteReward(interaction.user.id, serverId, BONUS, requester);
+                            if (result?.success) {
+                                const successEmbed = new EmbedBuilder()
+                                    .setColor('#00ff88')
+                                    .setTitle('🎉 Free Credits Added!')
+                                    .setDescription(`**${BONUS} free translations** have been added to this server. Thank you for supporting AirTranslator!`)
+                                    .setFooter({ text: 'Air Translator • Vote rewards', iconURL: interaction.client.user.displayAvatarURL() })
+                                    .setTimestamp(new Date());
+
+                                // Ephemeral follow-up for the user
+                                try { await interaction.followUp({ embeds: [successEmbed], flags: MessageFlags.Ephemeral }); } catch {}
+
+                                // Public confirmation in server if possible
+                                try {
+                                    const guild = interaction.client.guilds.cache.get(serverId);
+                                    if (guild) {
+                                        const channel = guild.systemChannel || guild.channels.cache.find(ch => ch.type === 0 && ch.permissionsFor(guild.members.me)?.has(['SendMessages','EmbedLinks']));
+                                        if (channel) await channel.send({ embeds: [successEmbed] });
+                                    }
+                                } catch (postErr) {
+                                    logger.debug('Failed to post public confirmation for vote reward', { error: postErr?.message || postErr });
+                                }
+                            } else if (result?.onCooldown) {
+                                const hrs = result.hoursRemaining ?? 12;
+                                try {
+                                    await interaction.followUp({
+                                        embeds: [new EmbedBuilder()
+                                            .setColor('#f59e0b')
+                                            .setTitle('⏳ Vote Cooldown Active')
+                                            .setDescription(`You can claim vote rewards again in about **${hrs} hour(s)**.`)
+                                            .setFooter({ text: 'Air Translator • Vote rewards' })
+                                            .setTimestamp(new Date())
+                                        ],
+                                        flags: MessageFlags.Ephemeral
+                                    });
+                                } catch {}
+                            } else {
+                                try {
+                                    await interaction.followUp({
+                                        content: '⚠️ We could not grant the vote reward right now. Please try again shortly.',
+                                        flags: MessageFlags.Ephemeral
+                                    });
+                                } catch {}
+                            }
+                        } catch (grantErr) {
+                            logger.warn('vote_on_topgg delayed grant error', { error: grantErr?.message || grantErr });
+                            try {
+                                await interaction.followUp({
+                                    content: '❌ Something went wrong while adding your vote reward. Please try again later.',
+                                    flags: MessageFlags.Ephemeral
+                                });
+                            } catch {}
+                        }
+                    }, DELAY_MS);
+                } catch (err) {
+                    logger.warn('vote_on_topgg handler error', { error: err?.message || err });
+                    try {
+                        await interaction.reply({
+                            content: '❌ Something went wrong while processing your vote reward. Please try again later.',
+                            flags: MessageFlags.Ephemeral
+                        });
+                    } catch {}
+                }
+                return;
+            }
+
+            // Handle payment options -> show review message and approval button
+            if (customId.startsWith('see_payment_options')) {
+                try {
+                    let serverId = customId.includes(':') ? customId.split(':')[1] : null;
+                    if (!serverId && global.userServerTracking && interaction.user) {
+                        serverId = global.userServerTracking.get(interaction.user.id) || null;
+                    }
+                    if (!serverId) serverId = interaction.guildId || 'unknown';
+
+                    const serverName = interaction.guild?.name || 'This server';
+
+                    const infoEmbed = new EmbedBuilder()
+                        .setTitle('💎 Premium Payment Review')
+                        .setDescription('If you have completed the premium payment, press the button below to request approval. Our team will review and exempt your server shortly.')
+                        .setColor('#5865F2')
+                        .addFields(
+                            { name: 'Server', value: serverName, inline: true },
+                            { name: 'Server ID', value: serverId, inline: true }
+                        )
+                        .setTimestamp(new Date());
+
+                    const buttons = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setLabel('💳 Open Payment Options')
+                            .setStyle(ButtonStyle.Link)
+                            .setURL('https://www.patreon.com/cw/TSIO/membership'),
+                        new ButtonBuilder()
+                            .setCustomId(`premium_request:${serverId}`)
+                            .setLabel('✅ I Paid - Request Approval')
+                            .setStyle(ButtonStyle.Primary)
+                    );
+
+                    await interaction.reply({ embeds: [infoEmbed], components: [buttons], flags: MessageFlags.Ephemeral });
+                } catch (err) {
+                    logger.warn('see_payment_options handler error', { error: err?.message || err });
+                    try {
+                        await interaction.reply({
+                            content: '❌ Could not display payment options. Please try again later or contact support.',
+                            flags: MessageFlags.Ephemeral
+                        });
+                    } catch {}
+                }
+                return;
+            }
 
             if (customId.startsWith('premium_request')) {
                 // Extract serverId if provided after ':' else fallback to recent mapping

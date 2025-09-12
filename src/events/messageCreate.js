@@ -259,15 +259,15 @@ async function sendLimitReachedMessage(message) {
         // Note: Do not auto-grant credits here. Vote rewards are handled by Top.gg vote processing.
         
         const voteButton = new ButtonBuilder()
+            .setCustomId(`vote_on_topgg:${message.guild.id}`)
             .setLabel('Vote on Top.gg')
             .setEmoji('🗳️')
-            .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${message.guild.id}`)
-            .setStyle(ButtonStyle.Link);
+            .setStyle(ButtonStyle.Success);
 
         const supportButton = new ButtonBuilder()
-            .setLabel('💎 Premium Plans')
-            .setStyle(ButtonStyle.Link)
-            .setURL('https://www.patreon.com/cw/TSIO/membership'); // Patreon monetization link
+            .setCustomId(`see_payment_options:${message.guild.id}`)
+            .setLabel('See Payment Options')
+            .setStyle(ButtonStyle.Primary);
 
         const actionRow = new ActionRowBuilder()
             .addComponents(voteButton, supportButton);
@@ -496,10 +496,14 @@ async function translateAndReply(message, languages, options = {}) {
                 if (i === chunks.length - 1) {
                     const buttons = new ActionRowBuilder().addComponents(
                         new ButtonBuilder()
+                            .setCustomId(`vote_on_topgg:${message.guild.id}`)
                             .setLabel('Vote on Top.gg')
                             .setEmoji('🗳️')
-                            .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${message.guild.id}`)
-                            .setStyle(ButtonStyle.Link)
+                            .setStyle(ButtonStyle.Success),
+                        new ButtonBuilder()
+                            .setCustomId(`see_payment_options:${message.guild.id}`)
+                            .setLabel('See Payment Options')
+                            .setStyle(ButtonStyle.Primary)
                     );
                     replyOptions.components = [buttons];
                 }

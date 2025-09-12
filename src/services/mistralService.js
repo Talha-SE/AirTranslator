@@ -695,8 +695,8 @@ For Korean translations, you MUST add cute chatting elements:
                     content: `Translate to ${targetLangName}: "${processedText}"`
                 }
             ],
-            temperature: 0.7,  // Lower temperature for more precise, less creative translations
-            top_p: 1,
+            temperature: 0.5,  // Lower temperature for more precise, less creative translations
+            top_p: 0.5,
             // Dynamically set max_tokens but cap it to avoid hitting hard limits
             max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2))) // Allow sufficient tokens while preventing truncation
         }, apiKey);
