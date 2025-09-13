@@ -204,6 +204,85 @@ const removeUnwantedNotes = (translation) => {
 };
 
 /**
+ * Degenerate repetition detection and clamping utilities
+ * Detects looping outputs and collapses them while preserving natural chat elongations
+ */
+const REP_ALLOWED_CHAT_CHARS = new Set(['ㅋ', 'ㅎ', 'ㅠ', 'ㅜ', 'w', '~']);
+
+// Heuristic detector for degenerate repetition
+const hasDegenerateRepetition = (text, sourceLength = 0) => {
+    if (!text) return { isDegenerate: false };
+    const len = text.length;
+
+    // Extremely long same-character or short n-gram runs
+    const repetitiveRun = /(.)(\1){24,}/u.test(text); // any char repeated >= 25
+    const repetitivePair = /(.{1,4})\1{12,}/u.test(text); // 1-4 char n-gram repeated >= 13
+
+    // Diversity ratio (unique chars / length)
+    const unique = new Set(Array.from(text)).size;
+    const diversity = unique / Math.max(1, len);
+
+    // Length skew relative to source
+    const lengthSkew = sourceLength > 0 ? len > sourceLength * 6 : len > 2000;
+    const tooLowDiversity = diversity < 0.12 && len > 80;
+
+    const isDegenerate = repetitiveRun || repetitivePair || (lengthSkew && tooLowDiversity);
+    return { isDegenerate, diversity, len };
+};
+
+// Clamp excessive repetitions while preserving reasonable chat elongations
+const clampRepetitions = (text) => {
+    if (!text) return text;
+    let out = text;
+
+    // Limit single-character runs. Allow a bit more for common chat chars.
+    out = out.replace(/(.)\1{8,}/gu, (match, ch) => {
+        const cap = REP_ALLOWED_CHAT_CHARS.has(ch) ? 12 : 6;
+        return ch.repeat(cap);
+    });
+
+    // Limit short n-gram repeats (1-4 chars)
+    for (let n = 1; n <= 4; n++) {
+        const re = new RegExp(`(.{${n}})\\1{10,}`, 'gu');
+        out = out.replace(re, (m, g1) => g1.repeat(8));
+    }
+
+    // Collapse duplicate words repeated 5+ times
+    out = out.replace(/(\b\S+\b)(?:\s+\1){4,}/gu, (m, w) => `${w} ${w} ${w}`);
+
+    // Trim overly long tails of the same line content
+    out = out.split('\n').map(line => {
+        if (line.length > 1500) {
+            return line.slice(0, 1500) + '…';
+        }
+        return line;
+    }).join('\n');
+
+    return out.trim();
+};
+
+// Decoding control helpers
+// Stop sequences to discourage the model from adding explanations/notes
+const STOP_SEQUENCES = [
+    "\nNote:",
+    "\nTranslation:",
+    "\nExplanation:",
+    "(Note:",
+    "(Translation:",
+    "(Explanation:"
+];
+
+// Stable 32-bit unsigned seed derived from input to make outputs deterministic per input
+const stableRandomSeed = (str) => {
+    let h = 2166136261; // FNV-1a basis
+    for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0);
+};
+
+/**
  * Analyzes the tone and context of a message to provide better translation context
  * @param {string} text - The text to analyze
  * @returns {object} - Tone analysis results
@@ -465,6 +544,7 @@ CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - If target language doesn't use elongation, keep meaning but remove repetitions
 - Preserve every emoji exactly as written (😊 stays 😊, ❤️ stays ❤️)
 - Never translate emoji meanings
+- Understand names and nicknames and translate them properly to target language
 - Maintain original emoji positions
 - Do NOT replace words with emojis or symbols. If the source text says something like "thumbs up", translate the phrase as words; do not output 👍 unless the original already contains 👍.
 - Do NOT add new emojis that are not in the source. Only preserve existing emojis.
@@ -479,7 +559,7 @@ CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - Always translate in required language
 
 KOREAN TRANSLATION ACCURACY RULES:
-- Pay special attention to Korean pronouns,  it might change based on the context
+- Pay special attention to Korean pronouns,  it changes based on the context
 - Korean sentence structure: Subject-Object-Verb order, translate meaning correctly
 - Consider Korean honorific levels (반말/존댓말) in context
 - For casual/affectionate tone: Use 야, 아, 애 endings and casual particles
@@ -695,8 +775,13 @@ For Korean translations, you MUST add cute chatting elements:
                     content: `Translate to ${targetLangName}: "${processedText}"`
                 }
             ],
-            temperature: 0.7,  // Lower temperature for more precise, less creative translations
-            top_p: 1,
+            // Low temperature to reduce creative drift and repetition
+            temperature: 0.3,
+            top_p: 0.9,
+            // Deterministic per input to improve stability across retries
+            random_seed: stableRandomSeed(processedText + ':' + targetLangName),
+            // Stop when model tries to add notes/explanations
+            stop: STOP_SEQUENCES,
             // Dynamically set max_tokens but cap it to avoid hitting hard limits
             max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2))) // Allow sufficient tokens while preventing truncation
         }, apiKey);
@@ -734,6 +819,8 @@ For Korean translations, you MUST add cute chatting elements:
                     model: 'mistral-small-latest',
                     messages: retryMessages,
                     temperature: 0.1,
+                    random_seed: stableRandomSeed(processedText + ':' + targetLangName + ':emoji-retry'),
+                    stop: STOP_SEQUENCES,
                     max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2)))
                 }, apiKey);
                 let retryTranslation = retryResponse.data.choices[0].message.content.trim();
@@ -757,7 +844,42 @@ For Korean translations, you MUST add cute chatting elements:
                 console.warn('⚠️ Retry failed:', e.message || e);
             }
         }
-        
+
+        // Anti-repetition guard (after emoji-only retry)
+        let repCheck = hasDegenerateRepetition(translation, normalizedText.length);
+        if (repCheck.isDegenerate) {
+            try {
+                const strictSystem = finalSystemContent + `\n\nHARD CONSTRAINTS (Anti-Repetition):\n- Do NOT repeat any single character more than 6 times in a row.\n- Do NOT repeat syllables or short chunks unnaturally.\n- Output must be concise, natural sentences.\n- If input is short, keep output short.\n- Absolutely avoid loops like "ㅋㅋㅋㅋㅋㅋㅋㅋㅋㅋ" beyond 12 or any character spam.`;
+                const retryResponse = await postMistralWithRetry({
+                    model: TRANSLATION_MODEL,
+                    messages: [
+                        { role: 'system', content: strictSystem },
+                        { role: 'user', content: `Translate to ${targetLangName}: "${processedText}"` }
+                    ],
+                    temperature: 0.1,
+                    top_p: 0.95,
+                    random_seed: stableRandomSeed(processedText + ':' + targetLangName + ':anti-rep'),
+                    stop: STOP_SEQUENCES,
+                    max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2)))
+                }, apiKey);
+                let retry = retryResponse.data.choices[0].message.content.trim();
+                if ((retry.startsWith('"') && retry.endsWith('"')) || (retry.startsWith("'") && retry.endsWith("'"))) {
+                    retry = retry.slice(1, -1);
+                }
+                retry = removeUnwantedNotes(retry);
+                retry = restorePreservedItems(retry, nameMap);
+                retry = sourceHasEmoji ? filterEmojisToAllowed(retry, sourceEmojis) : stripEmojis(retry);
+                const retryCheck = hasDegenerateRepetition(retry, normalizedText.length);
+                if (!retryCheck.isDegenerate && stripEmojis(retry).trim().length > 0) {
+                    translation = retry;
+                } else {
+                    translation = clampRepetitions(translation);
+                }
+            } catch (_) {
+                translation = clampRepetitions(translation);
+            }
+        }
+
         // Clean up any rogue placeholders that Mistral created on its own
         if (nameMap.size === 0) {
             // If we had no original placeholders, remove any that Mistral created
@@ -774,8 +896,15 @@ For Korean translations, you MUST add cute chatting elements:
             console.log('⚠️ DEBUG: Original text:', normalizedText);
         }
         
+        // Final anti-repetition safety net
+        repCheck = hasDegenerateRepetition(translation, normalizedText.length);
+        if (repCheck.isDegenerate) {
+            translation = clampRepetitions(translation);
+        }
+
         // Keep full translation lines
         return translation;
+
     } catch (error) {
         console.error('Error translating text:', error);
         throw new Error('Translation failed');

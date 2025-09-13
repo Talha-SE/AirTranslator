@@ -261,12 +261,11 @@ async function sendLimitReachedMessage(message) {
         const voteButton = new ButtonBuilder()
             .setCustomId(`vote_on_topgg:${message.guild.id}`)
             .setLabel('Vote on Top.gg')
-            .setEmoji('🗳️')
-            .setStyle(ButtonStyle.Success);
+            .setStyle(ButtonStyle.Secondary);
 
         const supportButton = new ButtonBuilder()
             .setCustomId(`see_payment_options:${message.guild.id}`)
-            .setLabel('See Payment Options')
+            .setLabel('Paid Options')
             .setStyle(ButtonStyle.Primary);
 
         const actionRow = new ActionRowBuilder()
@@ -498,11 +497,10 @@ async function translateAndReply(message, languages, options = {}) {
                         new ButtonBuilder()
                             .setCustomId(`vote_on_topgg:${message.guild.id}`)
                             .setLabel('Vote on Top.gg')
-                            .setEmoji('🗳️')
-                            .setStyle(ButtonStyle.Success),
+                            .setStyle(ButtonStyle.Secondary),
                         new ButtonBuilder()
                             .setCustomId(`see_payment_options:${message.guild.id}`)
-                            .setLabel('See Payment Options')
+                            .setLabel('Paid Options')
                             .setStyle(ButtonStyle.Primary)
                     );
                     replyOptions.components = [buttons];
