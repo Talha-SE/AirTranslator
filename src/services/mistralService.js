@@ -412,8 +412,8 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
 const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
-const TRANSLATION_MODEL = 'mistral-small-latest';
-//const TRANSLATION_MODEL = 'mistral-medium-latest';
+//const TRANSLATION_MODEL = 'mistral-small-2501';
+const TRANSLATION_MODEL = 'mistral-small-2409';
 //const TRANSLATION_MODEL = 'mistral-medium-latest';
 /**
  * Detects the language of a given text
@@ -529,13 +529,14 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         }
 
         // Create appropriate system prompt based on tone understanding setting
-        let systemContent = `You are a professional native translator. Analyze and Translate text naturally while preserving meaning and style. Give complete accurate translation and complete meaningful sentences.
+        let systemContent = `You are a professional native translator. Translate text accurately while preserving meaning and style. Give complete accurate translation and complete meaningful sentences.
 
 CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - TRANSLATE ONLY THE INPUT TEXT - do not add, expand, or create additional content
 - NEVER add any notes, explanations, disclaimers, comments, or parenthetical remarks
 - NEVER write anything like "(Note: ...)", "(Translation: ...)", or "(The original...)"
 - NEVER explain ambiguities, difficulties, or interpretation choices
+- NEVER answer the question, just translate the content.
 - NEVER add context about the source language, translation process, or methodology
 - NEVER justify translation choices or mention alternative interpretations
 - NEVER create conversations, dialogues, or additional sentences not in the original
