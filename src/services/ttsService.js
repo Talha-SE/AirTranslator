@@ -1,11 +1,6 @@
 // Use dynamic import for ESM module compatibility in CommonJS
 const crypto = require('crypto');
-const { AttachmentBuilder } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-const { promisify } = require('util');
-const writeFile = promisify(fs.writeFile);
-const unlink = promisify(fs.unlink);
+const axios = require('axios');
 
 // Lightweight helper to infer extension from mime type without ESM-only deps
 function getExtFromMime(mimeType) {
@@ -79,152 +74,80 @@ function convertToWav(rawBase64, mimeType) {
   return Buffer.concat([wavHeader, rawBuffer]);
 }
 
-// Default primary voice only; no implicit secondary
+// Default voice for Mimic3; configurable via environment
 const DEFAULT_VOICES = {
-  primary: 'Zephyr',
+  // Prefer explicit env mappings; fall back to a common Mimic3 English voice
+  primary: process.env.MIMIC3_DEFAULT_VOICE || process.env.MIMIC3_VOICE_EN || 'en_US/amy-medium',
 };
 
-function buildGeminiConfig(voiceName1, voiceName2) {
-  const primary = voiceName1 || DEFAULT_VOICES.primary;
-  if (!voiceName2) {
-    // Single-voice config
-    return {
-      temperature: 1,
-      responseModalities: ['audio'],
-      speechConfig: {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName: primary } },
-      },
-    };
-  }
-  // Multi-speaker when explicitly requested
-  return {
-    temperature: 1,
-    responseModalities: ['audio'],
-    speechConfig: {
-      multiSpeakerVoiceConfig: {
-        speakerVoiceConfigs: [
-          {
-            speaker: 'Speaker 1',
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: primary } },
-          },
-          {
-            speaker: 'Speaker 2',
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName2 } },
-          },
-        ],
-      },
-    },
-  };
+function getMimicBaseUrl() {
+  const base = process.env.MIMIC3_URL || 'http://localhost:59125';
+  // strip trailing slash if provided
+  return base.replace(/\/$/, '');
+}
+
+function pickMimicVoice(voiceName1) {
+  const v = (voiceName1 || '').trim();
+  // Heuristic: Mimic3 voices typically look like lang/voice-tier (e.g., en_US/amy-medium)
+  // If legacy names like 'Zephyr' are passed, ignore and fallback to default
+  if (v && v.includes('/')) return v;
+  return DEFAULT_VOICES.primary;
 }
 
 async function originalSynthesis(text, { voice1, voice2 } = {}) {
-  console.log('[TTS-DEBUG] Starting synthesis for text:', text?.length > 50 ? text.slice(0,50)+'...' : text);
-  if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is missing');
+  console.log('[TTS-DEBUG] Starting Mimic3 synthesis for text:', text?.length > 80 ? text.slice(0,80)+'...' : text);
   if (!text || !text.trim()) throw new Error('No text provided for TTS');
-  const { GoogleGenAI } = await import('@google/genai');
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const model = 'gemini-2.5-flash-preview-tts';
-  const config = buildGeminiConfig(voice1, voice2);
-  const contents = [
-    {
-      role: 'user',
-      parts: [
-        {
-          text,
+
+  const baseUrl = getMimicBaseUrl();
+  const voice = pickMimicVoice(voice1);
+  const url = `${baseUrl}/api/tts`;
+  try {
+    const resp = await axios.post(
+      url,
+      { text, voice },
+      {
+        responseType: 'arraybuffer',
+        timeout: 60_000,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'audio/wav, audio/*;q=0.9, */*;q=0.8',
         },
-      ],
-    },
-  ];
-
-  if (voice2) {
-    console.log('[TTS] Requesting Gemini audio with voices:', { voice1: voice1 || 'Zephyr', voice2 });
-  } else {
-    console.log('[TTS] Requesting Gemini audio with voice:', { voice: voice1 || 'Zephyr' });
-  }
-  const response = await ai.models.generateContentStream({ model, config, contents });
-
-  // Collect audio chunks with logging
-  const buffers = [];
-  let chunkCount = 0;
-  let lastMime = null;
-  let lastFinish = null;
-  let safetyLogged = false;
-  for await (const chunk of response) {
-    const part = chunk?.candidates?.[0]?.content?.parts?.[0];
-    const cand = chunk?.candidates?.[0];
-    if (cand?.finishReason && cand.finishReason !== lastFinish) {
-      lastFinish = cand.finishReason;
-      console.log('[TTS] Candidate finishReason:', lastFinish);
-    }
-    if (!safetyLogged && Array.isArray(cand?.safetyRatings)) {
-      safetyLogged = true;
-      console.log('[TTS] Safety ratings present, count:', cand.safetyRatings.length);
-    }
-    if (part?.inlineData) {
-      const inlineData = part.inlineData;
-      lastMime = inlineData.mimeType || lastMime;
-      const ext = getExtFromMime(inlineData.mimeType || '');
-      let buffer = Buffer.from(inlineData.data || '', 'base64');
-      if (ext === 'wav') {
-        // Might be already PCM WAV; if mime missing but raw PCM, convert
-        if (!inlineData.mimeType || inlineData.mimeType.startsWith('audio/L')) {
-          buffer = convertToWav(inlineData.data || '', inlineData.mimeType || 'audio/L16;rate=24000');
-        }
       }
-      buffers.push(buffer);
-      chunkCount++;
-    } else if (part?.text) {
-      // Occasionally model may send textual parts; log for visibility
-      console.log('[TTS] Received text part instead of audio:', part.text.slice(0, 80));
-    }
-  }
-
-  const totalLen = buffers.reduce((n, b) => n + b.length, 0);
-  console.log(`[TTS] Gemini audio chunks: ${chunkCount}, last mime: ${lastMime || 'unknown'}, total bytes: ${totalLen}`);
-
-  if (buffers.length > 0) {
-    console.log('[TTS-DEBUG] Generated audio buffer size:', buffers.reduce((n, b) => n + b.length, 0));
-    const out = Buffer.concat(buffers);
-    const preview = out.subarray(0, 16).toString('hex');
-    const hash = crypto.createHash('sha1').update(out.subarray(0, 4096)).digest('hex');
-    console.log('[TTS] Audio verification: first16B(hex)=', preview, '| sha1(first4KB)=', hash);
-    return out;
-  } else {
-    console.warn('[TTS] No audio from stream. Retrying once with non-streaming call...');
-    try {
-      const resp = await ai.models.generateContent({ model, config, contents });
-      const cand = resp?.response?.candidates?.[0];
-      const part = cand?.content?.parts?.[0];
-      if (cand?.finishReason) console.log('[TTS] Fallback finishReason:', cand.finishReason);
-      if (Array.isArray(cand?.safetyRatings)) console.log('[TTS] Fallback safety ratings count:', cand.safetyRatings.length);
-      if (part?.inlineData) {
-        const inlineData = part.inlineData;
-        const ext = getExtFromMime(inlineData.mimeType || '');
-        let buffer = Buffer.from(inlineData.data || '', 'base64');
-        if (ext === 'wav') {
-          if (!inlineData.mimeType || inlineData.mimeType.startsWith('audio/L')) {
-            buffer = convertToWav(inlineData.data || '', inlineData.mimeType || 'audio/L16;rate=24000');
-          }
-        }
-        const preview = buffer.subarray(0, 16).toString('hex');
-        const hash = crypto.createHash('sha1').update(buffer.subarray(0, 4096)).digest('hex');
-        console.log('[TTS] Fallback produced bytes:', buffer.length, 'mime:', inlineData.mimeType || 'unknown', '| first16B(hex)=', preview, '| sha1(first4KB)=', hash);
-        return buffer.length > 0 ? buffer : null;
-      } else {
-        console.error('[TTS] Fallback returned no inlineData. No audio generated.');
-      }
-    } catch (fallbackErr) {
-      console.error('[TTS] Fallback non-streaming call failed:', fallbackErr?.message || fallbackErr);
+    );
+    let contentType = resp.headers['content-type'] || 'application/octet-stream';
+    let buffer = Buffer.from(resp.data);
+    let preview = buffer.subarray(0, 16).toString('hex');
+    let hash = crypto.createHash('sha1').update(buffer.subarray(0, 4096)).digest('hex');
+    console.log('[TTS] Mimic3 POST returned bytes:', buffer.length, 'mime:', contentType, '| first16B(hex)=', preview, '| sha1(first4KB)=', hash);
+    if (buffer.length > 0 && /audio\//i.test(contentType)) {
+      return buffer;
     }
 
-    console.error('[TTS-DEBUG] No audio generated after fallback.');
+    // Fallback: try GET endpoint variant
+    const getUrl = `${baseUrl}/api/tts?voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(text)}`;
+    console.log('[TTS] Falling back to GET:', getUrl);
+    const getResp = await axios.get(getUrl, {
+      responseType: 'arraybuffer',
+      timeout: 60_000,
+      headers: {
+        'Accept': 'audio/wav, audio/*;q=0.9, */*;q=0.8',
+      },
+    });
+    contentType = getResp.headers['content-type'] || 'application/octet-stream';
+    buffer = Buffer.from(getResp.data);
+    preview = buffer.subarray(0, 16).toString('hex');
+    hash = crypto.createHash('sha1').update(buffer.subarray(0, 4096)).digest('hex');
+    console.log('[TTS] Mimic3 GET returned bytes:', buffer.length, 'mime:', contentType, '| first16B(hex)=', preview, '| sha1(first4KB)=', hash);
+    return buffer.length > 0 ? buffer : null;
+  } catch (err) {
+    console.error('[TTS] Mimic3 synthesis failed:', err?.message || err);
     return null;
   }
 }
 
 async function synthesizeMultispeaker(text, { voice1, voice2 } = {}) {
   try {
-    // Generate audio as before
+    // For Mimic3 we synthesize using a single selected voice.
     const audioBuffer = await originalSynthesis(text, { voice1, voice2 });
     
     if (audioBuffer) {

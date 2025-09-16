@@ -661,10 +661,10 @@ async function translateAndReply(message, languages, options = {}) {
                                 availableLanguages: availablePairs.map(([l]) => l),
                                 voices,
                             });
-                            let script = 'Read the following translated lines in a clear, natural tone.\n';
-                            script += `Speaker 1 (${first[0]}): ${first[1]}\n`;
+                            // For Mimic3, speak only the translated content without labels
+                            let script = first[1];
                             if (second) {
-                                script += `Speaker 2 (${second[0]}): ${second[1]}\n`;
+                                script += `\n\n${second[1]}`;
                             }
 
                             console.log('[TTS] Synthesizing audio...');

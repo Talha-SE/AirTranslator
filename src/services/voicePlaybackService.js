@@ -175,15 +175,22 @@ function createPcmResourceFrom(buffer) {
 }
 
 function createAudioResourceFrom(buffer) {
-  // Try direct MP3 playback first
+  // If buffer is WAV, route through PCM conversion (ffmpeg or passthrough) for reliability
+  const wav = parseWavPcm(buffer);
+  if (wav) {
+    console.log('[Voice] Detected WAV container; using PCM pipeline');
+    return createPcmResourceFrom(buffer);
+  }
+
+  // Otherwise, try direct playback (useful for MP3/Opus)
   try {
-    const resource = createAudioResource(bufferToStream(buffer), { 
-      inputType: StreamType.Arbitrary 
+    const resource = createAudioResource(bufferToStream(buffer), {
+      inputType: StreamType.Arbitrary,
     });
-    console.log('[Voice] Playing as MP3');
+    console.log('[Voice] Attempting direct playback (non-WAV)');
     return resource;
   } catch (err) {
-    console.log('[Voice] Falling back to PCM conversion');
+    console.log('[Voice] Direct playback failed; falling back to PCM conversion');
     return createPcmResourceFrom(buffer);
   }
 }
