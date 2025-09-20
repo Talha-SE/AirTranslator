@@ -413,8 +413,10 @@ const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 const TRANSLATION_MODEL = 'mistral-small-2501';
-//const TRANSLATION_MODEL = 'mistral-small-2409';
+//const TRANSLATION_MODEL = 'mistral-small-2503';
 //const TRANSLATION_MODEL = 'mistral-medium-latest';
+//const TRANSLATION_MODEL = 'open-mistral-7b';
+
 /**
  * Detects the language of a given text
  * @param {string} text - The text to detect the language for
@@ -426,7 +428,7 @@ const detectLanguage = async (text) => {
         const normalizedText = normalizeElongatedText(text);
         
         const response = await postMistralWithRetry({
-            model: 'mistral-small-latest',
+            model: 'voxtral-mini-latest',
             messages: [
                 {
                     role: 'system',
@@ -453,7 +455,7 @@ const detectLanguage = async (text) => {
     }
 };
 
-const translateText = async (text, targetLanguage, sourceLanguage = null, useToneUnderstanding = false, apiKey = MISTRAL_API_KEY) => {
+const translateText = async (text, targetLanguage, sourceLanguage = null, useToneUnderstanding = false, apiKey = MISTRAL_API_KEY, modelOverride = null) => {
     try {
         // If target language is "auto", we don't need to translate
         if (targetLanguage === AUTO_DETECT_LANGUAGE) {
@@ -519,7 +521,7 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
             // Translate each processed chunk (shorter text won't trigger chunking again)
             const translatedChunks = await Promise.all(
                 processedChunks.map(chunk => 
-                    translateText(chunk, targetLanguage, sourceLanguage, useToneUnderstanding, apiKey)
+                    translateText(chunk, targetLanguage, sourceLanguage, useToneUnderstanding, apiKey, modelOverride)
                 )
             );
             
@@ -765,7 +767,7 @@ For Korean translations, you MUST add cute chatting elements:
         }
 
         const response = await postMistralWithRetry({
-            model: TRANSLATION_MODEL,
+            model: modelOverride || TRANSLATION_MODEL,
             messages: [
                 {
                     role: 'system',
@@ -777,8 +779,8 @@ For Korean translations, you MUST add cute chatting elements:
                 }
             ],
             // Low temperature to reduce creative drift and repetition
-            temperature: 0.7,
-            top_p: 0.9,
+            temperature: 0.5,
+            top_p: 0.3,
             // Deterministic per input to improve stability across retries
             random_seed: stableRandomSeed(processedText + ':' + targetLangName),
             // Stop when model tries to add notes/explanations
@@ -852,7 +854,7 @@ For Korean translations, you MUST add cute chatting elements:
             try {
                 const strictSystem = finalSystemContent + `\n\nHARD CONSTRAINTS (Anti-Repetition):\n- Do NOT repeat any single character more than 6 times in a row.\n- Do NOT repeat syllables or short chunks unnaturally.\n- Output must be concise, natural sentences.\n- If input is short, keep output short.\n- Absolutely avoid loops like "ㅋㅋㅋㅋㅋㅋㅋㅋㅋㅋ" beyond 12 or any character spam.`;
                 const retryResponse = await postMistralWithRetry({
-                    model: TRANSLATION_MODEL,
+                    model: modelOverride || TRANSLATION_MODEL,
                     messages: [
                         { role: 'system', content: strictSystem },
                         { role: 'user', content: `Translate to ${targetLangName}: "${processedText}"` }
