@@ -190,7 +190,7 @@ async function messageReactionAdd(client, reaction, user) {
                 // Use unified translation system with same tone setting as auto-translation
                 const toneSettings = await getToneSettings(message.guild.id, message.channel.id);
                 console.log(`🔄 Personal buddy translating content from ${detectedLanguage} to ${targetLanguage}`);
-                const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, toneSettings, undefined, 'mistral-large-latest'); // Use dedicated model for flag translations
+                const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, toneSettings, undefined, 'mistral-medium-latest'); // Use dedicated model for flag translations
                 
                 if (!translation || translation.trim().length === 0) {
                     console.log('❌ Personal translation failed or returned empty result');
@@ -420,7 +420,7 @@ async function messageReactionAdd(client, reaction, user) {
         // Use unified translation system with same tone setting as auto-translation
         const toneSettings = await getToneSettings(message.guild.id, message.channel.id);
         console.log(`🔄 Translating content from ${detectedLanguage} to ${targetLanguage} using unified system`);
-        const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, toneSettings, undefined, 'mistral-large-latest'); // Use dedicated model for flag translations
+        const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, toneSettings, undefined, 'mistral-medium-latest'); // Use dedicated model for flag translations
         
         if (!translation || translation.trim().length === 0) {
             console.log('❌ Translation failed or returned empty result');

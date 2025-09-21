@@ -556,19 +556,18 @@ async function translateAndReply(message, languages, options = {}) {
                     await thread.send(silentReplyOptions);
                     console.log(`🧵 Sent translation to thread: ${thread.name}`);
 
-                    // Send full long translations as follow-up messages in the thread
+                    // Send full long translations as embed cards in the thread
                     for (const item of longTranslations) {
                         const header = `Full translation — ${item.displayLanguage}`;
-                        const parts = splitIntoDiscordChunks(item.translation);
+                        const parts = splitIntoDiscordChunks(item.translation, 3800); // Safe size for embed description
                         for (let p = 0; p < parts.length; p++) {
-                            const prefix = parts.length > 1 ? ` (Part ${p + 1}/${parts.length})` : '';
+                            const partSuffix = parts.length > 1 ? ` (Part ${p + 1}/${parts.length})` : '';
+                            const card = new EmbedBuilder()
+                                .setColor('#129af5')
+                                .setTitle(`${header}${partSuffix}`)
+                                .setDescription(parts[p]);
                             await thread.send({
-                                content: `${header}${prefix}\n\n\u200B\n\u200B`,
-                                allowedMentions: { repliedUser: false },
-                                flags: ['SuppressNotifications']
-                            });
-                            await thread.send({
-                                content: '```\n' + parts[p] + '\n```',
+                                embeds: [card],
                                 allowedMentions: { repliedUser: false },
                                 flags: ['SuppressNotifications']
                             });
@@ -605,18 +604,18 @@ async function translateAndReply(message, languages, options = {}) {
                     // Text-based translation (original behavior)
                     const msg = await message.reply(replyOptions);
 
-                    // Send full long translations as follow-up messages in the channel
+                    // Send full long translations as embed cards in the channel
                     for (const item of longTranslations) {
                         const header = `Full translation — ${item.displayLanguage}`;
-                        const parts = splitIntoDiscordChunks(item.translation);
+                        const parts = splitIntoDiscordChunks(item.translation, 3800); // Safe size for embed description
                         for (let p = 0; p < parts.length; p++) {
-                            const prefix = parts.length > 1 ? ` (Part ${p + 1}/${parts.length})` : '';
+                            const partSuffix = parts.length > 1 ? ` (Part ${p + 1}/${parts.length})` : '';
+                            const card = new EmbedBuilder()
+                                .setColor('#129af5')
+                                .setTitle(`${header}${partSuffix}`)
+                                .setDescription(parts[p]);
                             await message.channel.send({
-                                content: `${header}${prefix}\n\n\u200B\n\u200B`,
-                                allowedMentions: { repliedUser: false }
-                            });
-                            await message.channel.send({
-                                content: '```\n' + parts[p] + '\n```',
+                                embeds: [card],
                                 allowedMentions: { repliedUser: false }
                             });
                         }

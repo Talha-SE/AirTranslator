@@ -414,7 +414,7 @@ const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 const TRANSLATION_MODEL = 'mistral-small-2501';
 //const TRANSLATION_MODEL = 'mistral-small-2503';
-//const TRANSLATION_MODEL = 'mistral-medium-latest';
+//const TRANSLATION_MODEL = 'mistral-small-latest';
 //const TRANSLATION_MODEL = 'open-mistral-7b';
 
 /**
@@ -562,19 +562,36 @@ CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - Always translate in required language
 
 KOREAN TRANSLATION ACCURACY RULES:
-- Pay special attention to Korean pronouns,  it changes based on the context
-- Korean sentence structure: Subject-Object-Verb order, translate meaning correctly
-- Consider Korean honorific levels (반말/존댓말) in context
-- For casual/affectionate tone: Use 야, 아, 애 endings and casual particles
-- For elongated casual expressions: Use ㅇ or vowel repetition (아아아, 야야야, 우우우)
-- Affectionate terms: 자기야 (honey), 베이비 (baby), 애기야 (baby), 사랑아 (love)
-- Casual emphasis: Add ㅋㅋ for laughter, ㅎㅎ for soft laughter, ㅠㅠ for crying
-- Preserve playful elongation: "babyyy" → "베이비이이~~♡" or "자기야야야~~~ㅎㅎ" or "애기야야~~~ㅋㅋ"
-- ELONGATION EXAMPLES: "heyyyyyy" → "야야야야야" or "어이이이이~~ㅋㅋ" or "안뇽~~~"
-- KOREAN CHATTING STYLE: Add cute elements like ~, ㅋㅋㅋ, ♡, ㅎㅎㅎ
-- KOREAN ELONGATED CHATTING: "heyyyyyy" → "야야야야~~~" or "어이이이이~~ㅋㅋ" or "안뇽~~~"
-- KOREAN CUTE PATTERNS: Use ~~, ♡, ㅋㅋ, ㅎㅎ, ㅠㅠ, >< for extra cuteness
-- KOREAN AFFECTIONATE CHATTING: "babyyy~~~" → "베이비이이~~♡" or "자기야야야~~~ㅎㅎ"
+
+
+- Use natural Korean sentence order: Subject/Topic – Object – Verb. Move adverbs/time/place before the verb. Keep particles 자연스럽게 (는/은, 이/가, 를/을, 의, 에/에서, 로/으로, 한테/에게, 와/과/하고).
+- Honorifics and politeness (체계) must match context and relationship:
+  * Formal polite (합니다체): announcements, public info, strangers, customer service.
+  * Polite (해요체): most neutral polite conversations in servers/chats with strangers or mixed ages.
+  * Casual (해체/반말): friends, same-age close users, playful chat (respect tone settings and emojis).
+- Pronouns (I/You) are often omitted in Korean. Prefer dropping pronouns when the subject is obvious. Only add them when needed for clarity or emphasis.
+  * “I” → 저 (polite) / 나 (casual). Choose consistently within a message.
+  * “You” → Avoid 당신 in most contexts. Prefer:
+    - 너 (casual, close friends, can be rude otherwise)
+    - 이름/닉네임/호칭 (e.g., 민수야, 선생님, 팀장님) when addressing directly
+    - 그쪽/자기 (relationship-specific), or omit and use context/verb endings (e.g., "가세요", "하고 싶으세요?")
+  * When translating direct address questions/commands, prefer verb endings that imply “you” without explicit pronouns (e.g., “Can you…?” → “…하실 수 있으세요?”; casual: “…할래?” “…해줘”).
+- Subjects and topics:
+  * Prefer topic particle 는/은 for general statements; subject particle 이/가 for new/contrastive info.
+  * Keep consistent perspective. Do not switch between 저/나 or mix politeness levels in one message.
+- Natural verb endings and connective forms:
+  * Polite: -요 endings (했어요, 가세요, 좋네요).
+  * Formal: -(스)ㅂ니다 endings (합니다, 갑니다). Questions: -(스)ㅂ니까?
+  * Casual: -다 (statement), -니?/-냐? or -어/지? (question), -해, -했어.
+  * Requests: “…주세요/주시겠어요?” (polite), “…해줘/해줄래?” (casual).
+- Idioms and nuance: Translate meaningfully, not word-for-word. Use natural Korean collocations.
+- Numbers and counters: Keep digits as digits; apply native counters if appropriate (1명, 2개, 3번) when it reads naturally.
+- Emojis/elongations: Preserve emojis and playful lengthening according to previous rules, but keep sentence endings natural.
+- Examples (guidance, not literal templates):
+  * “I think you should try this.” → “이거 한번 해보시는 게 좋을 것 같아요.” (polite), “이거 한번 해봐.” (casual)
+  * “Can you help me?” → “도와주실 수 있으세요?” (polite), “도와줘.” (casual)
+  * “I’m not sure.” → “잘 모르겠어요.” / “모르겠네.”
+
 
 TRANSLITERATION RULES:
 - For proper names (people, places, brands), transliterate them into the target language's writing system
@@ -779,8 +796,8 @@ For Korean translations, you MUST add cute chatting elements:
                 }
             ],
             // Low temperature to reduce creative drift and repetition
-            temperature: 0.5,
-            top_p: 0.3,
+            temperature: 0.1,
+            top_p: 0.9,
             // Deterministic per input to improve stability across retries
             random_seed: stableRandomSeed(processedText + ':' + targetLangName),
             // Stop when model tries to add notes/explanations
