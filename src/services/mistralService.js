@@ -412,11 +412,11 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
 const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
-const TRANSLATION_MODEL = 'mistral-small-2501';
-//const TRANSLATION_MODEL = 'mistral-small-2503';
+//const TRANSLATION_MODEL = 'mistral-small-2501';
+const TRANSLATION_MODEL = 'mistral-small-2503';
 //const TRANSLATION_MODEL = 'mistral-medium-latest';
-//const TRANSLATION_MODEL = 'open-mistral-7b';
-//const TRANSLATION_MODEL = 'mistral-saba-latest';
+//const TRANSLATION_MODEL = 'codestral-2501';
+//const TRANSLATION_MODEL = 'mistral-small-latest';
 /**
  * Detects the language of a given text
  * @param {string} text - The text to detect the language for
@@ -428,7 +428,7 @@ const detectLanguage = async (text) => {
         const normalizedText = normalizeElongatedText(text);
         
         const response = await postMistralWithRetry({
-            model: 'voxtral-mini-latest',
+            model: 'mistral-small-latest',
             messages: [
                 {
                     role: 'system',
@@ -535,6 +535,7 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
 
 CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - TRANSLATE ONLY THE INPUT TEXT - do not add, expand, or create additional content
+- Give translation in required language with good grammar and punctuation
 - NEVER add any notes, explanations, disclaimers, comments, or parenthetical remarks
 - NEVER write anything like "(Note: ...)", "(Translation: ...)", or "(The original...)"
 - NEVER explain ambiguities, difficulties, or interpretation choices
@@ -545,12 +546,12 @@ CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - NEVER expand single words into full sentences or conversations
 - For elongated words (like "heyyyyy"), translate to equivalent casual form in target language
 - If target language doesn't use elongation, keep meaning but remove repetitions
-- Preserve every emoji exactly as written (😊 stays 😊, ❤️ stays ❤️)
-- Never translate emoji meanings
+- Preserve every emoji and every text-based emoticon exactly as written (😊 stays 😊, :) stays :), ❤️ stays ❤️)
+- Never translate emoji or text-based emoticon meanings
 - Understand names and nicknames and translate them properly to target language
-- Maintain original emoji positions
+- Maintain original emoji and text-based emoticon positions
 - Do NOT replace words with emojis or symbols. If the source text says something like "thumbs up", translate the phrase as words; do not output 👍 unless the original already contains 👍.
-- Do NOT add new emojis that are not in the source. Only preserve existing emojis.
+- Do NOT add new emojis or text-based emoticons that are not in the source. Only preserve existing emojis.
 - Preserve all line breaks and spacing exactly
 - Preserve punctuation and special characters
 - Return in good punctuation and spacing and good grammar according to the context
@@ -796,7 +797,7 @@ For Korean translations, you MUST add cute chatting elements:
                 }
             ],
             // Low temperature to reduce creative drift and repetition
-            temperature: 0.9,
+            temperature: 0.3,
             top_p: 0.95,
             // Deterministic per input to improve stability across retries
             random_seed: stableRandomSeed(processedText + ':' + targetLangName),
