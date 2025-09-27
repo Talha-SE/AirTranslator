@@ -122,11 +122,8 @@ async function messageReactionAdd(client, reaction, user) {
                 return;
             }
 
-            // Skip if message is from a bot (unless it's the user's own message)
-            if (message.author.bot && message.author.id !== user.id) {
-                console.log('⚠️ Skipping bot message for personal translation');
-                return;
-            }
+            // Allow personal translations even on bot messages when user reacts with a flag
+            // We no longer skip bot messages here to honor user's explicit flag action
 
             try {
                 // Prepare content for unified translation system (same as server translation)
@@ -188,7 +185,7 @@ async function messageReactionAdd(client, reaction, user) {
                 }
 
                 // Use unified translation system with same tone setting as auto-translation
-                const toneSettings = await getToneSettings(message.guild.id, message.channel.id);
+                const toneSettings = message.guild ? await getToneSettings(message.guild.id, message.channel.id) : false;
                 console.log(`🔄 Personal buddy translating content from ${detectedLanguage} to ${targetLanguage}`);
                 const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, toneSettings, undefined, 'mistral-small-latest'); // Use dedicated model for flag translations
                 
@@ -208,12 +205,20 @@ async function messageReactionAdd(client, reaction, user) {
                         inline: false
                     })
 
-                // Add message context with better formatting
-                personalEmbed.addFields({
-                    name: '🏠 Message Source',
-                    value: `**🏢 Server:** ${message.guild.name}\n**📢 Channel:** #${message.channel.name}\n**👤 Author:** ${message.author.username}\n**🔗 Link:** [Jump to message](${message.url})`,
-                    inline: false
-                });
+                // Add message context with better formatting (supports DMs and Guilds)
+                if (message.guild) {
+                    personalEmbed.addFields({
+                        name: '🏠 Message Source',
+                        value: `**🏢 Server:** ${message.guild.name}\n**📢 Channel:** #${message.channel.name}\n**👤 Author:** ${message.author.username}\n**🔗 Link:** [Jump to message](${message.url})`,
+                        inline: false
+                    });
+                } else {
+                    personalEmbed.addFields({
+                        name: '🏠 Message Source',
+                        value: `**📬 Direct Message**\n**👤 Author:** ${message.author.username}`,
+                        inline: false
+                    });
+                }
 
                 personalEmbed
                     .setFooter({

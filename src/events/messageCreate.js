@@ -1,4 +1,5 @@
 const { getSetupsByChannelId, getToneSettings, updateServerConfig, shouldUseThreadTranslation } = require('../services/databaseService');
+const { getPersonalTranslationSettings, recordPersonalTranslation } = require('../services/databaseService');
 const { translateText, detectLanguage, translateTextToMultipleLanguages } = require('../services/mistralService');
 const monetizationService = require('../services/monetizationService');
 const fastq = require('fastq');
@@ -156,10 +157,11 @@ function startVoteTracking(serverId, userInfo = null, client = null) {
     console.log(`🗳️ Started vote tracking for server ${serverId} by user ${userInfo?.username || 'Unknown'} - credits will be granted in ${VOTE_CREDIT_DELAY/1000} seconds`);
 }
 
-// Auto-cleanup function for original messages
-async function scheduleAutoCleanup(message, serverId) {
+// Auto-cleanup function for bot translation messages
+async function scheduleAutoCleanupForBotMessages(messages, serverId, channelId) {
     try {
-        console.log(`🔧 DEBUG: Checking auto-cleanup for server ${serverId}, channel ${message.channel.name}`);
+        if (!Array.isArray(messages) || messages.length === 0) return;
+        console.log(`🔧 DEBUG: Checking auto-cleanup for server ${serverId}, channel ${channelId}`);
         const { getServerConfig } = require('../services/databaseService');
         const serverConfig = await getServerConfig(serverId);
         
@@ -168,48 +170,51 @@ async function scheduleAutoCleanup(message, serverId) {
             console.log(`🔧 DEBUG: Auto-cleanup config:`, JSON.stringify(serverConfig.autoCleanup, null, 2));
         }
         
-        if (!serverConfig || !serverConfig.autoCleanup) {
-            console.log(`🔧 DEBUG: No auto-cleanup configuration found for server ${serverId}`);
-            return;
-        }
-        
         let cleanupDelay = null;
         
-        // Check channel-specific configuration first
-        if (serverConfig.autoCleanup.channels && serverConfig.autoCleanup.channels[message.channel.id]?.enabled) {
-            cleanupDelay = serverConfig.autoCleanup.channels[message.channel.id].delay;
-            const delayText = cleanupDelay === 0 ? 'immediate' : `${cleanupDelay/1000}s`;
-            console.log(`🗑️ Using channel-specific cleanup (${delayText}) for #${message.channel.name}`);
-        }
-        // Fall back to server-wide configuration
-        else if (serverConfig.autoCleanup.serverWide?.enabled) {
-            cleanupDelay = serverConfig.autoCleanup.serverWide.delay;
-            const delayText = cleanupDelay === 0 ? 'immediate' : `${cleanupDelay/1000}s`;
-            console.log(`🗑️ Using server-wide cleanup (${delayText}) for original message`);
-        }
-        
-        if (!cleanupDelay && cleanupDelay !== 0) {
-            console.log(`🔧 DEBUG: No cleanup delay configured (cleanupDelay = ${cleanupDelay})`);
-            return;
-        }
-        
-        if (cleanupDelay === 0) {
-            // Immediate deletion
-            try {
-                await message.delete();
-                console.log(`✅ Auto-deleted original message immediately`);
-            } catch (deleteError) {
-                console.log('Could not delete original message (may already be deleted or no permissions)');
+        // If no config present, default to 5 hours for bot messages
+        const DEFAULT_DELAY_MS = 5 * 60 * 60 * 1000;
+
+        // Resolve configured delay (only delete if enabled), otherwise default applies
+        if (serverConfig && serverConfig.autoCleanup) {
+            // Channel-specific setting
+            if (channelId && serverConfig.autoCleanup.channels && serverConfig.autoCleanup.channels[channelId]?.enabled) {
+                cleanupDelay = serverConfig.autoCleanup.channels[channelId].delay;
+                const delayText = cleanupDelay === 0 ? 'immediate' : `${cleanupDelay/1000}s`;
+                console.log(`🗑️ Using channel-specific cleanup (${delayText}) for channel ${channelId}`);
             }
+            // Server-wide setting
+            else if (serverConfig.autoCleanup.serverWide?.enabled) {
+                cleanupDelay = serverConfig.autoCleanup.serverWide.delay;
+                const delayText = cleanupDelay === 0 ? 'immediate' : `${cleanupDelay/1000}s`;
+                console.log(`🗑️ Using server-wide cleanup (${delayText}) for server ${serverId}`);
+            }
+        }
+
+        if (cleanupDelay === null || cleanupDelay === undefined) {
+            cleanupDelay = DEFAULT_DELAY_MS;
+            console.log(`🗑️ Using default cleanup delay: ${cleanupDelay/1000}s (5 hours)`);
+        }
+
+        const deleteOne = async (m) => {
+            try {
+                await m.delete().catch(() => {});
+            } catch {}
+        };
+
+        if (cleanupDelay === 0) {
+            // Immediate deletion of bot messages
+            for (const m of messages) {
+                await deleteOne(m);
+            }
+            console.log(`✅ Auto-deleted ${messages.length} bot message(s) immediately`);
         } else {
-            // Delayed deletion
             setTimeout(async () => {
-                try {
-                    await message.delete();
-                    console.log(`✅ Auto-deleted original message after ${cleanupDelay/1000} seconds`);
-                } catch (deleteError) {
-                    console.log('Could not delete original message (may already be deleted or no permissions)');
+                let deleted = 0;
+                for (const m of messages) {
+                    try { await deleteOne(m); deleted++; } catch {}
                 }
+                console.log(`✅ Auto-deleted ${deleted}/${messages.length} bot message(s) after ${cleanupDelay/1000} seconds`);
             }, cleanupDelay);
         }
         
@@ -334,6 +339,7 @@ async function translateAndReply(message, languages, options = {}) {
     });
     try {
         const { forQuickSetup = false } = options;
+        const botMessages = [];
         // Check if this channel should use thread-based translation
         const useThreadTranslation = await shouldUseThreadTranslation(message.guild.id, message.channel.id);
         
@@ -553,7 +559,8 @@ async function translateAndReply(message, languages, options = {}) {
                         ...replyOptions,
                         flags: ['SuppressNotifications'] // Mute thread translation notifications
                     };
-                    await thread.send(silentReplyOptions);
+                    const sent = await thread.send(silentReplyOptions);
+                    botMessages.push(sent);
                     console.log(`🧵 Sent translation to thread: ${thread.name}`);
 
                     // Send full long translations as embed cards in the thread
@@ -581,10 +588,11 @@ async function translateAndReply(message, languages, options = {}) {
                             .setDescription('💡 *This thread auto-archives in 30s to keep channels tidy. Click the original message to access archived translations.*')
                             .setFooter({ text: 'Air Translator' });
                         
-                        await thread.send({ 
+                        const ctxMsg = await thread.send({ 
                             embeds: [contextEmbed],
                             flags: ['SuppressNotifications'] // Mute context message notifications
                         });
+                        botMessages.push(ctxMsg);
                     }
                     
                     // Auto-archive thread after 30 seconds to keep channel list tidy
@@ -603,6 +611,7 @@ async function translateAndReply(message, languages, options = {}) {
                 } else {
                     // Text-based translation (original behavior)
                     const msg = await message.reply(replyOptions);
+                    botMessages.push(msg);
 
                     // Send full long translations as embed cards in the channel
                     for (const item of longTranslations) {
@@ -614,17 +623,18 @@ async function translateAndReply(message, languages, options = {}) {
                                 .setColor('#129af5')
                                 .setTitle(`${header}${partSuffix}`)
                                 .setDescription(parts[p]);
-                            await message.channel.send({
+                            const fullMsg = await message.channel.send({
                                 embeds: [card],
                                 allowedMentions: { repliedUser: false }
                             });
+                            botMessages.push(fullMsg);
                         }
                     }
                 }
                 
                 // Check for auto-cleanup configuration and schedule deletion of original message
                 if (i === chunks.length - 1) { // Only check on the last chunk
-                    await scheduleAutoCleanup(message, message.guild.id);
+                    await scheduleAutoCleanupForBotMessages(botMessages, message.guild.id, message.channel.id);
                 }
             }
             
@@ -700,8 +710,141 @@ async function translateAndReply(message, languages, options = {}) {
 
 module.exports = async (client, message) => {
     if (message.author.bot) return;
-    if (!message.guild) return;
     if (!message.content.trim()) return;
+
+    // Handle Personal Translation in DMs (private inboxes)
+    if (!message.guild) {
+        try {
+            const userId = message.author.id;
+            const settings = await getPersonalTranslationSettings(userId);
+
+            if (settings && settings.enabled && Array.isArray(settings.targetLanguages) && settings.targetLanguages.length > 0) {
+                // Detect language once
+                const detectedLanguage = await detectLanguage(message.content);
+
+                // Filter out same-language targets
+                const targetLanguagesArray = settings.targetLanguages
+                    .filter(l => typeof l === 'string' && l.trim().length > 0)
+                    .map(l => l.trim())
+                    .filter(l => l.toLowerCase() !== detectedLanguage.toLowerCase());
+
+                if (targetLanguagesArray.length === 0) return;
+
+                // Perform translations (no tone setting for DMs for now)
+                const translations = await translateTextToMultipleLanguages(
+                    message.content,
+                    targetLanguagesArray,
+                    detectedLanguage,
+                    false
+                );
+
+                if (Object.keys(translations).length > 0) {
+                    // Prepare embed(s) similar to guild path, without server-specific buttons
+                    const translationEntries = Object.entries(translations);
+                    const MAX_FIELDS_PER_EMBED = 6;
+                    const chunks = [];
+                    for (let i = 0; i < translationEntries.length; i += MAX_FIELDS_PER_EMBED) {
+                        chunks.push(translationEntries.slice(i, i + MAX_FIELDS_PER_EMBED));
+                    }
+
+                    for (let i = 0; i < chunks.length; i++) {
+                        const longTranslations = [];
+                        const fields = chunks[i].map(([language, translation]) => {
+                            const flag = {
+                                'afrikaans': '🇿🇦', 'albanian': '🇦🇱', 'amharic': '🇪🇹', 'arabic': '🇸🇦',
+                                'armenian': '🇦🇲', 'azerbaijani': '🇦🇿', 'basque': '🇪🇸', 'belarusian': '🇧🇾',
+                                'bengali': '🇧🇩', 'bosnian': '🇧🇦', 'bulgarian': '🇧🇬', 'burmese': '🇲🇲',
+                                'catalan': '🇪🇸', 'cebuano': '🇵🇭', 'chinese': '🇨🇳', 'chinese (simplified)': '🇨🇳', 'chinese (traditional)': '🇹🇼', 'corsican': '🇫🇷',
+                                'croatian': '🇭🇷', 'czech': '🇨🇿', 'danish': '🇩🇰', 'dutch': '🇳🇱',
+                                'english': '🇬🇧', 'esperanto': '🏳️', 'estonian': '🇪🇪', 'filipino': '🇵🇭',
+                                'finnish': '🇫🇮', 'french': '🇫🇷', 'frisian': '🇳🇱', 'galician': '🇪🇸',
+                                'georgian': '🇬🇪', 'german': '🇩🇪', 'greek': '🇬🇷', 'gujarati': '🇮🇳',
+                                'haitian': '🇭🇹', 'hausa': '🇳🇬', 'hawaiian': '🇺🇸', 'hebrew': '🇮🇱',
+                                'hindi': '🇮🇳', 'hmong': '🇨🇳', 'hungarian': '🇭🇺', 'icelandic': '🇮🇸',
+                                'igbo': '🇳🇬', 'indonesian': '🇮🇩', 'irish': '🇮🇪', 'italian': '🇮🇹',
+                                'japanese': '🇯🇵', 'javanese': '🇮🇩', 'kannada': '🇮🇳', 'kazakh': '🇰🇿',
+                                'khmer': '🇰🇭', 'kinyarwanda': '🇷🇼', 'korean': '🇰🇷', 'kurdish': '🇮🇶',
+                                'kyrgyz': '🇰🇬', 'lao': '🇱🇦', 'latin': '🏛️', 'latvian': '🇱🇻',
+                                'lithuanian': '🇱🇹', 'luxembourgish': '🇱🇺', 'macedonian': '🇲🇰', 'malagasy': '🇲🇬',
+                                'malay': '🇲🇾', 'malayalam': '🇮🇳', 'maltese': '🇲🇹', 'maori': '🇳🇿',
+                                'marathi': '🇮🇳', 'mongolian': '🇲🇳', 'nepali': '🇳🇵', 'norwegian': '🇳🇴',
+                                'nyanja': '🇲🇼', 'odia': '🇮🇳', 'pashto': '🇦🇫', 'persian': '🇮🇷',
+                                'polish': '🇵🇱', 'portuguese': '🇵🇹', 'punjabi': '🇮🇳', 'romanian': '🇷🇴',
+                                'russian': '🇷🇺', 'samoan': '🇼🇸', 'scots': '🏴', 'serbian': '🇷🇸',
+                                'sesotho': '🇱🇸', 'shona': '🇿🇼', 'sindhi': '🇵🇰', 'sinhala': '🇱🇰',
+                                'slovak': '🇸🇰', 'slovenian': '🇸🇮', 'somali': '🇸🇴', 'spanish': '🇪🇸',
+                                'sundanese': '🇮🇩', 'swahili': '🇰🇪', 'swedish': '🇸🇪', 'tagalog': '🇵🇭',
+                                'tajik': '🇹🇯', 'tamil': '🇮🇳', 'tatar': '🇷🇺', 'telugu': '🇮🇳',
+                                'thai': '🇹🇭', 'turkish': '🇹🇷', 'turkmen': '🇹🇲', 'ukrainian': '🇺🇦',
+                                'urdu': '🇵🇰', 'uyghur': '🇨🇳', 'uzbek': '🇺🇿', 'vietnamese': '🇻🇳',
+                                'welsh': '🏴', 'xhosa': '🇿🇦', 'yiddish': '🇮🇱', 'yoruba': '🇳🇬',
+                                'zulu': '🇿🇦'
+                            }[language.toLowerCase()] || '🌐';
+
+                            const displayLanguage = getLanguageDisplayName(language);
+
+                            let displayTranslation = translation;
+                            const EMBED_FIELD_LIMIT = 1024;
+                            if (translation.length > EMBED_FIELD_LIMIT) {
+                                longTranslations.push({ language, displayLanguage, translation });
+                                const previewLen = 300;
+                                displayTranslation = translation.substring(0, previewLen) + '...\n\n— View full translation below —';
+                            }
+
+                            return {
+                                name: `${flag} ${displayLanguage}`,
+                                value: displayTranslation,
+                                inline: false
+                            };
+                        });
+
+                        const embed = new EmbedBuilder()
+                            .setColor('#129af5')
+                            .setFields(fields);
+
+                        if (i === 0) {
+                            const originalText = message.content.length > 150
+                                ? message.content.substring(0, 147) + '...'
+                                : message.content;
+                            embed.setAuthor({
+                                name: `${message.author.displayName || message.author.username}`,
+                                iconURL: message.author.displayAvatarURL({ dynamic: true, size: 128 })
+                            })
+                            .setDescription(`> ${originalText}`);
+                        }
+
+                        await message.reply({
+                            embeds: [embed],
+                            allowedMentions: { repliedUser: false }
+                        });
+
+                        // Send full long translations as additional embed cards in DM
+                        for (const item of longTranslations) {
+                            const header = `Full translation — ${item.displayLanguage}`;
+                            const parts = splitIntoDiscordChunks(item.translation, 3800);
+                            for (let p = 0; p < parts.length; p++) {
+                                const partSuffix = parts.length > 1 ? ` (Part ${p + 1}/${parts.length})` : '';
+                                const card = new EmbedBuilder()
+                                    .setColor('#129af5')
+                                    .setTitle(`${header}${partSuffix}`)
+                                    .setDescription(parts[p]);
+                                await message.channel.send({
+                                    embeds: [card],
+                                    allowedMentions: { repliedUser: false }
+                                });
+                            }
+                        }
+                    }
+
+                    // Record usage for analytics
+                    await recordPersonalTranslation(userId);
+                }
+            }
+        } catch (error) {
+            console.error('Error handling personal DM translation:', error);
+        }
+        return; // Do not proceed to guild logic for DMs
+    }
 
     // Track user-server interaction for vote rewards
     if (!global.userServerTracking) {
@@ -714,6 +857,56 @@ module.exports = async (client, message) => {
     if (!global.lastCleanup || Date.now() - global.lastCleanup > oneDayMs) {
         // Simple cleanup - in production you'd want more sophisticated tracking
         global.lastCleanup = Date.now();
+    }
+
+    // Personal Translation for guild messages: DM translations privately to the author
+    try {
+        const personal = await getPersonalTranslationSettings(message.author.id);
+        if (personal && personal.enabled && Array.isArray(personal.targetLanguages) && personal.targetLanguages.length > 0) {
+            const detectedLanguage = await detectLanguage(message.content);
+            const targetLanguagesArray = personal.targetLanguages
+                .filter(l => typeof l === 'string' && l.trim().length > 0)
+                .map(l => l.trim())
+                .filter(l => l.toLowerCase() !== detectedLanguage.toLowerCase());
+
+            if (targetLanguagesArray.length > 0) {
+                const translations = await translateTextToMultipleLanguages(
+                    message.content,
+                    targetLanguagesArray,
+                    detectedLanguage,
+                    await getToneSettings(message.guild.id, message.channel.id)
+                );
+
+                if (Object.keys(translations).length > 0) {
+                    // Build DM embeds
+                    const entries = Object.entries(translations);
+                    const MAX_FIELDS_PER_EMBED = 6;
+                    for (let i = 0; i < entries.length; i += MAX_FIELDS_PER_EMBED) {
+                        const slice = entries.slice(i, i + MAX_FIELDS_PER_EMBED);
+                        const fields = slice.map(([language, translation]) => ({
+                            name: `${getLanguageDisplayName(language)}`,
+                            value: translation.length > 1024 ? translation.substring(0, 1000) + '...\n\n— Truncated —' : translation,
+                            inline: false
+                        }));
+                        const embed = new EmbedBuilder()
+                            .setColor('#06b6d4')
+                            .setTitle('🗣️ Personal Translation')
+                            .setDescription(`From: ${message.guild.name} • #${message.channel.name}`)
+                            .addFields(fields)
+                            .setFooter({ text: 'AirTranslator • Personal Mode' })
+                            .setTimestamp();
+                        try {
+                            await message.author.send({ embeds: [embed] });
+                        } catch (dmErr) {
+                            // Ignore if DMs closed
+                        }
+                    }
+                    await recordPersonalTranslation(message.author.id);
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error sending personal guild DM translation:', e);
     }
 
     try {

@@ -67,11 +67,14 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.DirectMessageReactions,
     ],
     partials: [
         Partials.Message,
         Partials.Channel, 
-        Partials.Reaction
+        Partials.Reaction,
+        Partials.User
     ]
 });
 
@@ -97,6 +100,10 @@ const personalBuddyCommand = require('./commands/personalBuddy');
 const styleCommand = require('./commands/style');
 const ttsSetupCommand = require('./commands/ttsSetup');
 const ttsDeleteCommand = require('./commands/ttsDelete');
+const translateToMyDMsCommand = require('./commands/translateToMyDMs');
+const pbEnableCommand = require('./commands/pbEnable');
+const pbDisableCommand = require('./commands/pbDisable');
+const pbSetLanguagesCommand = require('./commands/pbSetLanguages');
 
 client.commands.set('quicksetup', quickSetupCommand);
 client.commands.set('addchannel', addChannelCommand);
@@ -113,6 +120,12 @@ client.commands.set('personalbuddy', personalBuddyCommand);
 client.commands.set('style', styleCommand);
 client.commands.set('ttssetup', ttsSetupCommand);
 client.commands.set('ttsdelete', ttsDeleteCommand);
+// Register message context menu command by its exact name
+client.commands.set(translateToMyDMsCommand.data.name, translateToMyDMsCommand);
+// Register user context menu commands for Personal Buddy
+client.commands.set(pbEnableCommand.data.name, pbEnableCommand);
+client.commands.set(pbDisableCommand.data.name, pbDisableCommand);
+client.commands.set(pbSetLanguagesCommand.data.name, pbSetLanguagesCommand);
 
 // Load events
 const ready = require('./events/ready');
@@ -288,6 +301,26 @@ client.on(Events.InteractionCreate, async interaction => {
                 }
             } catch (err) {
                 logger.error('Error handling command error', err);
+            }
+        }
+    } else if (interaction.isMessageContextMenuCommand() || interaction.isUserContextMenuCommand()) {
+        const command = interaction.client.commands.get(interaction.commandName);
+        if (!command) {
+            logger.warn(`No context menu command matching ${interaction.commandName} was found.`);
+            return;
+        }
+        try {
+            await command.execute(interaction);
+        } catch (error) {
+            logger.error(`Error executing context menu ${interaction.commandName}`, error);
+            try {
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp({ content: 'There was an error while executing this action!', flags: MessageFlags.Ephemeral });
+                } else {
+                    await interaction.reply({ content: 'There was an error while executing this action!', flags: MessageFlags.Ephemeral });
+                }
+            } catch (err) {
+                logger.error('Error handling context menu error', err);
             }
         }
     } else if (interaction.isButton()) {
@@ -571,7 +604,25 @@ client.on(Events.InteractionCreate, async interaction => {
             } catch {}
         }
     } else if (interaction.isModalSubmit()) {
-        if (interaction.customId.startsWith('commentModal_')) {
+        if (interaction.customId === 'pbSetLangModal') {
+            try {
+                const input = interaction.fields.getTextInputValue('pbLanguages') || '';
+                const languages = input
+                    .split(',')
+                    .map(s => s.trim().toLowerCase())
+                    .filter(Boolean);
+
+                if (languages.length === 0) {
+                    await interaction.reply({ content: '⚠️ Please provide at least one language.', flags: MessageFlags.Ephemeral });
+                    return;
+                }
+
+                await databaseService.togglePersonalTranslation(interaction.user.id, true, languages);
+                await interaction.reply({ content: `✅ Personal Buddy languages set to: ${languages.join(', ')}`, flags: MessageFlags.Ephemeral });
+            } catch (e) {
+                try { await interaction.reply({ content: '❌ Failed to save languages. Please try again.', flags: MessageFlags.Ephemeral }); } catch {}
+            }
+        } else if (interaction.customId.startsWith('commentModal_')) {
             const messageId = interaction.customId.split('_')[1];
             const comment = interaction.fields.getTextInputValue('commentInput');
             
