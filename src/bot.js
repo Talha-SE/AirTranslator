@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, Partials } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, Partials, ChannelSelectMenuBuilder, ChannelType } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus } = require('@discordjs/voice');
 const TTSSettings = require('./models/TTSSettings');
 const databaseService = require('./services/databaseService');
@@ -9,6 +9,7 @@ const voteCheckService = require('./services/voteCheckService');
 const { translateTextToMultipleLanguages } = require('./services/mistralService');
 const { AutoPoster } = require('topgg-autoposter');
 require('dotenv').config();
+const { AUTO_DETECT_LANGUAGE } = require('./utils/constants');
 
 // Lightweight structured logger with levels, timestamps, and ANSI colors
 const LOGGER_LEVELS = ['debug', 'info', 'success', 'warn', 'error'];
@@ -81,11 +82,15 @@ const client = new Client({
 // Make client globally available for admin panel
 global.discordClient = client;
 
+// Ephemeral state for guided autosetup per user per guild
+global.autoSetupState = new Map(); // key: `${guildId}:${userId}` -> { channelIds: string[] }
+
 // Set up commands collection
 client.commands = new Collection();
 
 // Load commands
 const quickSetupCommand = require('./commands/quickSetup');
+const autoSetupCommand = require('./commands/autoSetup');
 const addChannelCommand = require('./commands/addChannel');
 const removeChannelCommand = require('./commands/removeChannel');
 const listSetupsCommand = require('./commands/listSetups');
@@ -106,6 +111,7 @@ const pbDisableCommand = require('./commands/pbDisable');
 const pbSetLanguagesCommand = require('./commands/pbSetLanguages');
 
 client.commands.set('quicksetup', quickSetupCommand);
+client.commands.set('autosetup', autoSetupCommand);
 client.commands.set('addchannel', addChannelCommand);
 client.commands.set('removechannel', removeChannelCommand);
 client.commands.set('listsetups', listSetupsCommand);
@@ -265,6 +271,41 @@ client.on('guildCreate', async (guild) => {
             );
             
         await channel.send({ embeds: [welcomeEmbed] });
+        
+        // Send a concise AutoSetup message with short steps
+        const guidedEmbed = new EmbedBuilder()
+            .setColor(0x2ECC71)
+            .setTitle('🧭 AutoSetup')
+            .setDescription('Below is AutoSetup — just follow these quick steps:')
+            .addFields(
+                { name: '1) Select channels', value: 'Pick 1–5 channels in the selector below.' },
+                { name: '2) Continue', value: 'Press "Continue" to proceed.' },
+                { name: '3) Add languages', value: 'Enter languages (e.g., Spanish, French), then submit.' }
+            )
+            .setFooter({ text: 'You can cancel anytime. Try /help for more.' })
+            .setTimestamp();
+
+        await channel.send({ embeds: [guidedEmbed] });
+
+        // Also post the interactive Auto Setup UI so admins can start without typing a command
+        const channelSelect = new ChannelSelectMenuBuilder()
+            .setCustomId('autosetup_channels')
+            .setPlaceholder('Select 1-5 channels for translation')
+            .setMinValues(1)
+            .setMaxValues(5)
+            .setChannelTypes([ChannelType.GuildText, ChannelType.GuildVoice]);
+
+        const controlsRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('autosetup_continue').setLabel('Continue ▶').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('autosetup_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+        );
+
+        const selectRow = new ActionRowBuilder().addComponents(channelSelect);
+
+        await channel.send({
+            content: 'Below is AutoSetup — just follow the steps.',
+            components: [selectRow, controlsRow]
+        });
     } catch (error) {
         logger.warn('Failed to send welcome message', error);
     }
@@ -323,11 +364,52 @@ client.on(Events.InteractionCreate, async interaction => {
                 logger.error('Error handling context menu error', err);
             }
         }
+    } else if (interaction.isChannelSelectMenu()) {
+        try {
+            if (interaction.customId === 'autosetup_channels') {
+                const key = `${interaction.guildId}:${interaction.user.id}`;
+                const channelIds = interaction.values || [];
+                global.autoSetupState.set(key, { channelIds });
+                await interaction.reply({ content: `✅ Saved ${channelIds.length} channel(s). Click Continue to proceed.`, flags: MessageFlags.Ephemeral });
+                return;
+            }
+        } catch (_) { /* ignore */ }
     } else if (interaction.isButton()) {
         try {
             const customId = interaction.customId || '';
             // Debug log to trace unknown button issues
             logger.debug('[Button] Received button interaction', { customId, inGuild: interaction.inGuild(), userId: interaction.user?.id });
+
+            // Guided Auto Setup flow buttons
+            if (customId === 'autosetup_continue') {
+                const key = `${interaction.guildId}:${interaction.user.id}`;
+                const state = global.autoSetupState.get(key);
+                if (!state?.channelIds?.length) {
+                    await interaction.reply({ content: '⚠️ Please select at least one channel using the selector above before continuing.', flags: MessageFlags.Ephemeral });
+                    return;
+                }
+
+                const modal = new ModalBuilder()
+                    .setCustomId('autosetup_langs')
+                    .setTitle('Select Target Languages');
+                const input = new TextInputBuilder()
+                    .setCustomId('autosetup_langs_input')
+                    .setLabel('Enter languages (comma separated)')
+                    .setPlaceholder('e.g., Spanish, French, German')
+                    .setRequired(true)
+                    .setStyle(TextInputStyle.Paragraph);
+                const row = new ActionRowBuilder().addComponents(input);
+                modal.addComponents(row);
+                await interaction.showModal(modal);
+                return;
+            }
+
+            if (customId === 'autosetup_cancel') {
+                const key = `${interaction.guildId}:${interaction.user.id}`;
+                global.autoSetupState.delete(key);
+                await interaction.reply({ content: '❎ Auto setup canceled. You can run it anytime with `/autosetup`.', flags: MessageFlags.Ephemeral });
+                return;
+            }
 
             // Handle Top.gg vote click -> schedule 50-credit grant after 25 seconds and provide link
             if (customId.startsWith('vote_on_topgg')) {
@@ -621,6 +703,74 @@ client.on(Events.InteractionCreate, async interaction => {
                 await interaction.reply({ content: `✅ Personal Buddy languages set to: ${languages.join(', ')}`, flags: MessageFlags.Ephemeral });
             } catch (e) {
                 try { await interaction.reply({ content: '❌ Failed to save languages. Please try again.', flags: MessageFlags.Ephemeral }); } catch {}
+            }
+        } else if (interaction.customId === 'autosetup_langs') {
+            try {
+                const key = `${interaction.guildId}:${interaction.user.id}`;
+                const state = global.autoSetupState.get(key) || {};
+                const channelIds = state.channelIds || [];
+                if (!channelIds.length) {
+                    await interaction.reply({ content: '⚠️ No channels selected. Please run `/autosetup` again.', flags: MessageFlags.Ephemeral });
+                    return;
+                }
+
+                const raw = interaction.fields.getTextInputValue('autosetup_langs_input') || '';
+                const languages = raw.split(',').map(s => s.trim()).filter(Boolean);
+                if (languages.length === 0) {
+                    await interaction.reply({ content: '⚠️ Please provide at least one language.', flags: MessageFlags.Ephemeral });
+                    return;
+                }
+
+                // Build setup arrays: for each channel, AUTO_DETECT + each language
+                const setupChannels = [];
+                const setupLanguages = [];
+                for (const chId of channelIds) {
+                    setupChannels.push(chId);
+                    setupLanguages.push(AUTO_DETECT_LANGUAGE);
+                    for (const lang of languages) {
+                        setupChannels.push(chId);
+                        setupLanguages.push(lang);
+                    }
+                }
+
+                const serverId = interaction.guildId;
+                const serverName = interaction.guild?.name || 'Unknown';
+                const setupName = `AutoSetup-${Date.now().toString().slice(-5)}`;
+
+                await databaseService.createServerSetup(
+                    serverId,
+                    serverName,
+                    setupName,
+                    setupChannels,
+                    setupLanguages
+                );
+
+                // Confirmation embed similar to quick setup
+                const channelList = channelIds.map((id, i) => {
+                    const emoji = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣'][i] || '🔹';
+                    return `${emoji} <#${id}>`;
+                }).join('\n');
+
+                const languageList = languages.map((lang, i) => {
+                    const emoji = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣'][i] || '🔹';
+                    return `${emoji} **${lang}**`;
+                }).join('\n');
+
+                const embed = new EmbedBuilder()
+                    .setColor(0x3498db)
+                    .setTitle('🚀 Auto Setup Complete!')
+                    .setDescription(`Setup **"${setupName}"** is now active with in-channel translation to multiple languages.`)
+                    .addFields(
+                        { name: '📡 Active Channels', value: channelList || 'No channels', inline: true },
+                        { name: '🌍 Languages', value: languageList || 'No languages', inline: true },
+                        { name: '💡 Tips', value: `Use \`/listsetups\` to view and \`/deletesetup name:${setupName}\` to remove.` }
+                    )
+                    .setTimestamp();
+
+                global.autoSetupState.delete(key);
+                await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+            } catch (e) {
+                try { await interaction.reply({ content: '❌ Failed to complete auto setup. Please try again.', flags: MessageFlags.Ephemeral }); } catch {}
             }
         } else if (interaction.customId.startsWith('commentModal_')) {
             const messageId = interaction.customId.split('_')[1];
