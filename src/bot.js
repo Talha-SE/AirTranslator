@@ -109,6 +109,7 @@ const translateToMyDMsCommand = require('./commands/translateToMyDMs');
 const pbEnableCommand = require('./commands/pbEnable');
 const pbDisableCommand = require('./commands/pbDisable');
 const pbSetLanguagesCommand = require('./commands/pbSetLanguages');
+const speechToTextCommand = require('./commands/speechToText');
 
 client.commands.set('quicksetup', quickSetupCommand);
 client.commands.set('autosetup', autoSetupCommand);
@@ -132,6 +133,7 @@ client.commands.set(translateToMyDMsCommand.data.name, translateToMyDMsCommand);
 client.commands.set(pbEnableCommand.data.name, pbEnableCommand);
 client.commands.set(pbDisableCommand.data.name, pbDisableCommand);
 client.commands.set(pbSetLanguagesCommand.data.name, pbSetLanguagesCommand);
+client.commands.set('speechtotext', speechToTextCommand);
 
 // Load events
 const ready = require('./events/ready');
@@ -212,6 +214,20 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
+// Also reactively check for STT auto-resume when voice states change
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    try {
+        const guild = newState?.guild || oldState?.guild;
+        if (!guild) return;
+        // Attempt to resume STT if configured and members present
+        if (typeof speechToTextCommand?.resumeIfNeeded === 'function') {
+            await speechToTextCommand.resumeIfNeeded(client, guild);
+        }
+    } catch (e) {
+        logger.debug('[STT] resumeIfNeeded on voiceStateUpdate failed', { error: e?.message || e });
+    }
+});
+
 // Periodic check for voice channel presence
 setInterval(async () => {
     try {
@@ -254,6 +270,18 @@ setInterval(async () => {
         logger.error('[PeriodicCheck] Error', error);
     }
 }, 120000); // Check every 2 minutes
+
+// Periodic STT auto-resume (every 60 seconds)
+setInterval(async () => {
+    try {
+        if (!speechToTextCommand || typeof speechToTextCommand.resumeIfNeeded !== 'function') return;
+        for (const guild of client.guilds.cache.values()) {
+            await speechToTextCommand.resumeIfNeeded(client, guild);
+        }
+    } catch (e) {
+        logger.debug('[STT] periodic resumeIfNeeded error', { error: e?.message || e });
+    }
+}, 60000).unref();
 
 client.on('guildCreate', async (guild) => {
     logger.success(`Joined new server: ${guild.name}`);
