@@ -326,10 +326,10 @@ module.exports = {
           if (combined) {
             try {
               const user = await interaction.client.users.fetch(userId).catch(() => null);
-              const name = user ? `${user.username}` : `User ${userId}`;
+              const name = user ? (user.displayName || user.username) : `User`;
               const out = await interaction.client.channels.fetch(sess.outputChannelId).catch(() => null);
               if (out && out.isTextBased()) {
-                await out.send(`${combined}`);
+                await out.send(`${name}: ${combined}`);
               }
             } catch (e) {
               console.log('[STT] Failed to send combined transcript', { error: e?.message });

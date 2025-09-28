@@ -269,10 +269,25 @@ async function messageReactionAdd(client, reaction, user) {
 
         console.log(`📋 Processing: ${hasTextContent ? 'Text' : ''}${hasTextContent && imageAttachments.length > 0 ? ' + ' : ''}${imageAttachments.length > 0 ? `${imageAttachments.length} image(s)` : ''}`);
 
-        // Skip if message is from a bot
+        // For server-based flow: allow translating this bot's own messages when user explicitly reacts,
+        // but avoid loops by skipping known translation embeds we created.
         if (message.author.bot) {
-            console.log('⚠️ Skipping bot message');
-            return;
+            const isOurBot = message.author.id === client.user.id;
+            if (isOurBot) {
+                // If this message looks like our own translation embed, skip to prevent infinite loops
+                const looksLikeOurTranslation = Array.isArray(message.embeds) && message.embeds.some(e =>
+                    (e?.footer?.text && /Auto-deletes in 15 min/i.test(e.footer.text)) ||
+                    (e?.author?.name && typeof e.author.name === 'string' && e.fields?.some?.(f => f?.name && f?.value))
+                );
+                if (looksLikeOurTranslation) {
+                    console.log('⚠️ Skipping our own translation embed to avoid loops');
+                    return;
+                }
+                console.log('✅ Allowing translation of our bot message due to explicit user flag reaction');
+            } else {
+                console.log('⚠️ Skipping message from another bot');
+                return;
+            }
         }
 
         console.log(`📝 Processing message from ${message.author.username}${hasTextContent ? `: "${message.content.substring(0, 50)}${message.content.length > 50 ? '...' : ''}"` : ''}`);
