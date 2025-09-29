@@ -309,23 +309,28 @@ module.exports = {
           outputChannelId: outputChannel.id,
           model: chosenModel,
           silenceDurationMs,
-          streamsByUser: new Map(),
-          pendingRestarts: new Set(),
+          activeRecording: null,
+          pendingUserId: null,
+          idleTimer: null,
         };
         sessions.set(interaction.guildId, sess);
 
         // Handle speaking events to attach receivers
         const receiver = conn.receiver;
-        const ensureUserCapture = (userId, { allowQueue = true, source = 'start' } = {}) => {
+        const scheduleIdleShutdown = () => {
+          if (sess.idleTimer) return;
+          sess.idleTimer = setTimeout(() => {
+            try { sess.connection.destroy(); } catch {}
+            sessions.delete(interaction.guildId);
+            console.log('[STT] Auto-stopped due to inactivity');
+          }, 60000).unref();
+        };
+
+        const launchCapture = (userId, { source = 'start' } = {}) => {
           if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
-          if (sess.streamsByUser.has(userId)) {
-            if (allowQueue) {
-              if (!sess.pendingRestarts.has(userId)) {
-                console.log(`[STT] Queuing restart for user ${userId} (${source}) while capture active`);
-              }
-              sess.pendingRestarts.add(userId);
-            }
-            return;
+          if (sess.idleTimer) {
+            try { clearTimeout(sess.idleTimer); } catch {}
+            sess.idleTimer = null;
           }
 
           const capture = startUserCapture(receiver, userId, {
@@ -349,23 +354,76 @@ module.exports = {
               }
             },
             onCleanup: (meta) => {
-              sess.streamsByUser.delete(userId);
-              if (meta?.reason === 'manual-stop') return;
-              if (sess.pendingRestarts?.delete(userId)) {
-                setImmediate(() => ensureUserCapture(userId, { allowQueue: false, source: 'queued-restart' }));
+              const current = sess.activeRecording;
+              const restartCurrent = current?.userId === userId && current?.restartRequested;
+              const nextUser = sess.pendingUserId;
+              sess.activeRecording = null;
+              sess.pendingUserId = null;
+              if (restartCurrent) {
+                console.log(`[STT] Restarting capture for user ${userId} after previous segment (${meta?.reason || 'completed'})`);
+                setImmediate(() => requestCapture(userId, { source: 'self-restart' }));
+              } else if (nextUser) {
+                setImmediate(() => requestCapture(nextUser, { source: 'pending' }));
+              } else {
+                scheduleIdleShutdown();
               }
+              if (meta?.reason === 'manual-stop') return;
             },
           });
 
-          sess.streamsByUser.set(userId, capture);
+          sess.activeRecording = { userId, capture, startedAt: Date.now(), source, restartRequested: false };
+          console.log(`[STT] Focused recording on user ${userId} (${source})`);
         };
 
-        receiver.speaking.on('start', (userId) => ensureUserCapture(userId));
+        const requestCapture = (userId, { source = 'start' } = {}) => {
+          if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
+          if (sess.activeRecording) {
+            if (sess.activeRecording.userId === userId) {
+              if (!sess.activeRecording.restartRequested) {
+                console.log(`[STT] Same speaker requested new capture while active (${source})`);
+              }
+              sess.activeRecording.restartRequested = true;
+              return;
+            }
+            if (sess.pendingUserId && sess.pendingUserId !== userId) {
+              console.log(`[STT] Pending user ${sess.pendingUserId} replaced by ${userId} (${source})`);
+            }
+            if (sess.pendingUserId !== userId) {
+              console.log(`[STT] Queued recording for user ${userId} while ${sess.activeRecording.userId} is active (${source})`);
+            }
+            sess.pendingUserId = userId;
+            return;
+          }
+
+          launchCapture(userId, { source });
+        };
+
+        const handleSpeakingStart = (userId) => {
+          if (sess.pendingUserId === userId) {
+            sess.pendingUserId = null;
+          }
+          requestCapture(userId, { source: 'speaking-start' });
+        };
+
+        const handleSpeakingEnd = (userId) => {
+          if (sess.pendingUserId === userId) {
+            sess.pendingUserId = null;
+          }
+        };
+
+        receiver.speaking.removeListener('start', sess.handleSpeakingStart);
+        receiver.speaking.removeListener('end', sess.handleSpeakingEnd);
+        receiver.speaking.on('start', handleSpeakingStart);
+        receiver.speaking.on('end', handleSpeakingEnd);
+        sess.handleSpeakingStart = handleSpeakingStart;
+        sess.handleSpeakingEnd = handleSpeakingEnd;
       } else {
         // Update session config
         sess.outputChannelId = outputChannel.id;
         sess.model = chosenModel;
         sess.silenceDurationMs = silenceDurationMs;
+        if (typeof sess.activeRecording === 'undefined') sess.activeRecording = null;
+        if (typeof sess.pendingUserId === 'undefined') sess.pendingUserId = null;
       }
 
       await interaction.editReply({
@@ -411,25 +469,28 @@ module.exports = {
           outputChannelId: outputChannel.id,
           model: chosenModel,
           silenceDurationMs,
-          streamsByUser: new Map(),
-          pendingRestarts: new Set(),
+          activeRecording: null,
+          pendingUserId: null,
           idleTimer: null,
         };
         sessions.set(guild.id, sess);
 
         // Attach receiver handlers
         const receiver = conn.receiver;
-        const ensureUserCapture = (userId, { allowQueue = true, source = 'start' } = {}) => {
-          if (sess.idleTimer) { try { clearTimeout(sess.idleTimer); } catch {} sess.idleTimer = null; }
+        const scheduleIdleShutdown = () => {
+          if (sess.idleTimer) return;
+          sess.idleTimer = setTimeout(() => {
+            try { sess.connection.destroy(); } catch {}
+            sessions.delete(guild.id);
+            console.log('[STT] Auto-stopped due to inactivity');
+          }, 60000).unref();
+        };
+
+        const launchCapture = (userId, { source = 'resume-start' } = {}) => {
           if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
-          if (sess.streamsByUser.has(userId)) {
-            if (allowQueue) {
-              if (!sess.pendingRestarts.has(userId)) {
-                console.log(`[STT] Queuing restart for user ${userId} (${source}) while capture active`);
-              }
-              sess.pendingRestarts.add(userId);
-            }
-            return;
+          if (sess.idleTimer) {
+            try { clearTimeout(sess.idleTimer); } catch {}
+            sess.idleTimer = null;
           }
 
           const capture = startUserCapture(receiver, userId, {
@@ -451,26 +512,51 @@ module.exports = {
                 await out.send(`${name}: ${trimmed}`);
               } catch (e) { console.log('[STT] Transcription pipeline error', { error: e?.message }); }
             },
-            onCleanup: (meta) => {
-              sess.streamsByUser.delete(userId);
-              if (sess.streamsByUser.size === 0 && !sess.idleTimer) {
-                sess.idleTimer = setTimeout(() => {
-                  try { sess.connection.destroy(); } catch {}
-                  sessions.delete(guild.id);
-                  console.log('[STT] Auto-stopped due to inactivity');
-                }, 60000).unref();
-              }
-              if (meta?.reason === 'manual-stop') return;
-              if (sess.pendingRestarts?.delete(userId)) {
-                setImmediate(() => ensureUserCapture(userId, { allowQueue: false, source: 'queued-restart' }));
+            onCleanup: () => {
+              sess.activeRecording = null;
+              const nextUser = sess.pendingUserId;
+              sess.pendingUserId = null;
+              if (nextUser) {
+                setImmediate(() => requestCapture(nextUser, { source: 'pending' }));
+              } else {
+                scheduleIdleShutdown();
               }
             },
           });
 
-          sess.streamsByUser.set(userId, capture);
+          sess.activeRecording = { userId, capture, startedAt: Date.now(), source };
+          console.log(`[STT] (resume) Focused recording on user ${userId} (${source})`);
         };
 
-        receiver.speaking.on('start', (userId) => ensureUserCapture(userId));
+        const requestCapture = (userId, { source = 'resume-start' } = {}) => {
+          if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
+          if (sess.activeRecording) {
+            if (sess.activeRecording.userId === userId) return;
+            if (sess.pendingUserId && sess.pendingUserId !== userId) {
+              console.log(`[STT] (resume) Pending user ${sess.pendingUserId} replaced by ${userId} (${source})`);
+            }
+            if (sess.pendingUserId !== userId) {
+              console.log(`[STT] (resume) Queued recording for user ${userId} while ${sess.activeRecording.userId} is active (${source})`);
+            }
+            sess.pendingUserId = userId;
+            return;
+          }
+
+          launchCapture(userId, { source });
+        };
+
+        receiver.speaking.on('start', (userId) => requestCapture(userId, { source: 'speaking-start' }));
+        receiver.speaking.on('start', (userId) => {
+          if (sess.pendingUserId === userId) {
+            sess.pendingUserId = null;
+          }
+          requestCapture(userId, { source: 'speaking-start' });
+        });
+        receiver.speaking.on('end', (userId) => {
+          if (sess.pendingUserId === userId) {
+            sess.pendingUserId = null;
+          }
+        });
       }
     } catch (_) { /* ignore */ }
   }
