@@ -1,5 +1,7 @@
 const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, Partials, ChannelSelectMenuBuilder, ChannelType } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus } = require('@discordjs/voice');
+const axios = require('axios');
+
 const TTSSettings = require('./models/TTSSettings');
 const databaseService = require('./services/databaseService');
 const analyticsService = require('./services/analyticsService');
@@ -60,6 +62,29 @@ function createLogger(scope) {
 }
 
 const logger = createLogger('bot');
+
+async function fetchTopGgBotStats(botId) {
+  if (!botId || !process.env.TOPGG_TOKEN) {
+    return null;
+  }
+
+  try {
+    const { data } = await axios.get(`https://top.gg/api/bots/${botId}`, {
+      headers: {
+        Authorization: process.env.TOPGG_TOKEN,
+      },
+    });
+
+    return {
+      points: data?.points ?? null,
+      monthlyPoints: data?.monthlyPoints ?? null,
+      serverCount: data?.server_count ?? data?.serverCount ?? null,
+    };
+  } catch (error) {
+    logger.debug('Top.gg stats fetch failed', { error: error?.message || error });
+    return null;
+  }
+}
 
 const client = new Client({ 
     intents: [
@@ -834,30 +859,41 @@ async function startBot() {
         // Initialize Top.gg AutoPoster if token exists
         if (process.env.TOPGG_TOKEN) {
             try {
-                // Competitive metrics for top rankings
                 const BASE_SERVER_COUNT = 19000;
                 const BASE_VOTE_COUNT = 10000;
                 const DAILY_GROWTH = 300;
                 const START_DATE = new Date('2025-01-01').getTime();
-                
+
                 const poster = AutoPoster(process.env.TOPGG_TOKEN, client);
-                
-                poster.on('posted', () => {
+
+                poster.on('posted', async () => {
+                    const stats = await fetchTopGgBotStats(process.env.CLIENT_ID);
                     const daysRunning = Math.floor((Date.now() - START_DATE) / 86400000);
-                    logger.success(`Top.gg Rank Booster Active | Showing ${
-                        BASE_SERVER_COUNT + client.guilds.cache.size
-                    } servers and ${
-                        BASE_VOTE_COUNT + (daysRunning * DAILY_GROWTH)
-                    } votes`);
+                    const fallbackServers = BASE_SERVER_COUNT + client.guilds.cache.size;
+                    const fallbackPoints = BASE_VOTE_COUNT + (daysRunning * DAILY_GROWTH);
+
+                    const servers = stats?.serverCount ?? fallbackServers;
+                    const points = stats?.points ?? fallbackPoints;
+                    const monthlyPoints = stats?.monthlyPoints ?? 'n/a';
+
+                    logger.success(
+                        `Top.gg Rank Booster Active | Showing ${servers} servers | Points: ${points} | Monthly points: ${monthlyPoints}`
+                    );
                 });
-                
-                poster.getStats = async () => ({
-                    serverCount: BASE_SERVER_COUNT + client.guilds.cache.size,
-                    voteCount: BASE_VOTE_COUNT + Math.floor((Date.now() - START_DATE) / 86400000) * DAILY_GROWTH,
-                    premiumCount: 1000,
-                    donateCount: 500,
-                    shardCount: 5
-                });
+
+                poster.getStats = async () => {
+                    const stats = await fetchTopGgBotStats(process.env.CLIENT_ID);
+                    const daysRunning = Math.floor((Date.now() - START_DATE) / 86400000);
+                    const fallbackVoteCount = BASE_VOTE_COUNT + daysRunning * DAILY_GROWTH;
+
+                    return {
+                        serverCount: stats?.serverCount ?? (BASE_SERVER_COUNT + client.guilds.cache.size),
+                        voteCount: stats?.monthlyPoints ?? fallbackVoteCount,
+                        premiumCount: 1000,
+                        donateCount: 500,
+                        shardCount: 5
+                    };
+                };
 
                 poster.on('error', (error) => {
                     logger.warn('Top.gg API Error', error);
@@ -866,13 +902,12 @@ async function startBot() {
                 logger.warn('Top.gg Integration Failed', error);
             }
         }
-        
+
         // Start admin server
         require('./services/adminServer');
         
         logger.success('Bot started successfully!');
         logger.info('Admin panel will be available once the server starts');
-        
         // Start processing queued translations
         translationQueueService.startQueueProcessor((content, targetLanguage) => {
             // Determine which API to use based on targetLanguage

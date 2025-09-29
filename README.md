@@ -12,6 +12,30 @@ A powerful Discord bot that provides real-time translation between multiple chan
 - 💾 **Persistent Storage**: Server configurations saved in MongoDB Atlas
 - 🔒 **Secure**: Environment-based configuration for API keys
 
+## 🌐 Serverless Website
+
+An animated marketing and documentation site for Air Translator lives in `website/`. It is built with **Vite + React + Tailwind CSS** and is optimized for static or serverless deployments.
+
+- **Install dependencies**
+  ```bash
+  cd website
+  npm install
+  ```
+- **Run locally**
+  ```bash
+  npm run dev
+  ```
+- **Create production build**
+  ```bash
+  npm run build
+  ```
+- **Preview production bundle**
+  ```bash
+  npm run preview
+  ```
+
+Deploy the contents of `website/dist` to any static host or serverless platform (e.g., Vercel, Netlify, Render static site).
+
 ## 🚀 Commands
 
 - `/setup` - Create a new translation setup

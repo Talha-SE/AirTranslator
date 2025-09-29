@@ -310,7 +310,7 @@ module.exports = {
           model: chosenModel,
           silenceDurationMs,
           activeRecording: null,
-          pendingUserId: null,
+          queue: [],
           idleTimer: null,
         };
         sessions.set(interaction.guildId, sess);
@@ -354,16 +354,10 @@ module.exports = {
               }
             },
             onCleanup: (meta) => {
-              const current = sess.activeRecording;
-              const restartCurrent = current?.userId === userId && current?.restartRequested;
-              const nextUser = sess.pendingUserId;
               sess.activeRecording = null;
-              sess.pendingUserId = null;
-              if (restartCurrent) {
-                console.log(`[STT] Restarting capture for user ${userId} after previous segment (${meta?.reason || 'completed'})`);
-                setImmediate(() => requestCapture(userId, { source: 'self-restart' }));
-              } else if (nextUser) {
-                setImmediate(() => requestCapture(nextUser, { source: 'pending' }));
+              if (sess.queue.length > 0) {
+                const nextUser = sess.queue.shift();
+                setImmediate(() => requestCapture(nextUser, { source: 'queued' }));
               } else {
                 scheduleIdleShutdown();
               }
@@ -371,59 +365,32 @@ module.exports = {
             },
           });
 
-          sess.activeRecording = { userId, capture, startedAt: Date.now(), source, restartRequested: false };
+          sess.activeRecording = { userId, capture, startedAt: Date.now(), source };
           console.log(`[STT] Focused recording on user ${userId} (${source})`);
         };
 
         const requestCapture = (userId, { source = 'start' } = {}) => {
           if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
           if (sess.activeRecording) {
-            if (sess.activeRecording.userId === userId) {
-              if (!sess.activeRecording.restartRequested) {
-                console.log(`[STT] Same speaker requested new capture while active (${source})`);
-              }
-              sess.activeRecording.restartRequested = true;
-              return;
-            }
-            if (sess.pendingUserId && sess.pendingUserId !== userId) {
-              console.log(`[STT] Pending user ${sess.pendingUserId} replaced by ${userId} (${source})`);
-            }
-            if (sess.pendingUserId !== userId) {
+            if (sess.activeRecording.userId === userId) return; // already recording this speaker
+            if (!sess.queue.includes(userId)) {
               console.log(`[STT] Queued recording for user ${userId} while ${sess.activeRecording.userId} is active (${source})`);
+              sess.queue.push(userId);
             }
-            sess.pendingUserId = userId;
             return;
           }
 
           launchCapture(userId, { source });
         };
 
-        const handleSpeakingStart = (userId) => {
-          if (sess.pendingUserId === userId) {
-            sess.pendingUserId = null;
-          }
-          requestCapture(userId, { source: 'speaking-start' });
-        };
-
-        const handleSpeakingEnd = (userId) => {
-          if (sess.pendingUserId === userId) {
-            sess.pendingUserId = null;
-          }
-        };
-
-        receiver.speaking.removeListener('start', sess.handleSpeakingStart);
-        receiver.speaking.removeListener('end', sess.handleSpeakingEnd);
-        receiver.speaking.on('start', handleSpeakingStart);
-        receiver.speaking.on('end', handleSpeakingEnd);
-        sess.handleSpeakingStart = handleSpeakingStart;
-        sess.handleSpeakingEnd = handleSpeakingEnd;
+        receiver.speaking.on('start', (userId) => requestCapture(userId, { source: 'speaking-start' }));
       } else {
         // Update session config
         sess.outputChannelId = outputChannel.id;
         sess.model = chosenModel;
         sess.silenceDurationMs = silenceDurationMs;
+        if (!Array.isArray(sess.queue)) sess.queue = [];
         if (typeof sess.activeRecording === 'undefined') sess.activeRecording = null;
-        if (typeof sess.pendingUserId === 'undefined') sess.pendingUserId = null;
       }
 
       await interaction.editReply({
@@ -470,7 +437,7 @@ module.exports = {
           model: chosenModel,
           silenceDurationMs,
           activeRecording: null,
-          pendingUserId: null,
+          queue: [],
           idleTimer: null,
         };
         sessions.set(guild.id, sess);
@@ -514,10 +481,9 @@ module.exports = {
             },
             onCleanup: () => {
               sess.activeRecording = null;
-              const nextUser = sess.pendingUserId;
-              sess.pendingUserId = null;
-              if (nextUser) {
-                setImmediate(() => requestCapture(nextUser, { source: 'pending' }));
+              if (sess.queue.length > 0) {
+                const nextUser = sess.queue.shift();
+                setImmediate(() => requestCapture(nextUser, { source: 'queued' }));
               } else {
                 scheduleIdleShutdown();
               }
@@ -532,13 +498,10 @@ module.exports = {
           if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
           if (sess.activeRecording) {
             if (sess.activeRecording.userId === userId) return;
-            if (sess.pendingUserId && sess.pendingUserId !== userId) {
-              console.log(`[STT] (resume) Pending user ${sess.pendingUserId} replaced by ${userId} (${source})`);
-            }
-            if (sess.pendingUserId !== userId) {
+            if (!sess.queue.includes(userId)) {
               console.log(`[STT] (resume) Queued recording for user ${userId} while ${sess.activeRecording.userId} is active (${source})`);
+              sess.queue.push(userId);
             }
-            sess.pendingUserId = userId;
             return;
           }
 
@@ -546,15 +509,9 @@ module.exports = {
         };
 
         receiver.speaking.on('start', (userId) => requestCapture(userId, { source: 'speaking-start' }));
-        receiver.speaking.on('start', (userId) => {
-          if (sess.pendingUserId === userId) {
-            sess.pendingUserId = null;
-          }
-          requestCapture(userId, { source: 'speaking-start' });
-        });
         receiver.speaking.on('end', (userId) => {
-          if (sess.pendingUserId === userId) {
-            sess.pendingUserId = null;
+          if (sess.queue.includes(userId)) {
+            sess.queue = sess.queue.filter(id => id !== userId);
           }
         });
       }
