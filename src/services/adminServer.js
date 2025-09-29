@@ -4,7 +4,7 @@ const analyticsService = require('./analyticsService');
 const monetizationService = require('./monetizationService');
 const databaseService = require('./databaseService');
 const nodeCron = require('node-cron');
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder, ChannelType } = require('discord.js');
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'AirTranslator2024!';
@@ -588,6 +588,27 @@ function generateMessageInterface() {
                 <button type="button" class="btn primary" onclick="sendMessage()">📤 Send Message</button>
                 <button type="button" class="btn warn" onclick="scheduleMessage()">🕒 Schedule</button>
               </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:20px;">
+            <div class="card-head">
+              <div class="title">🧭 Auto Setup Outreach</div>
+              <span class="badge info">Existing Servers</span>
+            </div>
+            <div class="card-body">
+              <div class="field">
+                <label class="label" for="autoSetupServerSelect">Target Server</label>
+                <select id="autoSetupServerSelect">
+                  <option value="">Loading servers...</option>
+                </select>
+              </div>
+              <div class="controls">
+                <button type="button" class="btn primary" id="autoSetupSendBtn" onclick="sendAutoSetupMessage()">🚀 Send Auto Setup Packet</button>
+                <button type="button" class="btn warn" id="autoSetupSendAllBtn" onclick="sendAutoSetupMessage(true)">🌐 Send to All Servers</button>
+                <button type="button" class="btn ghost" onclick="loadAutoSetupServers()">🔄 Refresh List</button>
+              </div>
+              <div class="hint" id="autoSetupStatus" style="margin-top:10px;">Send the guided Auto Setup flow to selected or all servers.</div>
             </div>
           </div>
         </div>
@@ -2637,6 +2658,121 @@ async function generateDashboard(analytics, client) {
                 progressText.textContent = 'Error sending message: ' + error.message;
             });
         }
+
+        function loadAutoSetupServers() {
+            const select = document.getElementById('autoSetupServerSelect');
+            const status = document.getElementById('autoSetupStatus');
+            if (!select) return;
+
+            select.innerHTML = '<option value="">Loading servers...</option>';
+            if (status) {
+                status.textContent = 'Loading server list…';
+                status.style.color = '#6b7280';
+            }
+
+            fetch('/admin/servers')
+                .then(response => response.json())
+                .then(servers => {
+                    if (!Array.isArray(servers) || servers.length === 0) {
+                        select.innerHTML = '<option value="">No servers available</option>';
+                        if (status) {
+                            status.textContent = 'No servers available to target right now.';
+                            status.style.color = '#d97706';
+                        }
+                        return;
+                    }
+
+                    servers.sort((a, b) => a.name.localeCompare(b.name));
+                    const optionMarkup = servers.map(server => '<option value="' + server.id + '">' + server.name + ' (' + server.memberCount + ' members)</option>');
+                    select.innerHTML = ['<option value="">Select a server…</option>', ...optionMarkup].join('');
+
+                    if (status) {
+                        status.textContent = 'Pick a server and send the Auto Setup walkthrough.';
+                        status.style.color = '#6b7280';
+                    }
+                })
+                .catch(error => {
+                    select.innerHTML = '<option value="">Failed to load servers</option>';
+                    if (status) {
+                        status.textContent = 'Error loading servers: ' + error.message;
+                        status.style.color = '#dc2626';
+                    }
+                });
+        }
+
+        async function sendAutoSetupMessage(sendAll = false) {
+            const select = document.getElementById('autoSetupServerSelect');
+            const status = document.getElementById('autoSetupStatus');
+            const button = document.getElementById('autoSetupSendBtn');
+            const allButton = document.getElementById('autoSetupSendAllBtn');
+
+            if (!sendAll && (!select || !select.value)) {
+                alert('Please choose a server to send the Auto Setup message to.');
+                return;
+            }
+
+            if (sendAll && !confirm('Send the Auto Setup packet to ALL servers? This will post onboarding embeds in every guild where the bot has permission.')) {
+                return;
+            }
+
+            const serverId = select ? select.value : null;
+
+            if (button) {
+                button.disabled = true;
+                button.textContent = 'Sending…';
+            }
+            if (allButton) {
+                allButton.disabled = true;
+                allButton.textContent = 'Sending…';
+            }
+            if (status) {
+                status.textContent = sendAll ? 'Broadcasting Auto Setup packet to all servers…' : 'Sending Auto Setup packet…';
+                status.style.color = '#2563eb';
+            }
+
+            try {
+                const response = await fetch('/admin/send-auto-setup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(sendAll ? { sendAll: true } : { serverId })
+                });
+
+                const result = await response.json().catch(() => ({}));
+
+                if (response.ok && result.success) {
+                    if (status) {
+                        status.textContent = sendAll
+                            ? 'Delivered Auto Setup packet to ' + result.delivered + ' / ' + result.total + ' servers.'
+                            : 'Auto Setup message delivered successfully!';
+                        status.style.color = '#10b981';
+                    }
+                } else {
+                    const message = result.message || 'Unknown error';
+                    if (status) {
+                        status.textContent = 'Failed to send Auto Setup message: ' + message;
+                        status.style.color = '#dc2626';
+                    }
+                    alert('Failed to send Auto Setup message: ' + message);
+                }
+            } catch (error) {
+                if (status) {
+                    status.textContent = 'Error sending Auto Setup message: ' + error.message;
+                    status.style.color = '#dc2626';
+                }
+                alert('Error sending Auto Setup message: ' + error.message);
+            } finally {
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = '🚀 Send Auto Setup Packet';
+                }
+                if (allButton) {
+                    allButton.disabled = false;
+                    allButton.textContent = '🌐 Send to All Servers';
+                }
+            }
+        }
         
         function scheduleMessage() {
             const data = {
@@ -2700,6 +2836,8 @@ async function generateDashboard(analytics, client) {
                 document.getElementById('messageContent').addEventListener('input', updatePreview);
                 document.getElementById('messageTitle').addEventListener('input', updatePreview);
             }
+
+            loadAutoSetupServers();
         });
         // ==== Live Activity Chart ====
     let liveChart;
@@ -3449,6 +3587,120 @@ async function sendServerMessage(messageData) {
     };
 }
 
+async function sendAutoSetupPacket({ serverId = null, sendAll = false }) {
+    const client = global.discordClient;
+    if (!client) {
+        return { success: false, message: 'Bot not ready' };
+    }
+
+    const targetGuilds = sendAll
+        ? Array.from(client.guilds.cache.values())
+        : [client.guilds.cache.get(serverId) || await client.guilds.fetch(serverId).catch(() => null)].filter(Boolean);
+
+    if (!sendAll && targetGuilds.length === 0) {
+        return { success: false, message: 'Server not found or bot not present' };
+    }
+
+    const sendResults = [];
+    let delivered = 0;
+
+    for (const guild of targetGuilds) {
+        try {
+            const botMember = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null);
+            const hasSendPerms = (channel) => {
+                const permsFor = channel.permissionsFor(botMember || client.user);
+                return permsFor?.has(['ViewChannel', 'SendMessages', 'EmbedLinks']) ?? false;
+            };
+
+            let targetChannel = guild.channels.cache.find(ch => ch.type === 0 && ch.name.toLowerCase().includes('announce') && hasSendPerms(ch));
+
+            if (!targetChannel) {
+                targetChannel = guild.channels.cache.find(ch => ch.type === 0 && (ch.name.toLowerCase().includes('general') || ch.name.toLowerCase().includes('chat')) && hasSendPerms(ch));
+            }
+
+            if (!targetChannel && guild.systemChannel && hasSendPerms(guild.systemChannel)) {
+                targetChannel = guild.systemChannel;
+            }
+
+            if (!targetChannel) {
+                targetChannel = guild.channels.cache.find(ch => ch.type === 0 && hasSendPerms(ch));
+            }
+
+            if (!targetChannel) {
+                sendResults.push({
+                    success: false,
+                    serverId: guild.id,
+                    serverName: guild.name,
+                    error: 'No suitable channel found with send permissions'
+                });
+                continue;
+            }
+
+            const welcomeEmbed = new EmbedBuilder()
+                .setColor(0x5865F2)
+                .setTitle('🌍 Translation Bot Ready!')
+                .setDescription('Use `/quicksetup` to configure translation between channels.')
+                .addFields(
+                    { name: 'Example', value: '```/quicksetup source: #english target: #spanish language: Spanish```' }
+                );
+
+            const guidedEmbed = new EmbedBuilder()
+                .setColor(0x2ECC71)
+                .setTitle('🧭 AutoSetup')
+                .setDescription('Below is AutoSetup — just follow these quick steps:')
+                .addFields(
+                    { name: '1) Select channels', value: 'Pick 1–5 channels in the selector below.' },
+                    { name: '2) Continue', value: 'Press "Continue" to proceed.' },
+                    { name: '3) Add languages', value: 'Enter languages (e.g., Spanish, French), then submit.' }
+                )
+                .setFooter({ text: 'You can cancel anytime. Try /help for more.' })
+                .setTimestamp();
+
+            const channelSelect = new ChannelSelectMenuBuilder()
+                .setCustomId('autosetup_channels')
+                .setPlaceholder('Select 1-5 channels for translation')
+                .setMinValues(1)
+                .setMaxValues(5)
+                .setChannelTypes([ChannelType.GuildText, ChannelType.GuildVoice]);
+
+            const controlsRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('autosetup_continue').setLabel('Continue ▶').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('autosetup_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+            );
+
+            const selectRow = new ActionRowBuilder().addComponents(channelSelect);
+
+            await targetChannel.send({ embeds: [welcomeEmbed] });
+            await targetChannel.send({ embeds: [guidedEmbed] });
+            await targetChannel.send({ content: 'Below is AutoSetup — just follow the steps.', components: [selectRow, controlsRow] });
+
+            sendResults.push({
+                success: true,
+                serverId: guild.id,
+                serverName: guild.name,
+                channelId: targetChannel.id,
+                channelName: targetChannel.name
+            });
+            delivered++;
+        } catch (error) {
+            sendResults.push({
+                success: false,
+                serverId: guild.id,
+                serverName: guild.name,
+                error: error.message
+            });
+        }
+        await new Promise(resolve => setTimeout(resolve, 150));
+    }
+
+    return {
+        success: true,
+        delivered,
+        total: targetGuilds.length,
+        results: sendResults
+    };
+}
+
 /**
  * Schedules a message to be sent at specific times
  * @param {Object} messageConfig - Message configuration
@@ -3627,6 +3879,32 @@ const server = http.createServer(async (req, res) => {
                 res.end(JSON.stringify({ success: true, jobId }));
             } catch (error) {
                 console.error('Message scheduling error:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Server error' }));
+            }
+        } else if (pathname === '/admin/send-auto-setup' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+
+            try {
+                const postData = await parsePostData(req);
+                const payload = JSON.parse(postData.body || '{}');
+
+                const result = await sendAutoSetupPacket({
+                    serverId: payload.serverId,
+                    sendAll: Boolean(payload.sendAll)
+                });
+
+                const statusCode = result.success ? 200 : 400;
+                res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(result));
+            } catch (error) {
+                console.error('Auto setup send error:', error);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: false, message: 'Server error' }));
             }

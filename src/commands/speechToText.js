@@ -95,73 +95,90 @@ async function transcribeRouted(userId, wavBuffer, modelOverride = null) {
 }
 
 // Create an Opus->PCM stream for each user and chunk it by inactivity
-function startUserCapture(receiver, userId, onSegment, timedFlushMs = 5000) {
+function startUserCapture(receiver, userId, options = {}) {
+  const {
+    silenceDurationMs = 2000,
+    minSpeechMs = 200,
+    onChunkReady = async () => {},
+    onCleanup = () => {},
+  } = options;
+
+  const SILENCE_MS = Math.max(1500, Math.min(15000, silenceDurationMs));
+  const MIN_PCM_BYTES = Math.max(1, Math.floor(48000 * 2 * (minSpeechMs / 1000)));
+
   const opusStream = receiver.subscribe(userId, {
-    end: { behavior: EndBehaviorType.AfterSilence, duration: 1000 }, // 1.0s silence closes (more sensitive)
+    end: { behavior: EndBehaviorType.AfterSilence, duration: SILENCE_MS },
   });
 
-  // Decode to PCM S16LE 48kHz mono directly
   const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 1, rate: 48000 });
+  const pcmStream = opusStream.pipe(decoder);
 
   const chunks = [];
   let totalBytes = 0;
-  const MAX_BYTES = 48000 * 2 * 120; // ~120s cap to allow long utterances
-  const TIMED_FLUSH_MS = Math.max(1500, Math.min(15000, timedFlushMs)); // clamp 1.5s-15s
-  let lastFlushAt = Date.now();
-  let segmentStartAt = Date.now();
+  const startedAt = Date.now();
+  let finished = false;
+  let loggedStart = false;
 
-  const pcmStream = opusStream.pipe(decoder);
-  pcmStream.on('data', (data) => {
-    chunks.push(data);
-    totalBytes += data.length;
-    // Timed flush for real-time partials
-    const now = Date.now();
-    if (now - lastFlushAt >= TIMED_FLUSH_MS) {
-      pcmStream.emit('segment');
-      lastFlushAt = now;
+  const finalize = async (reason) => {
+    if (finished) return;
+    finished = true;
+
+    opusStream.removeAllListeners();
+    pcmStream.removeAllListeners();
+    try { opusStream.destroy(); } catch (_) {}
+
+    const durationMs = Date.now() - startedAt;
+    let wav = null;
+    let pcmBytes = totalBytes;
+    if (totalBytes >= MIN_PCM_BYTES) {
+      const pcm = Buffer.concat(chunks);
+      wav = pcmToWav(pcm);
+      pcmBytes = pcm.length;
+      console.log(`[STT] Finalizing capture for user ${userId} | pcmBytes=${pcm.length} | duration=${durationMs}ms | reason=${reason}`);
+    } else if (totalBytes > 0) {
+      console.log(`[STT] Discarded short capture for user ${userId} | pcmBytes=${totalBytes}`);
     }
-    if (totalBytes >= MAX_BYTES) {
-      pcmStream.emit('segment');
-    }
-  });
-  const flush = async () => {
-    if (chunks.length === 0) return;
-    const pcm = Buffer.concat(chunks);
+
+    const meta = { reason, durationMs, pcmBytes, hadSpeech: !!wav };
+
     chunks.length = 0;
     totalBytes = 0;
-    if (pcm.length < 48000 * 2 * 0.5) return; // ignore <0.5s
-    const wav = pcmToWav(pcm);
-    const started = Date.now();
-    console.log(`[STT] Flushing segment for user ${userId} | pcmBytes=${pcm.length} | durSinceSegStart=${started - segmentStartAt}ms`);
-    try {
-      await onSegment(wav);
-      const ended = Date.now();
-      console.log(`[STT] Segment transcribed for user ${userId} in ${ended - started}ms`);
-    } catch (e) {
-      // timing already logged before; errors logged upstream
-    } finally {
-      segmentStartAt = Date.now();
+
+    try { onCleanup(meta); } catch (_) {}
+
+    if (wav) {
+      try {
+        await onChunkReady(wav, meta);
+      } catch (err) {
+        console.log('[STT] Error delivering chunk', { userId, error: err?.message });
+      }
     }
   };
-  pcmStream.once('end', flush);
-  pcmStream.on('segment', flush);
 
-  // Safety: auto-close after 30s inactivity
-  const inactivity = setTimeout(() => {
-    try { opusStream.destroy(); } catch (_) {}
-  }, 30000).unref();
-
-  // Periodic timer to force flush regardless of new data (if stream stalls but not ended)
-  const periodic = setInterval(() => {
-    if (chunks.length > 0) {
-      pcmStream.emit('segment');
+  pcmStream.on('data', (data) => {
+    if (finished) return;
+    if (!loggedStart) {
+      loggedStart = true;
+      console.log(`[STT] Started capture for user ${userId} | silenceWindow=${SILENCE_MS}ms`);
     }
-  }, TIMED_FLUSH_MS).unref();
+    chunks.push(data);
+    totalBytes += data.length;
+  });
 
-  opusStream.on('end', () => { clearTimeout(inactivity); clearInterval(periodic); });
-  opusStream.on('error', () => { clearTimeout(inactivity); clearInterval(periodic); });
+  opusStream.once('end', () => finalize('silence'));
+  opusStream.once('close', () => finalize('closed'));
+  opusStream.once('error', (err) => {
+    console.log('[STT] Recorder stream error', { userId, error: err?.message });
+    finalize('recorder-error');
+  });
+  decoder.once('error', (err) => {
+    console.log('[STT] Decoder error', { userId, error: err?.message });
+    finalize('decoder-error');
+  });
 
-  return { stop: () => { try { opusStream.destroy(); } catch (_) {} } };
+  return {
+    stop: (reason = 'manual-stop') => finalize(reason),
+  };
 }
 
 async function ensureConnection(guild, voiceChannel) {
@@ -226,7 +243,7 @@ module.exports = {
       const outputChannel = interaction.options.getChannel('output_channel');
       const prev = await STTSettings.findOne({ guildId: interaction.guildId }).lean().catch(() => null);
       const chosenModel = prev?.model || DEFAULT_MISTRAL_MODEL;
-      const flushIntervalMs = prev?.flushIntervalMs ? Math.max(1500, Math.min(15000, prev.flushIntervalMs)) : 3000;
+      const silenceDurationMs = prev?.flushIntervalMs ? Math.max(1500, Math.min(15000, prev.flushIntervalMs)) : 2000;
 
       // Resolve voice channel to listen to
       let voiceChannel = null;
@@ -268,7 +285,7 @@ module.exports = {
             inputChannelId: voiceChannel.id,
             outputChannelId: outputChannel.id,
             model: chosenModel,
-            flushIntervalMs,
+            flushIntervalMs: silenceDurationMs,
             updatedBy: interaction.user.id,
           }
         },
@@ -291,57 +308,64 @@ module.exports = {
           connection: conn,
           outputChannelId: outputChannel.id,
           model: chosenModel,
-          flushIntervalMs,
+          silenceDurationMs,
           streamsByUser: new Map(),
-          transcriptsByUser: new Map(), // userId -> [segments]
+          pendingRestarts: new Set(),
         };
         sessions.set(interaction.guildId, sess);
 
         // Handle speaking events to attach receivers
         const receiver = conn.receiver;
-        receiver.speaking.on('start', (userId) => {
-          if (sess.streamsByUser.has(userId)) return;
-          const capture = startUserCapture(receiver, userId, async (wav) => {
-            try {
-              const transcript = await transcribeRouted(userId, wav, sess.model);
-              if (!transcript) return;
-              // Accumulate for final combined transcript
-              const arr = sess.transcriptsByUser.get(userId) || [];
-              arr.push(transcript);
-              sess.transcriptsByUser.set(userId, arr);
-              // Do not send partials; only send once on speaking end
-            } catch (e) {
-              console.log('[STT] Transcription pipeline error', { error: e?.message });
-            }
-          }, sess.flushIntervalMs);
-          sess.streamsByUser.set(userId, capture);
-        });
-        receiver.speaking.on('end', async (userId) => {
-          const c = sess.streamsByUser.get(userId);
-          if (c) { try { c.stop(); } catch (_) {} }
-          sess.streamsByUser.delete(userId);
-          // Post a combined transcript for completeness
-          const combined = (sess.transcriptsByUser.get(userId) || []).join('\n').trim();
-          sess.transcriptsByUser.delete(userId);
-          if (combined) {
-            try {
-              const user = await interaction.client.users.fetch(userId).catch(() => null);
-              const name = user ? (user.displayName || user.username) : `User`;
-              const out = await interaction.client.channels.fetch(sess.outputChannelId).catch(() => null);
-              if (out && out.isTextBased()) {
-                await out.send(`${name}: ${combined}`);
+        const ensureUserCapture = (userId, { allowQueue = true, source = 'start' } = {}) => {
+          if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
+          if (sess.streamsByUser.has(userId)) {
+            if (allowQueue) {
+              if (!sess.pendingRestarts.has(userId)) {
+                console.log(`[STT] Queuing restart for user ${userId} (${source}) while capture active`);
               }
-            } catch (e) {
-              console.log('[STT] Failed to send combined transcript', { error: e?.message });
+              sess.pendingRestarts.add(userId);
             }
+            return;
           }
-        });
+
+          const capture = startUserCapture(receiver, userId, {
+            silenceDurationMs: sess.silenceDurationMs,
+            minSpeechMs: 200,
+            onChunkReady: async (wav) => {
+              try {
+                const transcript = await transcribeRouted(userId, wav, sess.model);
+                const trimmed = transcript?.trim();
+                if (!trimmed) return;
+
+                const user = await interaction.client.users.fetch(userId).catch(() => null);
+                const name = user ? (user.globalName || user.username) : 'User';
+                const chanFromCache = interaction.client.channels.cache.get(sess.outputChannelId);
+                const out = chanFromCache || await interaction.client.channels.fetch(sess.outputChannelId).catch(() => null);
+                if (out && out.isTextBased()) {
+                  await out.send(`${name}: ${trimmed}`);
+                }
+              } catch (e) {
+                console.log('[STT] Transcription pipeline error', { error: e?.message });
+              }
+            },
+            onCleanup: (meta) => {
+              sess.streamsByUser.delete(userId);
+              if (meta?.reason === 'manual-stop') return;
+              if (sess.pendingRestarts?.delete(userId)) {
+                setImmediate(() => ensureUserCapture(userId, { allowQueue: false, source: 'queued-restart' }));
+              }
+            },
+          });
+
+          sess.streamsByUser.set(userId, capture);
+        };
+
+        receiver.speaking.on('start', (userId) => ensureUserCapture(userId));
       } else {
         // Update session config
         sess.outputChannelId = outputChannel.id;
         sess.model = chosenModel;
-        sess.flushIntervalMs = flushIntervalMs;
-        if (!sess.transcriptsByUser) sess.transcriptsByUser = new Map();
+        sess.silenceDurationMs = silenceDurationMs;
       }
 
       await interaction.editReply({
@@ -378,7 +402,7 @@ module.exports = {
         sess = null;
       }
       const chosenModel = settings.model || DEFAULT_MISTRAL_MODEL;
-      const flushIntervalMs = settings.flushIntervalMs ? Math.max(1500, Math.min(15000, settings.flushIntervalMs)) : 5000;
+      const silenceDurationMs = settings.flushIntervalMs ? Math.max(1500, Math.min(15000, settings.flushIntervalMs)) : 2000;
 
       if (!sess) {
         const conn = await ensureConnection(guild, voiceChannel);
@@ -386,49 +410,67 @@ module.exports = {
           connection: conn,
           outputChannelId: outputChannel.id,
           model: chosenModel,
-          flushIntervalMs,
+          silenceDurationMs,
           streamsByUser: new Map(),
-          transcriptsByUser: new Map(),
+          pendingRestarts: new Set(),
           idleTimer: null,
         };
         sessions.set(guild.id, sess);
 
         // Attach receiver handlers
         const receiver = conn.receiver;
-        receiver.speaking.on('start', (userId) => {
+        const ensureUserCapture = (userId, { allowQueue = true, source = 'start' } = {}) => {
           if (sess.idleTimer) { try { clearTimeout(sess.idleTimer); } catch {} sess.idleTimer = null; }
-          if (sess.streamsByUser.has(userId)) return;
-          const capture = startUserCapture(receiver, userId, async (wav) => {
-            try {
-              const transcript = await transcribeRouted(userId, wav, sess.model);
-              if (!transcript) return;
-              const arr = sess.transcriptsByUser.get(userId) || [];
-              arr.push(transcript);
-              sess.transcriptsByUser.set(userId, arr);
-            } catch (e) { console.log('[STT] Transcription pipeline error', { error: e?.message }); }
-          }, sess.flushIntervalMs);
+          if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
+          if (sess.streamsByUser.has(userId)) {
+            if (allowQueue) {
+              if (!sess.pendingRestarts.has(userId)) {
+                console.log(`[STT] Queuing restart for user ${userId} (${source}) while capture active`);
+              }
+              sess.pendingRestarts.add(userId);
+            }
+            return;
+          }
+
+          const capture = startUserCapture(receiver, userId, {
+            silenceDurationMs: sess.silenceDurationMs,
+            minSpeechMs: 200,
+            onChunkReady: async (wav) => {
+              try {
+                const transcript = await transcribeRouted(userId, wav, sess.model);
+                const trimmed = transcript?.trim();
+                if (!trimmed) return;
+                const chanFromCache = client.channels.cache.get(sess.outputChannelId);
+                const out = chanFromCache || await client.channels.fetch(sess.outputChannelId).catch(() => null);
+                if (!out || !out.isTextBased()) return;
+
+                const member = await guild.members.fetch(userId).catch(() => null);
+                const displayName = member ? member.displayName : null;
+                const user = member?.user || await client.users.fetch(userId).catch(() => null);
+                const name = displayName || user?.globalName || user?.username || 'User';
+                await out.send(`${name}: ${trimmed}`);
+              } catch (e) { console.log('[STT] Transcription pipeline error', { error: e?.message }); }
+            },
+            onCleanup: (meta) => {
+              sess.streamsByUser.delete(userId);
+              if (sess.streamsByUser.size === 0 && !sess.idleTimer) {
+                sess.idleTimer = setTimeout(() => {
+                  try { sess.connection.destroy(); } catch {}
+                  sessions.delete(guild.id);
+                  console.log('[STT] Auto-stopped due to inactivity');
+                }, 60000).unref();
+              }
+              if (meta?.reason === 'manual-stop') return;
+              if (sess.pendingRestarts?.delete(userId)) {
+                setImmediate(() => ensureUserCapture(userId, { allowQueue: false, source: 'queued-restart' }));
+              }
+            },
+          });
+
           sess.streamsByUser.set(userId, capture);
-        });
-        receiver.speaking.on('end', async (userId) => {
-          const c = sess.streamsByUser.get(userId);
-          if (c) { try { c.stop(); } catch {} }
-          sess.streamsByUser.delete(userId);
-          const combined = (sess.transcriptsByUser.get(userId) || []).join('\n').trim();
-          sess.transcriptsByUser.delete(userId);
-          if (combined) {
-            try {
-              const out = await client.channels.fetch(sess.outputChannelId).catch(() => null);
-              if (out && out.isTextBased()) await out.send(`${combined}`);
-            } catch (e) { console.log('[STT] Failed to send combined transcript', { error: e?.message }); }
-          }
-          if (sess.streamsByUser.size === 0 && !sess.idleTimer) {
-            sess.idleTimer = setTimeout(() => {
-              try { sess.connection.destroy(); } catch {}
-              sessions.delete(guild.id);
-              console.log('[STT] Auto-stopped due to inactivity');
-            }, 60000).unref();
-          }
-        });
+        };
+
+        receiver.speaking.on('start', (userId) => ensureUserCapture(userId));
       }
     } catch (_) { /* ignore */ }
   }
