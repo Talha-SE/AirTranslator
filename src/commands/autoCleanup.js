@@ -11,10 +11,10 @@ module.exports = {
                 .setRequired(true))
         .addIntegerOption(option =>
             option.setName('delay')
-                .setDescription('Delay in seconds before deleting original message (0-300 seconds, 0=immediate)')
+                .setDescription('Delay in minutes before deleting original message (0-720 minutes, 0 = immediate)')
                 .setMinValue(0)
-                .setMaxValue(300)
-                .setRequired(false))
+                .setMaxValue(720)
+                .setRequired(true))
         .addChannelOption(option =>
             option.setName('channel')
                 .setDescription('Specific channel (leave empty for server-wide)')
@@ -28,7 +28,8 @@ module.exports = {
             const serverId = interaction.guild.id;
             const enabled = interaction.options.getBoolean('enabled');
             const delay = interaction.options.getInteger('delay');
-            const actualDelay = delay !== null ? delay : 0; // Default to 0 (immediate) if not specified
+            const actualDelayMinutes = delay !== null ? delay : 0;
+            const actualDelayMs = actualDelayMinutes * 60 * 1000;
             const targetChannel = interaction.options.getChannel('channel');
 
             // Get server configuration
@@ -40,7 +41,7 @@ module.exports = {
             // Initialize autoCleanup object if it doesn't exist
             if (!serverConfig.autoCleanup) {
                 serverConfig.autoCleanup = {
-                    serverWide: { enabled: false, delay: 30000 },
+                    serverWide: { enabled: false, delay: 0 },
                     channels: {}
                 };
             }
@@ -55,7 +56,7 @@ module.exports = {
                 if (enabled) {
                     serverConfig.autoCleanup.channels[targetChannel.id] = {
                         enabled: true,
-                        delay: actualDelay * 1000 // Convert to milliseconds
+                        delay: actualDelayMs
                     };
                 } else {
                     // Remove channel-specific config when disabled
@@ -68,7 +69,7 @@ module.exports = {
                 
                 serverConfig.autoCleanup.serverWide = {
                     enabled: enabled,
-                    delay: enabled ? actualDelay * 1000 : 0 // Convert to milliseconds or 0 if disabled
+                    delay: enabled ? actualDelayMs : 0
                 };
             }
 
@@ -82,7 +83,7 @@ module.exports = {
                 .setColor(enabled ? '#28a745' : '#6c757d');
 
             if (enabled) {
-                const delayText = actualDelay === 0 ? 'immediately' : `${actualDelay} seconds`;
+                const delayText = actualDelayMinutes === 0 ? 'immediately' : `${actualDelayMinutes} minute${actualDelayMinutes === 1 ? '' : 's'}`;
                 successEmbed.addFields(
                     {
                         name: '⚙️ Configuration',
@@ -91,40 +92,41 @@ module.exports = {
                     },
                     {
                         name: '💡 How it works',
-                        value: '• Original messages are deleted after translation\n• Translation messages remain visible\n• Only applies to automatic translations\n• Flag translations have their own 1min auto-delete',
+                        value: '• Original messages are deleted after translation\n• Translation messages remain visible\n• Only applies to automatic translations\n• Flag translations have their own 1 minute auto-delete',
                         inline: false
                     }
                 );
             }
 
             // Show current configuration summary
+            const formatDelay = (minutes) => minutes === 0 ? 'immediate' : `${minutes} minute${minutes === 1 ? '' : 's'}`;
             const activeConfigs = [];
-            
+
             if (serverConfig.autoCleanup.serverWide?.enabled) {
-                const serverDelay = Math.floor(serverConfig.autoCleanup.serverWide.delay / 1000);
-                activeConfigs.push(`🌐 **Server-wide:** ${serverDelay}s delay`);
+                const serverDelayMinutes = Math.round(serverConfig.autoCleanup.serverWide.delay / (60 * 1000));
+                activeConfigs.push(`🌐 **Server-wide:** ${formatDelay(serverDelayMinutes)}`);
             }
-            
+
             const channelConfigs = Object.entries(serverConfig.autoCleanup.channels || {})
                 .filter(([_, config]) => config.enabled)
                 .map(([channelId, config]) => {
-                    const channelDelay = Math.floor(config.delay / 1000);
-                    return `📝 **<#${channelId}>:** ${channelDelay}s delay`;
+                    const channelDelayMinutes = Math.round(config.delay / (60 * 1000));
+                    return `📝 **<#${channelId}>:** ${formatDelay(channelDelayMinutes)}`;
                 });
-            
+
             activeConfigs.push(...channelConfigs);
 
             if (activeConfigs.length > 0) {
                 successEmbed.addFields({
-                    name: '� Active Configurations',
-                    value: activeConfigs.join('\n') || 'None',
+                    name: '📋 Active Configurations',
+                    value: activeConfigs.join('\n'),
                     inline: false
                 });
             }
 
             successEmbed.addFields({
                 name: '🔧 Quick Examples',
-                value: '• `/autocleanup enabled:true` - Enable with immediate deletion (0 seconds)\n• `/autocleanup enabled:true delay:15` - Enable server-wide with 15s delay\n• `/autocleanup enabled:true channel:#english delay:10` - Enable for specific channel\n• `/autocleanup enabled:false` - Disable server-wide\n• `/autocleanup enabled:false channel:#english` - Disable for specific channel',
+                value: '• `/autocleanup enabled:true delay:0` - Enable with immediate deletion\n• `/autocleanup enabled:true delay:15` - Enable server-wide with 15 minute delay\n• `/autocleanup enabled:true channel:#english delay:10` - Enable for specific channel\n• `/autocleanup enabled:false delay:5` - Disable server-wide (delay ignored)\n• `/autocleanup enabled:false channel:#english delay:5` - Disable for specific channel',
                 inline: false
             });
 

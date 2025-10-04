@@ -171,29 +171,26 @@ async function scheduleAutoCleanupForBotMessages(messages, serverId, channelId) 
         }
         
         let cleanupDelay = null;
-        
-        // If no config present, default to 5 hours for bot messages
-        const DEFAULT_DELAY_MS = 5 * 60 * 60 * 1000;
 
-        // Resolve configured delay (only delete if enabled), otherwise default applies
+        // Resolve configured delay (only delete if explicitly enabled)
         if (serverConfig && serverConfig.autoCleanup) {
             // Channel-specific setting
             if (channelId && serverConfig.autoCleanup.channels && serverConfig.autoCleanup.channels[channelId]?.enabled) {
                 cleanupDelay = serverConfig.autoCleanup.channels[channelId].delay;
-                const delayText = cleanupDelay === 0 ? 'immediate' : `${cleanupDelay/1000}s`;
+                const delayText = cleanupDelay === 0 ? 'immediate' : `${Math.round(cleanupDelay / (60 * 1000))} minute(s)`;
                 console.log(`🗑️ Using channel-specific cleanup (${delayText}) for channel ${channelId}`);
             }
             // Server-wide setting
             else if (serverConfig.autoCleanup.serverWide?.enabled) {
                 cleanupDelay = serverConfig.autoCleanup.serverWide.delay;
-                const delayText = cleanupDelay === 0 ? 'immediate' : `${cleanupDelay/1000}s`;
+                const delayText = cleanupDelay === 0 ? 'immediate' : `${Math.round(cleanupDelay / (60 * 1000))} minute(s)`;
                 console.log(`🗑️ Using server-wide cleanup (${delayText}) for server ${serverId}`);
             }
         }
 
         if (cleanupDelay === null || cleanupDelay === undefined) {
-            cleanupDelay = DEFAULT_DELAY_MS;
-            console.log(`🗑️ Using default cleanup delay: ${cleanupDelay/1000}s (5 hours)`);
+            console.log('🗑️ Auto-cleanup disabled or not configured; bot messages will be kept.');
+            return;
         }
 
         const deleteOne = async (m) => {

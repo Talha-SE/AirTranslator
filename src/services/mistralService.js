@@ -414,7 +414,7 @@ const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'mistral-small-2501';
 //const TRANSLATION_MODEL = 'mistral-small-2503';
-//const TRANSLATION_MODEL = 'mistral-tiny-latest';
+//const TRANSLATION_MODEL = 'voxtral-mini-latest';
 //const TRANSLATION_MODEL = 'codestral-2501';
 const TRANSLATION_MODEL = 'mistral-small-latest';
 /**
