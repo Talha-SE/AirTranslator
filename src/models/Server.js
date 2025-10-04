@@ -62,6 +62,32 @@ const serverSchema = new mongoose.Schema({
         type: [String],
         default: []
     },
+    autoCleanup: {
+        serverWide: {
+            enabled: {
+                type: Boolean,
+                default: false
+            },
+            delay: {
+                type: Number,
+                default: 0
+            }
+        },
+        channels: {
+            type: Map,
+            of: new mongoose.Schema({
+                enabled: {
+                    type: Boolean,
+                    default: false
+                },
+                delay: {
+                    type: Number,
+                    default: 0
+                }
+            }, { _id: false }),
+            default: {}
+        }
+    },
     monetization: {
         freeTranslationLimit: {
             type: Number,

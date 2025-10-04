@@ -415,7 +415,7 @@ const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'mistral-small-2501';
 //const TRANSLATION_MODEL = 'mistral-small-2503';
 //const TRANSLATION_MODEL = 'voxtral-mini-latest';
-//const TRANSLATION_MODEL = 'codestral-2501';
+//const TRANSLATION_MODEL = 'devstral-small-latest';
 const TRANSLATION_MODEL = 'mistral-small-latest';
 /**
  * Detects the language of a given text

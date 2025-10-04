@@ -193,6 +193,12 @@ async function scheduleAutoCleanupForBotMessages(messages, serverId, channelId) 
             return;
         }
 
+        const MIN_DELAY_MS = 60 * 1000;
+        if (cleanupDelay < MIN_DELAY_MS) {
+            console.log('⚠️ Cleanup delay below 1 minute detected; normalizing to 1 minute.');
+            cleanupDelay = MIN_DELAY_MS;
+        }
+
         const deleteOne = async (m) => {
             try {
                 await m.delete().catch(() => {});
