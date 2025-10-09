@@ -4,6 +4,7 @@ const prism = require('prism-media');
 const axios = require('axios');
 // Google disabled by request; keep import removed
 const STTSettings = require('../models/STTSettings');
+const { FALLBACK_TRANSLATION_MODEL } = require('../utils/constants');
 
 // Env keys (documented in reply): MISTRAL_API_KEY, GOOGLE_API_KEY
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
@@ -57,18 +58,22 @@ function pcmToWav(buffer, sampleRate = 48000, numChannels = 1) {
 // Transcribers
 async function transcribeWithMistral(wavBuffer, modelOverride = null) {
   const url = 'https://api.mistral.ai/v1/audio/transcriptions';
-  const form = new (require('form-data'))();
   const model = modelOverride || DEFAULT_MISTRAL_MODEL;
-  form.append('model', model);
-  form.append('response_format', 'json');
-  form.append('file', wavBuffer, { filename: 'audio.wav', contentType: 'audio/wav' });
-  // Compatibility: also send under 'audio' key and include basic metadata
-  form.append('audio', wavBuffer, { filename: 'audio.wav', contentType: 'audio/wav' });
-  form.append('encoding', 'wav');
-  form.append('sample_rate', '48000');
-  form.append('channels', '1');
-  try {
-    const resp = await axios.post(url, form, {
+  let hasTriedFallback = false;
+  
+  // Function to create and send the transcription request
+  const attemptTranscription = async (currentModel) => {
+    const form = new (require('form-data'))();
+    form.append('model', currentModel);
+    form.append('response_format', 'json');
+    form.append('file', wavBuffer, { filename: 'audio.wav', contentType: 'audio/wav' });
+    // Compatibility: also send under 'audio' key and include basic metadata
+    form.append('audio', wavBuffer, { filename: 'audio.wav', contentType: 'audio/wav' });
+    form.append('encoding', 'wav');
+    form.append('sample_rate', '48000');
+    form.append('channels', '1');
+    
+    return await axios.post(url, form, {
       headers: {
         Authorization: `Bearer ${MISTRAL_API_KEY}`,
         ...form.getHeaders(),
@@ -77,11 +82,36 @@ async function transcribeWithMistral(wavBuffer, modelOverride = null) {
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
     });
+  };
+
+  try {
+    const resp = await attemptTranscription(model);
     // Expect { text: '...' }
     return resp.data.text || '';
   } catch (err) {
     const status = err.response?.status;
     const data = err.response?.data;
+    
+    // If this is not a rate limit error and we haven't tried fallback yet
+    if (status && status !== 429 && !hasTriedFallback && model !== FALLBACK_TRANSLATION_MODEL) {
+      console.log(`[STT] Mistral transcription failed with model ${model} (status ${status}). Trying fallback model (${FALLBACK_TRANSLATION_MODEL})`);
+      hasTriedFallback = true;
+      
+      try {
+        const fallbackResp = await attemptTranscription(FALLBACK_TRANSLATION_MODEL);
+        console.log(`[STT] Fallback transcription successful (${FALLBACK_TRANSLATION_MODEL})`);
+        return fallbackResp.data.text || '';
+      } catch (fallbackErr) {
+        console.log('[STT] Fallback transcription also failed', { 
+          status: fallbackErr.response?.status, 
+          data: fallbackErr.response?.data 
+        });
+        // Throw the original error, not the fallback error
+        console.log('[STT] Original Mistral transcription error', { status, data });
+        throw err;
+      }
+    }
+    
     console.log('[STT] Mistral transcription error', { status, data });
     throw err;
   }

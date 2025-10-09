@@ -370,12 +370,16 @@ const analyzeToneContext = (text) => {
 
 /**
  * Helper to POST to Mistral with automatic retries on 429 or network errors.
+ * Also implements model fallback - if the original model fails, try with mistral-medium-latest
  * @param {object} payload - JSON body for chat/completions
  * @param {number} maxRetries - maximum retry attempts
  * @param {string} [apiKey] - Optional custom API key
  */
 const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_API_KEY) => {
     let attempt = 0;
+    let originalModel = payload.model;
+    let hasTriedFallback = false;
+    
     while (true) {
         try {
             return await axiosMistral.post(mistralAPIUrl, payload, {
@@ -386,10 +390,23 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
             });
         } catch (err) {
             const status = err.response?.status;
-            // Retry only on 429 or network errors
+            
+            // If this is the first non-rate-limit error and we haven't tried the fallback model yet
+            if (status && status !== 429 && !hasTriedFallback && originalModel !== FALLBACK_TRANSLATION_MODEL) {
+                console.warn(`Mistral request failed with model ${originalModel} (status ${status}). Trying fallback model (${FALLBACK_TRANSLATION_MODEL})`);
+                payload.model = FALLBACK_TRANSLATION_MODEL;
+                hasTriedFallback = true;
+                attempt = 0; // Reset attempt counter for fallback model
+                continue;
+            }
+            
+            // Retry only on 429 or network errors (no status code)
             if (attempt >= maxRetries || (status && status !== 429)) {
+                // Restore original model before throwing error
+                payload.model = originalModel;
                 throw err;
             }
+            
             // Prefer server-provided Retry-After when present
             let retryAfterHeader = err.response?.headers?.['retry-after'];
             let retryAfterMs = 0;
@@ -402,14 +419,14 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
             const jitter = Math.random() * 500;
             const expBackoff = (2 ** attempt) * 1000 + jitter;
             const backoff = Math.min(120000, Math.max(retryAfterMs, expBackoff));
-            console.warn(`Mistral request failed (status ${status}). Retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})`);
+            console.warn(`Mistral request failed (${payload.model}) (status ${status}). Retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})`);
             await sleep(backoff);
             attempt++;
         }
     }
 };
 
-const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
+const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE, FALLBACK_TRANSLATION_MODEL } = require('../utils/constants');
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'mistral-small-2501';

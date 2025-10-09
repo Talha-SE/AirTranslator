@@ -6,6 +6,7 @@ const MIN_LANGUAGES_REQUIRED = 1;
 const AUTO_DETECT_LANGUAGE = 'auto';
 const TONE_UNDERSTANDING_ENABLED = 'tone_enabled';
 const MAX_TRANSLATION_LENGTH_RATIO = 5; // Maximum ratio of translation length to original length
+const FALLBACK_TRANSLATION_MODEL = 'mistral-medium-latest';
 
 module.exports = {
     MISTRAL_API_KEY,
@@ -15,5 +16,6 @@ module.exports = {
     MIN_LANGUAGES_REQUIRED,
     AUTO_DETECT_LANGUAGE,
     TONE_UNDERSTANDING_ENABLED,
-    MAX_TRANSLATION_LENGTH_RATIO
+    MAX_TRANSLATION_LENGTH_RATIO,
+    FALLBACK_TRANSLATION_MODEL
 };
