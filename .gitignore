@@ -47,6 +47,10 @@ temp/
 payment-site/
 website/
 
+# Local test scripts (do not commit)
+test_mimic3_tts.js
+simple_tts_server.py
+
 # Python virtual environment
 mimic3_env/
 venv/
