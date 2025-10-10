@@ -1,6 +1,6 @@
-const { SlashCommandBuilder, ChannelType, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, ChannelType, EmbedBuilder, PermissionFlagsBits, StringSelectMenuBuilder, ActionRowBuilder } = require('discord.js');
 const TTSSettings = require('../models/TTSSettings');
-const { validateLanguages, assignVoices } = require('../services/ttsLanguageHelper');
+const { validateLanguages, getVoiceOptions } = require('../services/ttsLanguageHelper');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -49,15 +49,12 @@ module.exports = {
       const normalized = check.languages; // lowercase unique
 
       const settings = await TTSSettings.findOne({ guildId });
-      const voices = settings?.voices || undefined;
-      const { voice1, voice2 } = assignVoices(normalized, voices);
 
       const payload = {
         enabled: true,
         textChannelId: textChannel.id,
         voiceChannelId: voiceChannel.id,
         languages: normalized,
-        voices: { primary: voice1, secondary: voice2 },
       };
 
       await TTSSettings.findOneAndUpdate(
@@ -65,6 +62,44 @@ module.exports = {
         { $set: payload },
         { upsert: true, new: true }
       );
+
+      // Build voice selection menus (male/female) for each provided language
+      const rows = [];
+      normalized.forEach((lang) => {
+        const options = getVoiceOptions(lang);
+        if (!options) return; // skip if no options for this language
+
+        const maleVoices = (options.male || []).slice(0, 25);
+        const femaleVoices = (options.female || []).slice(0, 25);
+
+        if (maleVoices.length) {
+          const maleSelect = new StringSelectMenuBuilder()
+            .setCustomId(`tts_voice_male_${lang}`)
+            .setPlaceholder(`Select a male voice for ${lang}`)
+            .addOptions(
+              maleVoices.map(v => ({
+                label: v.name.substring(0, 100),
+                value: v.voice,
+                description: `ID: ${v.voice}`.substring(0, 100)
+              }))
+            );
+          rows.push(new ActionRowBuilder().addComponents(maleSelect));
+        }
+
+        if (femaleVoices.length) {
+          const femaleSelect = new StringSelectMenuBuilder()
+            .setCustomId(`tts_voice_female_${lang}`)
+            .setPlaceholder(`Select a female voice for ${lang}`)
+            .addOptions(
+              femaleVoices.map(v => ({
+                label: v.name.substring(0, 100),
+                value: v.voice,
+                description: `ID: ${v.voice}`.substring(0, 100)
+              }))
+            );
+          rows.push(new ActionRowBuilder().addComponents(femaleSelect));
+        }
+      });
 
       const embed = new EmbedBuilder()
         .setColor('#00A67E')
@@ -75,10 +110,10 @@ module.exports = {
           { name: 'Voice Channel', value: `<#${voiceChannel.id}>`, inline: true },
           { name: 'Languages', value: normalized.map((l, i) => `${i === 0 ? 'Speaker 1' : 'Speaker 2'}: **${l}**`).join('\n') }
         )
-        .setFooter({ text: 'Use /ttssetup again to update settings or disable.' })
+        .setFooter({ text: rows.length ? 'Pick voices below to customize. Use /ttssetup again to update or disable.' : 'Use /ttssetup again to update settings or disable.' })
         .setTimestamp();
 
-      return interaction.reply({ embeds: [embed], flags: 0 });
+      return interaction.reply({ embeds: [embed], components: rows, flags: 0 });
     } catch (error) {
       console.error('ttssetup error:', error);
       return interaction.reply({ content: '❌ Failed to configure TTS. Please try again later.', flags: 64 });

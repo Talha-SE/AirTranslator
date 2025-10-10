@@ -10,7 +10,7 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('
 const Server = require('../models/Server');
 const TTSSettings = require('../models/TTSSettings');
 const { synthesizeMultispeaker } = require('../services/ttsService');
-const { validateLanguages, assignVoices } = require('../services/ttsLanguageHelper');
+const { validateLanguages } = require('../services/ttsLanguageHelper');
 const { playBufferInChannel } = require('../services/voicePlaybackServiceSimple');
 
 // Split text into Discord-safe chunks (<= 2000 chars),
@@ -664,14 +664,14 @@ async function translateAndReply(message, languages, options = {}) {
                         if (availablePairs.length > 0) {
                             // Build multi-speaker script
                             const [first, second] = availablePairs;
-                            const voices = assignVoices(availablePairs.map(([l]) => l), ttsSettings.voices);
+                            const primaryVoice = ttsSettings?.voices?.primary || null;
                             console.log('[TTS] Settings:', {
                                 guildId: message.guild.id,
                                 textChannelId: ttsSettings.textChannelId,
                                 voiceChannelId: ttsSettings.voiceChannelId,
                                 desiredLanguages: desired,
                                 availableLanguages: availablePairs.map(([l]) => l),
-                                voices,
+                                primaryVoice,
                             });
                             
                             // Debug: Log the actual translation pairs
@@ -687,9 +687,13 @@ async function translateAndReply(message, languages, options = {}) {
                             }
 
                             console.log('[TTS] Script to synthesize:', script);
+                            if (!primaryVoice) {
+                                console.warn('[TTS] No user-selected voice configured. Skipping synthesis.');
+                                return;
+                            }
                             console.log('[TTS] Synthesizing audio...');
                             const audioBuffer = await synthesizeMultispeaker(script, {
-                                voice1: voices.voice1,
+                                voice1: primaryVoice,
                             });
                             console.log('[TTS] Synthesis result bytes:', audioBuffer ? audioBuffer.length : 0);
                             if (audioBuffer && audioBuffer.length > 0) {
