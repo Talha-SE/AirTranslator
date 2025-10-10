@@ -7,45 +7,213 @@ const SUPPORTED_LANGUAGES = new Set([
   'indonesian', 'urdu', 'bengali', 'greek', 'czech', 'slovak', 'romanian', 'hungarian', 'ukrainian', 'hebrew', 'persian'
 ]);
 
-const DEFAULT_VOICE_BY_LANGUAGE = {
-  // Native language voices from Mimic3 voice catalog
-  english: { voice: process.env.MIMIC3_VOICE_EN || 'en_US/ljspeech_low' },
-  spanish: { voice: process.env.MIMIC3_VOICE_ES || 'es_ES/carlfm_low' },
-  french: { voice: process.env.MIMIC3_VOICE_FR || 'fr_FR/siwis_low' },
-  german: { voice: process.env.MIMIC3_VOICE_DE || 'de_DE/thorsten_low' },
-  italian: { voice: process.env.MIMIC3_VOICE_IT || 'it_IT/riccardo-fasol_low' },
-  portuguese: { voice: process.env.MIMIC3_VOICE_PT || 'es_ES/carlfm_low' }, // Use Spanish as closest
-  russian: { voice: process.env.MIMIC3_VOICE_RU || 'ru_RU/multi_low' },
-  dutch: { voice: process.env.MIMIC3_VOICE_NL || 'nl/bart-de-leeuw_low' },
-  polish: { voice: process.env.MIMIC3_VOICE_PL || 'pl_PL/m-ailabs_low' },
-  ukrainian: { voice: process.env.MIMIC3_VOICE_UK || 'uk_UK/m-ailabs_low' },
-  finnish: { voice: process.env.MIMIC3_VOICE_FI || 'fi_FI/harri-tapani-ylilammi_low' },
-  hungarian: { voice: process.env.MIMIC3_VOICE_HU || 'hu_HU/diana-majlinger_low' },
-  greek: { voice: process.env.MIMIC3_VOICE_EL || 'el_GR/rapunzelina_low' },
-  vietnamese: { voice: process.env.MIMIC3_VOICE_VI || 'vi_VN/vais1000_low' },
-  korean: { voice: process.env.MIMIC3_VOICE_KO || 'ko_KO/kss_low' },
-  japanese: { voice: process.env.MIMIC3_VOICE_JA || 'en_US/ljspeech_low' }, // Fallback to English
-  chinese: { voice: process.env.MIMIC3_VOICE_ZH || 'en_US/ljspeech_low' }, // Fallback to English
-  hindi: { voice: process.env.MIMIC3_VOICE_HI || 'en_US/ljspeech_low' }, // Fallback to English
-  arabic: { voice: process.env.MIMIC3_VOICE_AR || 'en_US/ljspeech_low' }, // Fallback to English
-  turkish: { voice: process.env.MIMIC3_VOICE_TR || 'en_US/ljspeech_low' }, // Fallback to English
-  swedish: { voice: process.env.MIMIC3_VOICE_SV || 'en_US/ljspeech_low' }, // Fallback to English
-  norwegian: { voice: process.env.MIMIC3_VOICE_NO || 'en_US/ljspeech_low' }, // Fallback to English
-  danish: { voice: process.env.MIMIC3_VOICE_DA || 'en_US/ljspeech_low' }, // Fallback to English
-  thai: { voice: process.env.MIMIC3_VOICE_TH || 'en_US/ljspeech_low' }, // Fallback to English
-  indonesian: { voice: process.env.MIMIC3_VOICE_ID || 'jv_ID/google-gmu_low' }, // Use Javanese as closest
-  urdu: { voice: process.env.MIMIC3_VOICE_UR || 'en_US/ljspeech_low' }, // Fallback to English
-  bengali: { voice: process.env.MIMIC3_VOICE_BN || 'bn/multi_low' },
-  czech: { voice: process.env.MIMIC3_VOICE_CS || 'en_US/ljspeech_low' }, // Fallback to English
-  slovak: { voice: process.env.MIMIC3_VOICE_SK || 'en_US/ljspeech_low' }, // Fallback to English
-  romanian: { voice: process.env.MIMIC3_VOICE_RO || 'en_US/ljspeech_low' }, // Fallback to English
-  hebrew: { voice: process.env.MIMIC3_VOICE_HE || 'en_US/ljspeech_low' }, // Fallback to English
-  persian: { voice: process.env.MIMIC3_VOICE_FA || 'fa/haaniye_low' },
+const VOICE_OPTIONS_BY_LANGUAGE = {
+  english: {
+    male: [
+      { name: 'David (US Male)', voice: 'en_US/cmu-arctic_low' },
+      { name: 'Mark (US Male)', voice: 'en_US/ljspeech_low' },
+      { name: 'Ryan (UK Male)', voice: 'en_UK/apope_low' }
+    ],
+    female: [
+      { name: 'Sarah (US Female)', voice: 'en_US/ljspeech_low' },
+      { name: 'Emma (UK Female)', voice: 'en_UK/southern_english_female_low' },
+      { name: 'Jenny (US Female)', voice: 'en_US/cmu-slt_low' }
+    ]
+  },
+  spanish: {
+    male: [
+      { name: 'Carlos (Spain Male)', voice: 'es_ES/carlfm_low' },
+      { name: 'Diego (Mexico Male)', voice: 'es_MX/claude_low' }
+    ],
+    female: [
+      { name: 'Sofia (Spain Female)', voice: 'es_ES/karen_savage_low' },
+      { name: 'Maria (Mexico Female)', voice: 'es_MX/ald_low' }
+    ]
+  },
+  french: {
+    male: [
+      { name: 'Pierre (France Male)', voice: 'fr_FR/tom_low' },
+      { name: 'Marc (France Male)', voice: 'fr_FR/upmc_low' }
+    ],
+    female: [
+      { name: 'Amelie (France Female)', voice: 'fr_FR/siwis_low' },
+      { name: 'Sophie (France Female)', voice: 'fr_FR/m-ailabs_low' }
+    ]
+  },
+  german: {
+    male: [
+      { name: 'Klaus (Germany Male)', voice: 'de_DE/thorsten_low' },
+      { name: 'Hans (Germany Male)', voice: 'de_DE/m-ailabs_low' }
+    ],
+    female: [
+      { name: 'Eva (Germany Female)', voice: 'de_DE/rebecca_braunert_plunkett_low' },
+      { name: 'Greta (Germany Female)', voice: 'de_DE/kerstin_low' }
+    ]
+  },
+  italian: {
+    male: [
+      { name: 'Marco (Italy Male)', voice: 'it_IT/riccardo-fasol_low' },
+      { name: 'Alessandro (Italy Male)', voice: 'it_IT/m-ailabs_low' }
+    ],
+    female: [
+      { name: 'Giulia (Italy Female)', voice: 'it_IT/paola-macci_low' },
+      { name: 'Francesca (Italy Female)', voice: 'it_IT/lisa_low' }
+    ]
+  },
+  portuguese: {
+    male: [
+      { name: 'João (Brazil Male)', voice: 'pt_BR/faber_low' },
+      { name: 'Carlos (Spain Male)', voice: 'es_ES/carlfm_low' } // Fallback to Spanish
+    ],
+    female: [
+      { name: 'Ana (Brazil Female)', voice: 'pt_BR/m-ailabs_low' },
+      { name: 'Sofia (Spain Female)', voice: 'es_ES/karen_savage_low' } // Fallback to Spanish
+    ]
+  },
+  russian: {
+    male: [
+      { name: 'Dmitri (Russia Male)', voice: 'ru_RU/multi_low' },
+      { name: 'Alexei (Russia Male)', voice: 'ru_RU/m-ailabs_low' }
+    ],
+    female: [
+      { name: 'Katya (Russia Female)', voice: 'ru_RU/hajdurova_low' },
+      { name: 'Svetlana (Russia Female)', voice: 'ru_RU/natasha_low' }
+    ]
+  },
+  dutch: {
+    male: [
+      { name: 'Bart (Netherlands Male)', voice: 'nl/bart-de-leeuw_low' },
+      { name: 'Jan (Netherlands Male)', voice: 'nl/flemishguy_low' }
+    ],
+    female: [
+      { name: 'Emma (Netherlands Female)', voice: 'nl/nathalie_low' },
+      { name: 'Sophie (Netherlands Female)', voice: 'nl/rdh_low' }
+    ]
+  },
+  polish: {
+    male: [
+      { name: 'Marek (Poland Male)', voice: 'pl_PL/m-ailabs_low' },
+      { name: 'Piotr (Poland Male)', voice: 'pl_PL/gosia_low' }
+    ],
+    female: [
+      { name: 'Anna (Poland Female)', voice: 'pl_PL/darkman_low' },
+      { name: 'Kasia (Poland Female)', voice: 'pl_PL/m-ailabs_low' }
+    ]
+  },
+  ukrainian: {
+    male: [
+      { name: 'Oleksandr (Ukraine Male)', voice: 'uk_UK/m-ailabs_low' },
+      { name: 'Dmytro (Ukraine Male)', voice: 'uk_UK/ukrainian_tts_low' }
+    ],
+    female: [
+      { name: 'Oksana (Ukraine Female)', voice: 'uk_UK/lada_low' },
+      { name: 'Natasha (Ukraine Female)', voice: 'uk_UK/m-ailabs_low' }
+    ]
+  },
+  finnish: {
+    male: [
+      { name: 'Harri (Finland Male)', voice: 'fi_FI/harri-tapani-ylilammi_low' },
+      { name: 'Mikko (Finland Male)', voice: 'fi_FI/m-ailabs_low' }
+    ],
+    female: [
+      { name: 'Aino (Finland Female)', voice: 'fi_FI/anna-low_low' },
+      { name: 'Elina (Finland Female)', voice: 'fi_FI/m-ailabs_low' }
+    ]
+  },
+  hungarian: {
+    male: [
+      { name: 'Zoltan (Hungary Male)', voice: 'hu_HU/m-ailabs_low' },
+      { name: 'Gabor (Hungary Male)', voice: 'hu_HU/bea_low' }
+    ],
+    female: [
+      { name: 'Diana (Hungary Female)', voice: 'hu_HU/diana-majlinger_low' },
+      { name: 'Eva (Hungary Female)', voice: 'hu_HU/m-ailabs_low' }
+    ]
+  },
+  greek: {
+    male: [
+      { name: 'Dimitris (Greece Male)', voice: 'el_GR/m-ailabs_low' },
+      { name: 'Nikos (Greece Male)', voice: 'el_GR/rapunzelina_low' }
+    ],
+    female: [
+      { name: 'Maria (Greece Female)', voice: 'el_GR/rapunzelina_low' },
+      { name: 'Sofia (Greece Female)', voice: 'el_GR/m-ailabs_low' }
+    ]
+  },
+  // Languages with English fallback but distinct options
+  japanese: {
+    male: [
+      { name: 'Hiroshi (English Male)', voice: 'en_US/cmu-arctic_low' },
+      { name: 'Takeshi (English Male)', voice: 'en_US/ljspeech_low' }
+    ],
+    female: [
+      { name: 'Yuki (English Female)', voice: 'en_US/ljspeech_low' },
+      { name: 'Sakura (English Female)', voice: 'en_US/cmu-slt_low' }
+    ]
+  },
+  chinese: {
+    male: [
+      { name: 'Wei (English Male)', voice: 'en_US/cmu-arctic_low' },
+      { name: 'Ming (English Male)', voice: 'en_US/ljspeech_low' }
+    ],
+    female: [
+      { name: 'Li (English Female)', voice: 'en_US/ljspeech_low' },
+      { name: 'Mei (English Female)', voice: 'en_US/cmu-slt_low' }
+    ]
+  },
+  korean: {
+    male: [
+      { name: 'Min-jun (Korean Male)', voice: 'ko_KO/kss_low' },
+      { name: 'Hyun-woo (English Male)', voice: 'en_US/ljspeech_low' }
+    ],
+    female: [
+      { name: 'So-young (Korean Female)', voice: 'ko_KO/kss_low' },
+      { name: 'Ji-hye (English Female)', voice: 'en_US/ljspeech_low' }
+    ]
+  },
+  vietnamese: {
+    male: [
+      { name: 'Minh (Vietnam Male)', voice: 'vi_VN/vais1000_low' },
+      { name: 'Duc (English Male)', voice: 'en_US/ljspeech_low' }
+    ],
+    female: [
+      { name: 'Linh (Vietnam Female)', voice: 'vi_VN/vais1000_low' },
+      { name: 'Mai (English Female)', voice: 'en_US/ljspeech_low' }
+    ]
+  }
 };
+
+// Default selections (first male/female option for each language)
+const DEFAULT_VOICE_BY_LANGUAGE = {};
+Object.keys(VOICE_OPTIONS_BY_LANGUAGE).forEach(lang => {
+  DEFAULT_VOICE_BY_LANGUAGE[lang] = {
+    voice: VOICE_OPTIONS_BY_LANGUAGE[lang].male[0].voice
+  };
+});
 
 function normalizeLanguages(langs) {
   if (!Array.isArray(langs)) return [];
   return [...new Set(langs.map(l => String(l).trim().toLowerCase()).filter(Boolean))];
+}
+
+function getVoiceOptions(language) {
+  const normalizedLang = language.toLowerCase().trim();
+  return VOICE_OPTIONS_BY_LANGUAGE[normalizedLang] || null;
+}
+
+function getAllLanguagesWithVoices() {
+  return Object.keys(VOICE_OPTIONS_BY_LANGUAGE).sort();
+}
+
+function findVoiceByName(language, voiceName) {
+  const options = getVoiceOptions(language);
+  if (!options) return null;
+  
+  const allVoices = [...options.male, ...options.female];
+  return allVoices.find(v => 
+    v.name.toLowerCase().includes(voiceName.toLowerCase()) || 
+    v.voice === voiceName
+  );
 }
 
 function validateLanguages(langs) {
@@ -108,9 +276,13 @@ module.exports = {
   SUPPORTED_LANGUAGES,
   DEFAULT_VOICE_BY_LANGUAGE,
   ALTERNATIVE_VOICES,
+  VOICE_OPTIONS_BY_LANGUAGE,
   normalizeLanguages,
   validateLanguages,
   assignVoices,
   getBestVoiceForLanguage,
   getAlternativeVoices,
+  getVoiceOptions,
+  getAllLanguagesWithVoices,
+  findVoiceByName,
 };

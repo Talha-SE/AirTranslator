@@ -738,6 +738,72 @@ client.on(Events.InteractionCreate, async interaction => {
                 });
             } catch {}
         }
+    } else if (interaction.isStringSelectMenu()) {
+        try {
+            const customId = interaction.customId || '';
+            
+            // Handle TTS voice selection
+            if (customId.startsWith('tts_voice_')) {
+                const TTSSettings = require('./models/TTSSettings');
+                
+                const parts = customId.split('_');
+                const gender = parts[2]; // male or female
+                const language = parts.slice(3).join('_'); // rejoin in case language has underscores
+                const selectedVoice = interaction.values[0];
+                
+                const guildId = interaction.guild.id;
+                
+                // Update the voice setting for this language
+                const ttsSettings = await TTSSettings.findOne({ guildId });
+                if (!ttsSettings || !ttsSettings.enabled) {
+                    await interaction.reply({
+                        content: '❌ TTS is not configured for this server.',
+                        ephemeral: true
+                    });
+                    return;
+                }
+                
+                // Determine if this is the primary or secondary language
+                const isPrimary = ttsSettings.languages[0] === language;
+                const updateField = isPrimary ? 'voices.primary' : 'voices.secondary';
+                
+                await TTSSettings.findOneAndUpdate(
+                    { guildId },
+                    { $set: { [updateField]: selectedVoice } },
+                    { upsert: true, new: true }
+                );
+                
+                // Find the voice name for confirmation
+                const { getVoiceOptions } = require('./services/ttsLanguageHelper');
+                const voiceOptions = getVoiceOptions(language);
+                const allVoices = [...(voiceOptions?.male || []), ...(voiceOptions?.female || [])];
+                const selectedVoiceInfo = allVoices.find(v => v.voice === selectedVoice);
+                
+                const embed = new EmbedBuilder()
+                    .setColor('#00FF00')
+                    .setTitle('✅ Voice Updated')
+                    .setDescription(`Voice for **${language}** has been updated to **${selectedVoiceInfo?.name || selectedVoice}**`)
+                    .addFields(
+                        { name: 'Language', value: language, inline: true },
+                        { name: 'Voice', value: selectedVoiceInfo?.name || selectedVoice, inline: true },
+                        { name: 'Gender', value: gender === 'male' ? '👨 Male' : '👩 Female', inline: true }
+                    )
+                    .setFooter({ text: 'This voice will be used for new TTS messages.' })
+                    .setTimestamp();
+                
+                await interaction.reply({ embeds: [embed], ephemeral: true });
+                
+                console.log(`[TTS Voice] ${interaction.user.tag} updated ${language} voice to ${selectedVoice} in ${interaction.guild.name}`);
+            }
+        } catch (error) {
+            console.error('String select menu error:', error);
+            try {
+                await interaction.reply({
+                    content: '❌ Failed to process voice selection. Please try again.',
+                    ephemeral: true
+                });
+            } catch {}
+        }
     } else if (interaction.isModalSubmit()) {
         if (interaction.customId === 'pbSetLangModal') {
             try {
