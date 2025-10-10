@@ -1,4 +1,4 @@
-const { createAudioPlayer, createAudioResource, joinVoiceChannel, NoSubscriberBehavior, VoiceConnectionStatus, entersState, StreamType, AudioPlayerStatus, demuxProbe } = require('@discordjs/voice');
+const { createAudioPlayer, createAudioResource, joinVoiceChannel, NoSubscriberBehavior, VoiceConnectionStatus, entersState, StreamType, AudioPlayerStatus } = require('@discordjs/voice');
 const { Readable } = require('stream');
 const prism = require('prism-media');
 const ffmpegStatic = require('ffmpeg-static');
@@ -103,10 +103,10 @@ async function createPcmResourceFrom(buffer) {
   // Try WAV passthrough first (no encoding/transcoding) if already 48kHz stereo 16-bit PCM
   const wav = parseWavPcm(buffer);
   if (wav && wav.audioFormat === 1 && wav.bitsPerSample === 16 && wav.sampleRate === 48000 && wav.numChannels === 2) {
-    // Encode to Ogg/Opus so Discord's player paces audio correctly.
+    // Native path: feed raw PCM s16le 48k stereo to Discord (no container). This ensures proper pacing by the library.
     const samples = wav.pcm.length / (2 * wav.numChannels);
     const dur = samples / wav.sampleRate;
-    console.log('[Voice] WAV 48kHz stereo detected. Encoding to Ogg/Opus for proper pacing. Bytes:', wav.pcm.length, '| duration ~', dur.toFixed(2), 's');
+    console.log('[Voice] WAV 48kHz stereo detected. Streaming RAW PCM to Discord. Bytes:', wav.pcm.length, '| duration ~', dur.toFixed(2), 's');
     const vol = parseFloat(process.env.TTS_VOLUME || '1.6');
     const ffmpegArgs = [
       '-analyzeduration', '0',
@@ -115,21 +115,23 @@ async function createPcmResourceFrom(buffer) {
       '-i', 'pipe:0',
       '-ar', '48000',
       '-ac', '2',
-      '-c:a', 'libopus',
-      '-b:a', '96k',
-      '-application', 'lowdelay',
-      '-frame_duration', '20',
       ...(isNaN(vol) ? [] : ['-filter:a', `volume=${Math.max(0.1, Math.min(vol, 5))}`]),
-      '-f', 'ogg',
+      '-f', 's16le',
       'pipe:1',
     ];
     const ffmpeg = new prism.FFmpeg({ args: ffmpegArgs, shell: false, ffmpegPath: ffmpegStatic || undefined });
     const input = bufferToStream(buffer);
-    const ogg = input.pipe(ffmpeg);
-    debugLog('ogg-opus-encode', { ffmpegArgs });
-    // Let discord.js/voice probe the stream to determine the correct input type
-    const probe = await demuxProbe(ogg);
-    return createAudioResource(probe.stream, { inputType: probe.type });
+    const pcm = input.pipe(ffmpeg);
+    // Byte-level logging to verify audio data flow
+    try {
+      let outBytes = 0;
+      pcm.on('data', (chunk) => { outBytes += chunk.length; });
+      pcm.once('end', () => {
+        debugLog('pcm-stream-ended', { bytes: outBytes });
+      });
+    } catch {}
+    debugLog('pcm-raw-stream', { ffmpegArgs });
+    return createAudioResource(pcm, { inputType: StreamType.Raw });
   }
 
   // Otherwise, fall back to ffmpeg to decode/resample to s16le 48kHz stereo
@@ -161,7 +163,7 @@ async function createPcmResourceFrom(buffer) {
     // rough guess for 24k mono
     estSeconds = inBytes > 0 ? (inBytes / (24000 * 1 * 2)) : 0;
   }
-  console.log('[Voice] Decoding and encoding to Ogg/Opus via ffmpeg. Input bytes:', inBytes, '| est duration ~', estSeconds.toFixed(2), 's');
+  console.log('[Voice] Decoding WAV to RAW PCM via ffmpeg. Input bytes:', inBytes, '| est duration ~', estSeconds.toFixed(2), 's');
   if (estSeconds && estSeconds < 0.6) console.warn('[Voice] Very short audio (<0.6s). It may be hard to notice.');
   const vol = parseFloat(process.env.TTS_VOLUME || '1.0');
   const ffmpegArgs = [
@@ -171,20 +173,23 @@ async function createPcmResourceFrom(buffer) {
     '-i', 'pipe:0',
     '-ar', '48000',
     '-ac', '2',
-    '-c:a', 'libopus',
-    '-b:a', '96k',
-    '-application', 'lowdelay',
-    '-frame_duration', '20',
     ...(isNaN(vol) ? [] : ['-filter:a', `volume=${Math.max(0.1, Math.min(vol, 5))}`]),
-    '-f', 'ogg',
+    '-f', 's16le',
     'pipe:1',
   ];
   const ffmpeg = new prism.FFmpeg({ args: ffmpegArgs, shell: false, ffmpegPath: ffmpegStatic || undefined });
   const input = bufferToStream(buffer);
-  const ogg = input.pipe(ffmpeg);
-  debugLog('ffmpeg-ogg-opus', { ffmpegArgs });
-  const probe = await demuxProbe(ogg);
-  return createAudioResource(probe.stream, { inputType: probe.type });
+  const pcm = input.pipe(ffmpeg);
+  // Byte-level logging to verify audio data flow
+  try {
+    let outBytes = 0;
+    pcm.on('data', (chunk) => { outBytes += chunk.length; });
+    pcm.once('end', () => {
+      debugLog('pcm-stream-ended', { bytes: outBytes });
+    });
+  } catch {}
+  debugLog('ffmpeg-raw-pcm', { ffmpegArgs });
+  return createAudioResource(pcm, { inputType: StreamType.Raw });
 }
 
 async function createAudioResourceFrom(buffer) {
@@ -195,16 +200,8 @@ async function createAudioResourceFrom(buffer) {
     return await createPcmResourceFrom(buffer);
   }
 
-  // Otherwise, try direct playback (useful for MP3/Opus)
-  try {
-    const stream = bufferToStream(buffer);
-    const probe = await demuxProbe(stream);
-    console.log('[Voice] Attempting direct playback (non-WAV) with probed type');
-    return createAudioResource(probe.stream, { inputType: probe.type });
-  } catch (err) {
-    console.log('[Voice] Direct playback failed; falling back to PCM conversion');
-    return await createPcmResourceFrom(buffer);
-  }
+  // Non-WAV is not supported in this path as requested (no fallbacks).
+  throw new Error('Audio buffer is not WAV/PCM. TTS must return WAV.');
 }
 
 async function playBufferInChannel(voiceChannel, buffer) {
