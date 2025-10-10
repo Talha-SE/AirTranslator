@@ -1,7 +1,7 @@
 const { createAudioPlayer, createAudioResource, joinVoiceChannel, NoSubscriberBehavior, VoiceConnectionStatus, entersState, StreamType, AudioPlayerStatus } = require('@discordjs/voice');
 const { Readable } = require('stream');
 const prism = require('prism-media');
-const ffmpegStatic = require('ffmpeg-static');
+const OpusScript = require('opusscript');
 const fs = require('fs');
 
 // Minimal WAV parser for PCM format

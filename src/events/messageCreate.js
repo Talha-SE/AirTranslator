@@ -11,7 +11,7 @@ const Server = require('../models/Server');
 const TTSSettings = require('../models/TTSSettings');
 const { synthesizeMultispeaker } = require('../services/ttsService');
 const { validateLanguages, assignVoices } = require('../services/ttsLanguageHelper');
-const { playBufferInChannel } = require('../services/voicePlaybackService');
+const { playBufferInChannel } = require('../services/voicePlaybackServiceSimple');
 
 // Split text into Discord-safe chunks (<= 2000 chars),
 // preferring to break on newlines or spaces near the limit
