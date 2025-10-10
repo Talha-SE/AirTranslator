@@ -102,6 +102,8 @@ function cleanTTSText(text) {
     // Clean up extra whitespace and punctuation
     .replace(/\s+/g, ' ')
     .replace(/^[,.\s]+|[,.\s]+$/g, '')
+     // Remove UI/helper phrases that shouldn't be spoken
+     .replace(/—\s*View full translation below\s*—/gi, '')
     .trim();
 }
 
