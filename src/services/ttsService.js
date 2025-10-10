@@ -76,8 +76,8 @@ function convertToWav(rawBase64, mimeType) {
 
 // Default voice for Mimic3; configurable via environment
 const DEFAULT_VOICES = {
-  // Prefer explicit env mappings; fall back to a common Mimic3 English voice
-  primary: process.env.MIMIC3_DEFAULT_VOICE || process.env.MIMIC3_VOICE_EN || 'en_US/amy-medium',
+  // Use high-quality LJSpeech as default, or environment override
+  primary: process.env.MIMIC3_DEFAULT_VOICE || 'en_US/ljspeech_low',
 };
 
 function getMimicBaseUrl() {
@@ -88,9 +88,17 @@ function getMimicBaseUrl() {
 
 function pickMimicVoice(voiceName1) {
   const v = (voiceName1 || '').trim();
-  // Mimic3 voices use format: lang_REGION/voice-tier (e.g., en_US/amy-medium)
+  
+  // If it's already a proper Mimic3 voice format (lang_REGION/voice-tier), use it
+  if (v && v.includes('/') && v.includes('_')) {
+    return v;
+  }
+  
   // If legacy names (Zephyr, Puck, etc.) are passed, use default voice
-  if (v && v.includes('/') && v.includes('_')) return v;
+  if (v && !v.includes('/')) {
+    console.log(`[TTS] Converting legacy voice "${v}" to default voice (${DEFAULT_VOICES.primary})`);
+    return DEFAULT_VOICES.primary;
+  }
   
   console.log(`[TTS] Using default voice (${DEFAULT_VOICES.primary}) for input: ${v || 'empty'}`);
   return DEFAULT_VOICES.primary;
