@@ -154,23 +154,42 @@ function createPcmResourceFrom(buffer) {
     args: [
       '-analyzeduration', '0',
       '-loglevel', '0',
+      '-f', 'wav',
       '-i', 'pipe:0',
       '-f', 's16le',
       '-ar', '48000',
       '-ac', '2',
+      '-acodec', 'pcm_s16le',
       'pipe:1',
     ],
     shell: false,
     ffmpegPath: ffmpegStatic || undefined,
   });
-  const input = bufferToStream(buffer);
-  const pcm = input.pipe(ffmpeg);
+  
   debugLog('ffmpeg-pipe', {
     ffmpegArgs: ffmpeg.args,
   });
-  const resource = createAudioResource(pcm, { inputType: StreamType.Raw, inlineVolume: true });
+
+  // Create a more reliable input stream
+  const inputStream = new Readable({
+    read() {}
+  });
+  
+  // Write buffer data to the stream
+  inputStream.push(buffer);
+  inputStream.push(null);
+  
+  // Pipe to FFmpeg
+  const outputStream = inputStream.pipe(ffmpeg);
+  
+  const resource = createAudioResource(outputStream, { 
+    inputType: StreamType.Raw, 
+    inlineVolume: true 
+  });
+  
   const vol = parseFloat(process.env.TTS_VOLUME || '1.6');
   if (!isNaN(vol) && resource.volume) resource.volume.setVolume(Math.max(0.1, Math.min(vol, 5)));
+  
   return resource;
 }
 
