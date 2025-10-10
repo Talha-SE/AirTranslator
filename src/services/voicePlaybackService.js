@@ -1,4 +1,4 @@
-const { createAudioPlayer, createAudioResource, joinVoiceChannel, NoSubscriberBehavior, VoiceConnectionStatus, entersState, StreamType, AudioPlayerStatus } = require('@discordjs/voice');
+const { createAudioPlayer, createAudioResource, joinVoiceChannel, NoSubscriberBehavior, VoiceConnectionStatus, entersState, StreamType, AudioPlayerStatus, demuxProbe } = require('@discordjs/voice');
 const { Readable } = require('stream');
 const prism = require('prism-media');
 const ffmpegStatic = require('ffmpeg-static');
@@ -78,6 +78,13 @@ async function ensureConnection(voiceChannel) {
     throw err;
   }
 
+  try {
+    // Extra logging for voice connection state transitions
+    connection.on('stateChange', (oldS, newS) => {
+      console.log('[Voice] Connection state:', oldS.status, '=>', newS.status);
+    });
+  } catch {}
+
   return connection;
 }
 
@@ -91,12 +98,11 @@ const debugLog = (stage, data) => {
   console.log('[Voice Debug]', JSON.stringify(logData, null, 2));
 };
 
-function createPcmResourceFrom(buffer) {
+async function createPcmResourceFrom(buffer) {
   const inBytes = buffer?.length || 0;
   // Try WAV passthrough first (no encoding/transcoding) if already 48kHz stereo 16-bit PCM
   const wav = parseWavPcm(buffer);
   if (wav && wav.audioFormat === 1 && wav.bitsPerSample === 16 && wav.sampleRate === 48000 && wav.numChannels === 2) {
-    // Even if the WAV is already 48k stereo PCM, don't stream raw PCM directly.
     // Encode to Ogg/Opus so Discord's player paces audio correctly.
     const samples = wav.pcm.length / (2 * wav.numChannels);
     const dur = samples / wav.sampleRate;
@@ -121,9 +127,9 @@ function createPcmResourceFrom(buffer) {
     const input = bufferToStream(buffer);
     const ogg = input.pipe(ffmpeg);
     debugLog('ogg-opus-encode', { ffmpegArgs });
-    // Use OggOpus stream type so the player can pace via container timestamps
-    const resource = createAudioResource(ogg, { inputType: StreamType.OggOpus });
-    return resource;
+    // Let discord.js/voice probe the stream to determine the correct input type
+    const probe = await demuxProbe(ogg);
+    return createAudioResource(probe.stream, { inputType: probe.type });
   }
 
   // Otherwise, fall back to ffmpeg to decode/resample to s16le 48kHz stereo
@@ -177,28 +183,27 @@ function createPcmResourceFrom(buffer) {
   const input = bufferToStream(buffer);
   const ogg = input.pipe(ffmpeg);
   debugLog('ffmpeg-ogg-opus', { ffmpegArgs });
-  const resource = createAudioResource(ogg, { inputType: StreamType.OggOpus });
-  return resource;
+  const probe = await demuxProbe(ogg);
+  return createAudioResource(probe.stream, { inputType: probe.type });
 }
 
-function createAudioResourceFrom(buffer) {
+async function createAudioResourceFrom(buffer) {
   // If buffer is WAV, route through PCM conversion (ffmpeg or passthrough) for reliability
   const wav = parseWavPcm(buffer);
   if (wav) {
     console.log('[Voice] Detected WAV container; using PCM pipeline');
-    return createPcmResourceFrom(buffer);
+    return await createPcmResourceFrom(buffer);
   }
 
   // Otherwise, try direct playback (useful for MP3/Opus)
   try {
-    const resource = createAudioResource(bufferToStream(buffer), {
-      inputType: StreamType.Arbitrary,
-    });
-    console.log('[Voice] Attempting direct playback (non-WAV)');
-    return resource;
+    const stream = bufferToStream(buffer);
+    const probe = await demuxProbe(stream);
+    console.log('[Voice] Attempting direct playback (non-WAV) with probed type');
+    return createAudioResource(probe.stream, { inputType: probe.type });
   } catch (err) {
     console.log('[Voice] Direct playback failed; falling back to PCM conversion');
-    return createPcmResourceFrom(buffer);
+    return await createPcmResourceFrom(buffer);
   }
 }
 
@@ -219,7 +224,7 @@ async function playBufferInChannel(voiceChannel, buffer) {
     behaviors: { noSubscriber: NoSubscriberBehavior.Play },
   });
 
-  const resource = createAudioResourceFrom(buffer);
+  const resource = await createAudioResourceFrom(buffer);
   debugLog('resource-created', {
     resourceType: resource?.constructor?.name,
     volume: resource.volume?.volume,
@@ -283,10 +288,25 @@ async function playBufferInChannel(voiceChannel, buffer) {
     player.once('error', clearSafety);
     player.once(AudioPlayerStatus.Idle, clearSafety);
 
+    const startPlayback = async () => {
+      try {
+        player.play(resource);
+        console.log('[Voice] player.play() invoked');
+        debugLog('player-play-invoked', {});
+        // Wait up to 10s for the player to enter Playing; this helps surface issues early
+        await entersState(player, AudioPlayerStatus.Playing, 10_000).catch(() => {});
+      } catch (err) {
+        console.error('[Voice] Error invoking player.play():', err);
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          reject(err);
+        }
+      }
+    };
+
     try {
-      player.play(resource);
-      console.log('[Voice] player.play() invoked');
-      debugLog('player-play-invoked', {});
+      void startPlayback();
     } catch (err) {
       console.error('[Voice] Error invoking player.play():', err);
       if (!resolved) {
