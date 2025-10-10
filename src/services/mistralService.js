@@ -429,11 +429,11 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
 const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE, FALLBACK_TRANSLATION_MODEL } = require('../utils/constants');
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
-//const TRANSLATION_MODEL = 'mistral-small-2501';
+const TRANSLATION_MODEL = 'mistral-small-2501';
 //const TRANSLATION_MODEL = 'mistral-small-2503';
 //const TRANSLATION_MODEL = 'voxtral-mini-latest';
 //const TRANSLATION_MODEL = 'devstral-small-latest';
-const TRANSLATION_MODEL = 'mistral-small-latest';
+//const TRANSLATION_MODEL = 'mistral-small-latest';
 /**
  * Detects the language of a given text
  * @param {string} text - The text to detect the language for

@@ -17,7 +17,7 @@ const DEFAULT_MISTRAL_MODEL = 'voxtral-mini-latest';
 // Provider IDs
 const PROVIDERS = ['mistral'];
 
-// In-memory sessions per guild: { connection, outputChannelId, streamsByUser }
+// In-memory sessions per guild: { connection, outputChannelId, model, silenceDurationMs, captures: Map<userId, CaptureState>, idleTimer }
 const sessions = new Map();
 
 // Simple stable hash for routing
@@ -339,13 +339,11 @@ module.exports = {
           outputChannelId: outputChannel.id,
           model: chosenModel,
           silenceDurationMs,
-          activeRecording: null,
-          queue: [],
+          captures: new Map(),
           idleTimer: null,
         };
         sessions.set(interaction.guildId, sess);
-
-        // Handle speaking events to attach receivers
+        // Handle speaking events for per-user concurrent segmentation
         const receiver = conn.receiver;
         const scheduleIdleShutdown = () => {
           if (sess.idleTimer) return;
@@ -356,22 +354,23 @@ module.exports = {
           }, 60000).unref();
         };
 
-        const launchCapture = (userId, { source = 'start' } = {}) => {
+        const beginUserCapture = async (userId, sourceTag = 'start') => {
           if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
-          if (sess.idleTimer) {
-            try { clearTimeout(sess.idleTimer); } catch {}
-            sess.idleTimer = null;
-          }
+          // Only one active capture per user
+          const state = sess.captures.get(userId);
+          if (!state || state.state !== 'pending') return; // canceled or already recording
+          // Clear the start timer to avoid double-start
+          if (state.startTimer) { try { clearTimeout(state.startTimer); } catch {} state.startTimer = null; }
 
-          const capture = startUserCapture(receiver, userId, {
-            silenceDurationMs: sess.silenceDurationMs,
+          if (sess.idleTimer) { try { clearTimeout(sess.idleTimer); } catch {} sess.idleTimer = null; }
+          const controller = startUserCapture(receiver, userId, {
+            silenceDurationMs: sess.silenceDurationMs, // 2s silence window
             minSpeechMs: 200,
             onChunkReady: async (wav) => {
               try {
                 const transcript = await transcribeRouted(userId, wav, sess.model);
                 const trimmed = transcript?.trim();
                 if (!trimmed) return;
-
                 const user = await interaction.client.users.fetch(userId).catch(() => null);
                 const name = user ? (user.globalName || user.username) : 'User';
                 const chanFromCache = interaction.client.channels.cache.get(sess.outputChannelId);
@@ -383,44 +382,49 @@ module.exports = {
                 console.log('[STT] Transcription pipeline error', { error: e?.message });
               }
             },
-            onCleanup: (meta) => {
-              sess.activeRecording = null;
-              if (sess.queue.length > 0) {
-                const nextUser = sess.queue.shift();
-                setImmediate(() => requestCapture(nextUser, { source: 'queued' }));
-              } else {
-                scheduleIdleShutdown();
+            onCleanup: () => {
+              // When this user's segment finalizes (after 2s break), free slot
+              const cur = sess.captures.get(userId);
+              if (cur && cur.state === 'recording') {
+                sess.captures.delete(userId);
               }
-              if (meta?.reason === 'manual-stop') return;
+              // If no active captures left, schedule idle shutdown
+              if (sess.captures.size === 0) scheduleIdleShutdown();
             },
           });
 
-          sess.activeRecording = { userId, capture, startedAt: Date.now(), source };
-          console.log(`[STT] Focused recording on user ${userId} (${source})`);
+          sess.captures.set(userId, { state: 'recording', controller, startedAt: Date.now(), startTimer: null });
+          console.log(`[STT] Started recording segment for user ${userId} (${sourceTag})`);
         };
 
-        const requestCapture = (userId, { source = 'start' } = {}) => {
-          if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
-          if (sess.activeRecording) {
-            if (sess.activeRecording.userId === userId) return; // already recording this speaker
-            if (!sess.queue.includes(userId)) {
-              console.log(`[STT] Queued recording for user ${userId} while ${sess.activeRecording.userId} is active (${source})`);
-              sess.queue.push(userId);
-            }
-            return;
+        const scheduleUserPending = (userId, sourceTag = 'start') => {
+          // If already pending or recording, do nothing
+          const existing = sess.captures.get(userId);
+          if (existing) return;
+          // Start after 1s sustained speaking
+          const t = setTimeout(() => beginUserCapture(userId, sourceTag), 1000).unref();
+          sess.captures.set(userId, { state: 'pending', startTimer: t });
+          console.log(`[STT] Pending start for user ${userId} (will start after 1s)`);
+        };
+
+        receiver.speaking.on('start', (userId) => scheduleUserPending(userId, 'speaking-start'));
+        receiver.speaking.on('end', (userId) => {
+          const state = sess.captures.get(userId);
+          if (!state) return;
+          if (state.state === 'pending') {
+            // User stopped before 1s; cancel pending
+            if (state.startTimer) { try { clearTimeout(state.startTimer); } catch {} }
+            sess.captures.delete(userId);
+            console.log(`[STT] Canceled pending start for user ${userId} (spoke < 1s)`);
           }
-
-          launchCapture(userId, { source });
-        };
-
-        receiver.speaking.on('start', (userId) => requestCapture(userId, { source: 'speaking-start' }));
+          // If recording, do nothing; the capture will close after 2s silence automatically
+        });
       } else {
         // Update session config
         sess.outputChannelId = outputChannel.id;
         sess.model = chosenModel;
         sess.silenceDurationMs = silenceDurationMs;
-        if (!Array.isArray(sess.queue)) sess.queue = [];
-        if (typeof sess.activeRecording === 'undefined') sess.activeRecording = null;
+        if (!sess.captures) sess.captures = new Map();
       }
 
       await interaction.editReply({
@@ -466,13 +470,11 @@ module.exports = {
           outputChannelId: outputChannel.id,
           model: chosenModel,
           silenceDurationMs,
-          activeRecording: null,
-          queue: [],
+          captures: new Map(),
           idleTimer: null,
         };
         sessions.set(guild.id, sess);
-
-        // Attach receiver handlers
+        // Attach receiver handlers with per-user concurrent segmentation
         const receiver = conn.receiver;
         const scheduleIdleShutdown = () => {
           if (sess.idleTimer) return;
@@ -483,14 +485,14 @@ module.exports = {
           }, 60000).unref();
         };
 
-        const launchCapture = (userId, { source = 'resume-start' } = {}) => {
+        const beginUserCapture = async (userId, sourceTag = 'resume-start') => {
           if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
-          if (sess.idleTimer) {
-            try { clearTimeout(sess.idleTimer); } catch {}
-            sess.idleTimer = null;
-          }
+          const state = sess.captures.get(userId);
+          if (!state || state.state !== 'pending') return;
+          if (state.startTimer) { try { clearTimeout(state.startTimer); } catch {} state.startTimer = null; }
+          if (sess.idleTimer) { try { clearTimeout(sess.idleTimer); } catch {} sess.idleTimer = null; }
 
-          const capture = startUserCapture(receiver, userId, {
+          const controller = startUserCapture(receiver, userId, {
             silenceDurationMs: sess.silenceDurationMs,
             minSpeechMs: 200,
             onChunkReady: async (wav) => {
@@ -510,38 +512,33 @@ module.exports = {
               } catch (e) { console.log('[STT] Transcription pipeline error', { error: e?.message }); }
             },
             onCleanup: () => {
-              sess.activeRecording = null;
-              if (sess.queue.length > 0) {
-                const nextUser = sess.queue.shift();
-                setImmediate(() => requestCapture(nextUser, { source: 'queued' }));
-              } else {
-                scheduleIdleShutdown();
+              const cur = sess.captures.get(userId);
+              if (cur && cur.state === 'recording') {
+                sess.captures.delete(userId);
               }
+              if (sess.captures.size === 0) scheduleIdleShutdown();
             },
           });
 
-          sess.activeRecording = { userId, capture, startedAt: Date.now(), source };
-          console.log(`[STT] (resume) Focused recording on user ${userId} (${source})`);
+          sess.captures.set(userId, { state: 'recording', controller, startedAt: Date.now(), startTimer: null });
+          console.log(`[STT] (resume) Started recording segment for user ${userId} (${sourceTag})`);
         };
 
-        const requestCapture = (userId, { source = 'resume-start' } = {}) => {
-          if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
-          if (sess.activeRecording) {
-            if (sess.activeRecording.userId === userId) return;
-            if (!sess.queue.includes(userId)) {
-              console.log(`[STT] (resume) Queued recording for user ${userId} while ${sess.activeRecording.userId} is active (${source})`);
-              sess.queue.push(userId);
-            }
-            return;
-          }
-
-          launchCapture(userId, { source });
+        const scheduleUserPending = (userId, sourceTag = 'resume-start') => {
+          if (sess.captures.get(userId)) return;
+          const t = setTimeout(() => beginUserCapture(userId, sourceTag), 1000).unref();
+          sess.captures.set(userId, { state: 'pending', startTimer: t });
+          console.log(`[STT] (resume) Pending start for user ${userId} (will start after 1s)`);
         };
 
-        receiver.speaking.on('start', (userId) => requestCapture(userId, { source: 'speaking-start' }));
+        receiver.speaking.on('start', (userId) => scheduleUserPending(userId, 'speaking-start'));
         receiver.speaking.on('end', (userId) => {
-          if (sess.queue.includes(userId)) {
-            sess.queue = sess.queue.filter(id => id !== userId);
+          const state = sess.captures.get(userId);
+          if (!state) return;
+          if (state.state === 'pending') {
+            if (state.startTimer) { try { clearTimeout(state.startTimer); } catch {} }
+            sess.captures.delete(userId);
+            console.log(`[STT] (resume) Canceled pending start for user ${userId} (spoke < 1s)`);
           }
         });
       }
