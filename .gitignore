@@ -47,6 +47,25 @@ temp/
 payment-site/
 website/
 
+# Python virtual environment
+mimic3_env/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Local development files
+start_mimic3.bat
+*.bat
+
+# Audio files (TTS generated)
+*.wav
+*.mp3
+*.ogg
+
 
 
 

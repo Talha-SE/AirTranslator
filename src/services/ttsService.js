@@ -88,19 +88,25 @@ function getMimicBaseUrl() {
 
 function pickMimicVoice(voiceName1) {
   const v = (voiceName1 || '').trim();
-  // Heuristic: Mimic3 voices typically look like lang/voice-tier (e.g., en_US/amy-medium)
-  // If legacy names like 'Zephyr' are passed, ignore and fallback to default
-  if (v && v.includes('/')) return v;
+  // Mimic3 voices use format: lang_REGION/voice-tier (e.g., en_US/amy-medium)
+  // If legacy names (Zephyr, Puck, etc.) are passed, use default voice
+  if (v && v.includes('/') && v.includes('_')) return v;
+  
+  console.log(`[TTS] Using default voice (${DEFAULT_VOICES.primary}) for input: ${v || 'empty'}`);
   return DEFAULT_VOICES.primary;
 }
 
 async function originalSynthesis(text, { voice1, voice2 } = {}) {
-  console.log('[TTS-DEBUG] Starting Mimic3 synthesis for text:', text?.length > 80 ? text.slice(0,80)+'...' : text);
+  console.log('[TTS] Starting Mimic3 synthesis for text:', text?.length > 80 ? text.slice(0,80)+'...' : text);
   if (!text || !text.trim()) throw new Error('No text provided for TTS');
 
   const baseUrl = getMimicBaseUrl();
   const voice = pickMimicVoice(voice1);
   const url = `${baseUrl}/api/tts`;
+  
+  console.log(`[TTS] Using Mimic3 server at: ${baseUrl}`);
+  console.log(`[TTS] Selected voice: ${voice}`);
+  
   try {
     const resp = await axios.post(
       url,
@@ -140,7 +146,11 @@ async function originalSynthesis(text, { voice1, voice2 } = {}) {
     console.log('[TTS] Mimic3 GET returned bytes:', buffer.length, 'mime:', contentType, '| first16B(hex)=', preview, '| sha1(first4KB)=', hash);
     return buffer.length > 0 ? buffer : null;
   } catch (err) {
+    const baseUrl = getMimicBaseUrl();
     console.error('[TTS] Mimic3 synthesis failed:', err?.message || err);
+    console.error(`[TTS] Make sure Mimic3 server is running at: ${baseUrl}`);
+    console.error('[TTS] To start Mimic3 server, run: mimic3-server --port 59125');
+    console.error('[TTS] Or install with: pip install mycroft-mimic3-tts[all]');
     return null;
   }
 }

@@ -16,11 +16,11 @@ const ttsSettingsSchema = new mongoose.Schema({
       message: 'A maximum of 2 languages are allowed for TTS.'
     }
   },
-  // Optional: custom voice names for two speakers
+  // Optional: custom voice names for two speakers (Mimic3 format: lang_REGION/voice-tier)
   voices: {
     type: {
-      primary: { type: String, default: 'Zephyr' },
-      secondary: { type: String, default: 'Puck' },
+      primary: { type: String, default: 'en_US/amy-medium' },
+      secondary: { type: String, default: 'en_US/ljspeech-medium' },
     },
     default: undefined,
   },

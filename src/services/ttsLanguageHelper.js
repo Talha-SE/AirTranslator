@@ -10,16 +10,15 @@ const SUPPORTED_LANGUAGES = new Set([
 const DEFAULT_VOICE_BY_LANGUAGE = {
   // Map to Mimic3 voices; use env overrides if provided
   english: { voice: process.env.MIMIC3_VOICE_EN || process.env.MIMIC3_DEFAULT_VOICE || 'en_US/amy-medium' },
-  korean: { voice: process.env.MIMIC3_VOICE_KO || 'ko_KR/kss' },
-  // Other languages can fall back; these entries are placeholders and will be ignored by Mimic3 picker
-  spanish: { voice: 'en_US/amy-medium' },
-  french: { voice: 'en_US/amy-medium' },
-  german: { voice: 'en_US/amy-medium' },
-  italian: { voice: 'en_US/amy-medium' },
-  portuguese: { voice: 'en_US/amy-medium' },
-  russian: { voice: 'en_US/amy-medium' },
-  japanese: { voice: 'en_US/amy-medium' },
-  chinese: { voice: 'en_US/amy-medium' },
+  korean: { voice: process.env.MIMIC3_VOICE_KO || 'en_US/amy-medium' }, // Fallback to English if Korean not available
+  spanish: { voice: process.env.MIMIC3_VOICE_ES || 'en_US/ljspeech-medium' },
+  french: { voice: process.env.MIMIC3_VOICE_FR || 'en_US/ljspeech-medium' },
+  german: { voice: process.env.MIMIC3_VOICE_DE || 'en_US/ljspeech-medium' },
+  italian: { voice: process.env.MIMIC3_VOICE_IT || 'en_US/ljspeech-medium' },
+  portuguese: { voice: process.env.MIMIC3_VOICE_PT || 'en_US/ljspeech-medium' },
+  russian: { voice: process.env.MIMIC3_VOICE_RU || 'en_US/ljspeech-medium' },
+  japanese: { voice: process.env.MIMIC3_VOICE_JA || 'en_US/ljspeech-medium' },
+  chinese: { voice: process.env.MIMIC3_VOICE_ZH || 'en_US/ljspeech-medium' },
 };
 
 function normalizeLanguages(langs) {
