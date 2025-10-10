@@ -1,6 +1,6 @@
 const { createAudioPlayer, createAudioResource, joinVoiceChannel, NoSubscriberBehavior, VoiceConnectionStatus, entersState, StreamType, AudioPlayerStatus } = require('@discordjs/voice');
 const { Readable } = require('stream');
-const OpusScript = require('opusscript');
+const prism = require('prism-media');
 
 // Simple WAV parser for PCM format
 function parseWavPcm(buffer) {
@@ -141,42 +141,26 @@ function createAudioResourceFromWav(buffer) {
   const volume = parseFloat(process.env.TTS_VOLUME || '1.6');
   pcmData = applyVolume(pcmData, volume);
 
-  console.log('[Voice] Encoding with OpusScript...');
+  console.log('[Voice] Encoding with prism-media Opus encoder...');
   
-  // Create Opus encoder
-  const encoder = new OpusScript(48000, 2);
-  const frameSize = 960; // 20ms frames at 48kHz
-  const frameSizeBytes = frameSize * 4; // stereo 16-bit
-  
-  // Encode all frames
-  const opusPackets = [];
-  for (let offset = 0; offset < pcmData.length; offset += frameSizeBytes) {
-    const frame = pcmData.subarray(offset, offset + frameSizeBytes);
-    if (frame.length === frameSizeBytes) {
-      const packet = encoder.encode(frame, frameSize);
-      if (packet && packet.length > 0) {
-        opusPackets.push(packet);
-      }
-    }
-  }
-  
-  console.log('[Voice] Encoded', opusPackets.length, 'Opus packets');
-  
-  if (opusPackets.length === 0) {
-    throw new Error('No Opus packets generated');
-  }
-
-  // Create stream that feeds Opus packets
-  let packetIndex = 0;
-  const opusStream = new Readable({
+  // Create PCM stream from buffer
+  const pcmStream = new Readable({
     read() {
-      if (packetIndex < opusPackets.length) {
-        this.push(opusPackets[packetIndex++]);
-      } else {
-        this.push(null); // End stream
-      }
+      this.push(pcmData);
+      this.push(null);
     }
   });
+
+  // Use prism-media Opus encoder
+  const encoder = new prism.opus.Encoder({ 
+    rate: 48000, 
+    channels: 2, 
+    frameSize: 960 
+  });
+
+  const opusStream = pcmStream.pipe(encoder);
+  
+  console.log('[Voice] Created Opus encoder stream');
 
   const resource = createAudioResource(opusStream, {
     inputType: StreamType.Opus,
