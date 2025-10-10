@@ -112,20 +112,31 @@ function getMimicBaseUrl() {
 }
 
 function pickMimicVoice(voiceName1) {
-  const v = (voiceName1 || '').trim();
-  
-  // If it's already a proper Mimic3 voice format (lang_REGION/voice-tier), use it
+  const raw = (voiceName1 || '').trim();
+  // Normalize common hyphen-tier forms to Mimic3 underscore-tier forms
+  // e.g., en_US/amy-medium -> en_US/amy_medium; en_US/ljspeech-high -> en_US/ljspeech_high
+  let v = raw;
+  if (v.includes('/')) {
+    const [lang, nameTier] = v.split('/', 2);
+    if (nameTier) {
+      const normalizedTier = nameTier.replace(/-(low|medium|high)$/i, '_$1');
+      v = `${lang}/${normalizedTier}`;
+    }
+  }
+
+  // If it's a plausible Mimic3 voice format (lang_REGION/voice_tier), use it as-is
   if (v && v.includes('/') && v.includes('_')) {
+    if (v !== raw) console.log(`[TTS] Normalized voice id: "${raw}" -> "${v}"`);
     return v;
   }
-  
-  // If legacy names (Zephyr, Puck, etc.) are passed, use default voice
+
+  // If legacy/simple name (no lang prefix), fall back to default configured
   if (v && !v.includes('/')) {
-    console.log(`[TTS] Converting legacy voice "${v}" to default voice (${DEFAULT_VOICES.primary})`);
+    console.log(`[TTS] Legacy voice "${v}" provided; falling back to default (${DEFAULT_VOICES.primary})`);
     return DEFAULT_VOICES.primary;
   }
-  
-  console.log(`[TTS] Using default voice (${DEFAULT_VOICES.primary}) for input: ${v || 'empty'}`);
+
+  console.log(`[TTS] No valid voice provided; using default (${DEFAULT_VOICES.primary}) for input: ${raw || 'empty'}`);
   return DEFAULT_VOICES.primary;
 }
 

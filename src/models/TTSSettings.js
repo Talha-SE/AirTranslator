@@ -19,8 +19,8 @@ const ttsSettingsSchema = new mongoose.Schema({
   // Optional: custom voice names for two speakers (Mimic3 format: lang_REGION/voice-tier)
   voices: {
     type: {
-      primary: { type: String, default: 'en_US/amy-medium' },
-      secondary: { type: String, default: 'en_US/ljspeech-medium' },
+      primary: { type: String, default: 'en_US/amy_medium' },
+      secondary: { type: String, default: 'en_US/ljspeech_medium' },
     },
     default: undefined,
   },
