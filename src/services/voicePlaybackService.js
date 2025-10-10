@@ -96,21 +96,33 @@ function createPcmResourceFrom(buffer) {
   // Try WAV passthrough first (no encoding/transcoding) if already 48kHz stereo 16-bit PCM
   const wav = parseWavPcm(buffer);
   if (wav && wav.audioFormat === 1 && wav.bitsPerSample === 16 && wav.sampleRate === 48000 && wav.numChannels === 2) {
+    // Even if the WAV is already 48k stereo PCM, don't stream raw PCM directly.
+    // Encode to Ogg/Opus so Discord's player paces audio correctly.
     const samples = wav.pcm.length / (2 * wav.numChannels);
     const dur = samples / wav.sampleRate;
-    console.log('[Voice] Direct PCM passthrough (WAV 48kHz stereo). Bytes:', wav.pcm.length, '| duration ~', dur.toFixed(2), 's');
-    if (dur && dur < 0.6) console.warn('[Voice] Very short audio (<0.6s). It may be hard to notice.');
-    const pcmStream = bufferToStream(wav.pcm);
-    debugLog('wav-passthrough', {
-      audioFormat: wav.audioFormat,
-      bitsPerSample: wav.bitsPerSample,
-      sampleRate: wav.sampleRate,
-      numChannels: wav.numChannels,
-      pcmLength: wav.pcm.length,
-    });
-    const resource = createAudioResource(pcmStream, { inputType: StreamType.Raw, inlineVolume: true });
+    console.log('[Voice] WAV 48kHz stereo detected. Encoding to Ogg/Opus for proper pacing. Bytes:', wav.pcm.length, '| duration ~', dur.toFixed(2), 's');
     const vol = parseFloat(process.env.TTS_VOLUME || '1.6');
-    if (!isNaN(vol) && resource.volume) resource.volume.setVolume(Math.max(0.1, Math.min(vol, 5)));
+    const ffmpegArgs = [
+      '-analyzeduration', '0',
+      '-loglevel', '0',
+      '-f', 'wav',
+      '-i', 'pipe:0',
+      '-ar', '48000',
+      '-ac', '2',
+      '-c:a', 'libopus',
+      '-b:a', '96k',
+      '-application', 'lowdelay',
+      '-frame_duration', '20',
+      ...(isNaN(vol) ? [] : ['-filter:a', `volume=${Math.max(0.1, Math.min(vol, 5))}`]),
+      '-f', 'ogg',
+      'pipe:1',
+    ];
+    const ffmpeg = new prism.FFmpeg({ args: ffmpegArgs, shell: false, ffmpegPath: ffmpegStatic || undefined });
+    const input = bufferToStream(buffer);
+    const ogg = input.pipe(ffmpeg);
+    debugLog('ogg-opus-encode', { ffmpegArgs });
+    // Use OggOpus stream type so the player can pace via container timestamps
+    const resource = createAudioResource(ogg, { inputType: StreamType.OggOpus });
     return resource;
   }
 
@@ -143,53 +155,29 @@ function createPcmResourceFrom(buffer) {
     // rough guess for 24k mono
     estSeconds = inBytes > 0 ? (inBytes / (24000 * 1 * 2)) : 0;
   }
-  console.log('[Voice] Decoding/resampling via ffmpeg. Input bytes:', inBytes, '| est duration ~', estSeconds.toFixed(2), 's');
+  console.log('[Voice] Decoding and encoding to Ogg/Opus via ffmpeg. Input bytes:', inBytes, '| est duration ~', estSeconds.toFixed(2), 's');
   if (estSeconds && estSeconds < 0.6) console.warn('[Voice] Very short audio (<0.6s). It may be hard to notice.');
-  debugLog('ffmpeg-start', {
-    inputBytes: inBytes,
-    estimatedDuration: estSeconds,
-  });
-
-  const ffmpeg = new prism.FFmpeg({
-    args: [
-      '-analyzeduration', '0',
-      '-loglevel', '0',
-      '-f', 'wav',
-      '-i', 'pipe:0',
-      '-f', 's16le',
-      '-ar', '48000',
-      '-ac', '2',
-      '-acodec', 'pcm_s16le',
-      'pipe:1',
-    ],
-    shell: false,
-    ffmpegPath: ffmpegStatic || undefined,
-  });
-  
-  debugLog('ffmpeg-pipe', {
-    ffmpegArgs: ffmpeg.args,
-  });
-
-  // Create a more reliable input stream
-  const inputStream = new Readable({
-    read() {}
-  });
-  
-  // Write buffer data to the stream
-  inputStream.push(buffer);
-  inputStream.push(null);
-  
-  // Pipe to FFmpeg
-  const outputStream = inputStream.pipe(ffmpeg);
-  
-  const resource = createAudioResource(outputStream, { 
-    inputType: StreamType.Raw, 
-    inlineVolume: true 
-  });
-  
-  const vol = parseFloat(process.env.TTS_VOLUME || '1.6');
-  if (!isNaN(vol) && resource.volume) resource.volume.setVolume(Math.max(0.1, Math.min(vol, 5)));
-  
+  const vol = parseFloat(process.env.TTS_VOLUME || '1.0');
+  const ffmpegArgs = [
+    '-analyzeduration', '0',
+    '-loglevel', '0',
+    '-f', 'wav',
+    '-i', 'pipe:0',
+    '-ar', '48000',
+    '-ac', '2',
+    '-c:a', 'libopus',
+    '-b:a', '96k',
+    '-application', 'lowdelay',
+    '-frame_duration', '20',
+    ...(isNaN(vol) ? [] : ['-filter:a', `volume=${Math.max(0.1, Math.min(vol, 5))}`]),
+    '-f', 'ogg',
+    'pipe:1',
+  ];
+  const ffmpeg = new prism.FFmpeg({ args: ffmpegArgs, shell: false, ffmpegPath: ffmpegStatic || undefined });
+  const input = bufferToStream(buffer);
+  const ogg = input.pipe(ffmpeg);
+  debugLog('ffmpeg-ogg-opus', { ffmpegArgs });
+  const resource = createAudioResource(ogg, { inputType: StreamType.OggOpus });
   return resource;
 }
 
