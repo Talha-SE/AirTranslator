@@ -129,9 +129,30 @@ async function createPcmResourceFrom(buffer) {
       pcm.once('end', () => {
         debugLog('pcm-stream-ended', { bytes: outBytes });
       });
+      // ffmpeg process diagnostics
+      if (ffmpeg?.process) {
+        try {
+          ffmpeg.process.stderr?.setEncoding?.('utf8');
+          ffmpeg.process.stderr?.on?.('data', (d) => {
+            const s = (d || '').toString();
+            if (s.trim()) debugLog('ffmpeg-stderr', { chunk: s.slice(0, 400) });
+          });
+          ffmpeg.process.on('close', (code, signal) => {
+            debugLog('ffmpeg-close', { code, signal, bytes: outBytes });
+          });
+          ffmpeg.process.on('exit', (code, signal) => {
+            debugLog('ffmpeg-exit', { code, signal, bytes: outBytes });
+          });
+          ffmpeg.process.on('error', (err) => {
+            debugLog('ffmpeg-error', { message: err?.message || String(err) });
+          });
+        } catch {}
+      }
+      // Attach counter via metadata provider
+      pcm.__byteCounter = () => outBytes;
     } catch {}
     debugLog('pcm-raw-stream', { ffmpegArgs });
-    return createAudioResource(pcm, { inputType: StreamType.Raw });
+    return createAudioResource(pcm, { inputType: StreamType.Raw, metadata: { kind: 'pcm-raw', bytes: () => pcm.__byteCounter?.() } });
   }
 
   // Otherwise, fall back to ffmpeg to decode/resample to s16le 48kHz stereo
@@ -187,9 +208,30 @@ async function createPcmResourceFrom(buffer) {
     pcm.once('end', () => {
       debugLog('pcm-stream-ended', { bytes: outBytes });
     });
+    // ffmpeg process diagnostics
+    if (ffmpeg?.process) {
+      try {
+        ffmpeg.process.stderr?.setEncoding?.('utf8');
+        ffmpeg.process.stderr?.on?.('data', (d) => {
+          const s = (d || '').toString();
+          if (s.trim()) debugLog('ffmpeg-stderr', { chunk: s.slice(0, 400) });
+        });
+        ffmpeg.process.on('close', (code, signal) => {
+          debugLog('ffmpeg-close', { code, signal, bytes: outBytes });
+        });
+        ffmpeg.process.on('exit', (code, signal) => {
+          debugLog('ffmpeg-exit', { code, signal, bytes: outBytes });
+        });
+        ffmpeg.process.on('error', (err) => {
+          debugLog('ffmpeg-error', { message: err?.message || String(err) });
+        });
+      } catch {}
+    }
+    // Attach counter via metadata provider
+    pcm.__byteCounter = () => outBytes;
   } catch {}
   debugLog('ffmpeg-raw-pcm', { ffmpegArgs });
-  return createAudioResource(pcm, { inputType: StreamType.Raw });
+  return createAudioResource(pcm, { inputType: StreamType.Raw, metadata: { kind: 'pcm-raw', bytes: () => pcm.__byteCounter?.() } });
 }
 
 async function createAudioResourceFrom(buffer) {
@@ -231,6 +273,7 @@ async function playBufferInChannel(voiceChannel, buffer) {
 
   return new Promise((resolve, reject) => {
     let resolved = false;
+    const startedAt = Date.now();
 
     const cleanup = () => {
       // Do not destroy the connection here; keep it alive for persistent presence.
@@ -260,8 +303,12 @@ async function playBufferInChannel(voiceChannel, buffer) {
     });
 
     player.on(AudioPlayerStatus.Idle, () => {
+      const elapsedMs = Date.now() - startedAt;
+      const playedMs = resource?.playbackDuration ?? null;
+      let byteCount;
+      try { byteCount = typeof resource?.metadata?.bytes === 'function' ? resource.metadata.bytes() : undefined; } catch {}
       console.log('[Voice] Playback ended (Idle)');
-      debugLog('playback-ended', {});
+      debugLog('playback-ended', { elapsedMs, playbackDurationMs: playedMs, bytesStreamed: byteCount });
       if (!resolved) {
         resolved = true;
         cleanup();
