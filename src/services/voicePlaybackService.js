@@ -2,6 +2,7 @@ const { createAudioPlayer, createAudioResource, joinVoiceChannel, NoSubscriberBe
 const { Readable } = require('stream');
 const prism = require('prism-media');
 const ffmpegStatic = require('ffmpeg-static');
+const fs = require('fs');
 
 // Minimal WAV parser for PCM format
 function parseWavPcm(buffer) {
@@ -103,6 +104,9 @@ async function createPcmResourceFrom(buffer) {
   // Try WAV passthrough first (no encoding/transcoding) if already 48kHz stereo 16-bit PCM
   const wav = parseWavPcm(buffer);
   if (wav && wav.audioFormat === 1 && wav.bitsPerSample === 16 && wav.sampleRate === 48000 && wav.numChannels === 2) {
+    try {
+      debugLog('ffmpeg-path-check', { path: ffmpegStatic || null, exists: ffmpegStatic ? fs.existsSync(ffmpegStatic) : null });
+    } catch {}
     // Native path: feed raw PCM s16le 48k stereo to Discord (no container). This ensures proper pacing by the library.
     const samples = wav.pcm.length / (2 * wav.numChannels);
     const dur = samples / wav.sampleRate;
@@ -110,7 +114,7 @@ async function createPcmResourceFrom(buffer) {
     const vol = parseFloat(process.env.TTS_VOLUME || '1.6');
     const ffmpegArgs = [
       '-analyzeduration', '0',
-      '-loglevel', '0',
+      '-loglevel', 'error',
       '-f', 'wav',
       '-i', 'pipe:0',
       '-ar', '48000',
@@ -121,6 +125,7 @@ async function createPcmResourceFrom(buffer) {
     ];
     const ffmpeg = new prism.FFmpeg({ args: ffmpegArgs, shell: false, ffmpegPath: ffmpegStatic || undefined });
     const input = bufferToStream(buffer);
+    input.on('error', (e) => debugLog('input-stream-error', { message: e?.message || String(e) }));
     const pcm = input.pipe(ffmpeg);
     // Byte-level logging to verify audio data flow
     try {
@@ -158,17 +163,28 @@ async function createPcmResourceFrom(buffer) {
   // Otherwise, fall back to ffmpeg to decode/resample to s16le 48kHz stereo
   // Note: No volume filter to minimize processing as requested
   if (wav) {
+    try {
+      debugLog('ffmpeg-path-check', { path: ffmpegStatic || null, exists: ffmpegStatic ? fs.existsSync(ffmpegStatic) : null });
+    } catch {}
+    // Calculate expected output bytes after resample to 48k stereo
+    const inSamples = wav.pcm.length / (2 * wav.numChannels);
+    const seconds = inSamples / wav.sampleRate;
+    const expectedOutBytes = Math.round(seconds * 48000 * 2 * 2);
     console.log('[Voice] WAV detected but needs resample/rechannel:', {
       audioFormat: wav.audioFormat,
       bitsPerSample: wav.bitsPerSample,
       sampleRate: wav.sampleRate,
       numChannels: wav.numChannels,
+      dataBytes: wav.pcm.length,
+      expectedOutBytes,
     });
     debugLog('wav-fallback', {
       audioFormat: wav.audioFormat,
       bitsPerSample: wav.bitsPerSample,
       sampleRate: wav.sampleRate,
       numChannels: wav.numChannels,
+      dataBytes: wav.pcm.length,
+      expectedOutBytes,
     });
   } else {
     console.log('[Voice] Non-WAV or unknown container; using ffmpeg decoder/resampler');
@@ -189,7 +205,7 @@ async function createPcmResourceFrom(buffer) {
   const vol = parseFloat(process.env.TTS_VOLUME || '1.0');
   const ffmpegArgs = [
     '-analyzeduration', '0',
-    '-loglevel', '0',
+    '-loglevel', 'error',
     '-f', 'wav',
     '-i', 'pipe:0',
     '-ar', '48000',
@@ -200,6 +216,7 @@ async function createPcmResourceFrom(buffer) {
   ];
   const ffmpeg = new prism.FFmpeg({ args: ffmpegArgs, shell: false, ffmpegPath: ffmpegStatic || undefined });
   const input = bufferToStream(buffer);
+  input.on('error', (e) => debugLog('input-stream-error', { message: e?.message || String(e) }));
   const pcm = input.pipe(ffmpeg);
   // Byte-level logging to verify audio data flow
   try {
