@@ -81,6 +81,18 @@ function assignVoices(languages, customVoices) {
   const v1 = customVoices?.primary || DEFAULT_VOICE_BY_LANGUAGE[l1]?.voice || defaultVoice;
   const v2 = l2 ? (customVoices?.secondary || DEFAULT_VOICE_BY_LANGUAGE[l2]?.voice || defaultVoice) : undefined;
   
+  console.log('[TTS Voice Selection]:', {
+    inputLanguages: languages,
+    l1: l1,
+    l2: l2,
+    mappedVoice1: DEFAULT_VOICE_BY_LANGUAGE[l1]?.voice,
+    mappedVoice2: l2 ? DEFAULT_VOICE_BY_LANGUAGE[l2]?.voice : undefined,
+    customVoices,
+    selectedV1: v1,
+    selectedV2: v2,
+    defaultVoice
+  });
+  
   return { voice1: v1, voice2: v2 };
 }
 

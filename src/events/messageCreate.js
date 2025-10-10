@@ -673,12 +673,20 @@ async function translateAndReply(message, languages, options = {}) {
                                 availableLanguages: availablePairs.map(([l]) => l),
                                 voices,
                             });
+                            
+                            // Debug: Log the actual translation pairs
+                            console.log('[TTS] Translation pairs:', {
+                                first: { language: first[0], text: first[1] },
+                                second: second ? { language: second[0], text: second[1] } : undefined
+                            });
+                            
                             // For Mimic3, speak only the translated content without labels
                             let script = first[1];
                             if (second) {
                                 script += `\n\n${second[1]}`;
                             }
 
+                            console.log('[TTS] Script to synthesize:', script);
                             console.log('[TTS] Synthesizing audio...');
                             const audioBuffer = await synthesizeMultispeaker(script, {
                                 voice1: voices.voice1,
