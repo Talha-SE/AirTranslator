@@ -2,7 +2,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const { getFlagLanguage, getLanguageDisplayName } = require('../utils/flagMapping');
 const { translateText, detectLanguage, analyzeAndTranslateImage } = require('../services/mistralService');
 
-const FLAG_TRANSLATION_MODEL = 'mistral-medium-2505';
+const FLAG_TRANSLATION_MODEL = 'mistral-large-2411';
 const { getPersonalTranslationSettings, recordPersonalTranslation, getToneSettings } = require('../services/databaseService');
 const monetizationService = require('../services/monetizationService');
 const analyticsService = require('../services/analyticsService');

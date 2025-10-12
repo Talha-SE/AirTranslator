@@ -364,25 +364,28 @@ const analyzeToneContext = (text) => {
     if (/\b(haha|hehe|lol|lmao|rofl)\b/i.test(text)) analysis.features.push('laughter');
     if (/\b\w+(-\w+)+\b/.test(text)) analysis.features.push('hyphenated_words');
     if (/\b\w*[0-9]+\w*\b/.test(text)) analysis.features.push('text_numbers');
-
-    return analysis;
 };
 
 /**
  * Helper to POST to Mistral with automatic retries on 429 or network errors.
- * Also implements model fallback - if the original model fails, try with mistral-medium-latest
+ * First retry switches to an alternate model before continuing normal backoff logic.
  * @param {object} payload - JSON body for chat/completions
  * @param {number} maxRetries - maximum retry attempts
  * @param {string} [apiKey] - Optional custom API key
  */
+const RETRY_MODELS = {
+    alternate: 'mistral-small-2501',
+};
+
 const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_API_KEY) => {
     let attempt = 0;
     let originalModel = payload.model;
-    let hasTriedFallback = false;
+    let hasTriedAlternate = false;
     
     while (true) {
         try {
             return await axiosMistral.post(mistralAPIUrl, payload, {
+
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json'
@@ -391,15 +394,19 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
         } catch (err) {
             const status = err.response?.status;
             
-            // If this is the first non-rate-limit error and we haven't tried the fallback model yet
-            if (status && status !== 429 && !hasTriedFallback && originalModel !== FALLBACK_TRANSLATION_MODEL) {
-                console.warn(`Mistral request failed with model ${originalModel} (status ${status}). Trying fallback model (${FALLBACK_TRANSLATION_MODEL})`);
-                payload.model = FALLBACK_TRANSLATION_MODEL;
-                hasTriedFallback = true;
-                attempt = 0; // Reset attempt counter for fallback model
-                continue;
+            // If this is the first retry, switch to alternate model if available
+            if (!hasTriedAlternate) {
+                const alternateModel = RETRY_MODELS.alternate;
+                if (alternateModel && alternateModel !== payload.model) {
+                    console.warn(`Mistral request failed with model ${payload.model} (status ${status || 'network'}). Trying alternate model (${alternateModel})`);
+                    payload.model = alternateModel;
+                    hasTriedAlternate = true;
+                    attempt = 0;
+                    continue;
+                }
+                hasTriedAlternate = true;
             }
-            
+
             // Retry only on 429 or network errors (no status code)
             if (attempt >= maxRetries || (status && status !== 429)) {
                 // Restore original model before throwing error
@@ -426,15 +433,15 @@ const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_AP
     }
 };
 
-const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE, FALLBACK_TRANSLATION_MODEL } = require('../utils/constants');
+const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'mistral-small-2501';
 //const TRANSLATION_MODEL = 'mistral-small-2503';
 //const TRANSLATION_MODEL = 'voxtral-mini-latest';
 //const TRANSLATION_MODEL = 'devstral-small-latest';
-//const TRANSLATION_MODEL = 'mistral-small-latest';
 const TRANSLATION_MODEL = 'mistral-medium-2505';
+//const TRANSLATION_MODEL = 'mistral-large-2411';
 /**
  * Detects the language of a given text
  * @param {string} text - The text to detect the language for
