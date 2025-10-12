@@ -224,7 +224,7 @@ async function messageReactionAdd(client, reaction, user) {
 
                 personalEmbed
                     .setFooter({
-                        text: `Personal Translation Buddy • React with any flag emoji for instant translations`,
+                        text: `Personal Translation Buddy • React with any flag emoji for instant translations • Requested by ${user.username}`,
                         iconURL: client.user.displayAvatarURL()
                     })
                     .setTimestamp()
