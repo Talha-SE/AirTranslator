@@ -575,6 +575,7 @@ CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - Return in good punctuation and spacing and good grammar according to the context
 - Preserve the author's exact voice and style
 - NUMBERS: Preserve numeric digits exactly as digits. Do not spell out numbers (5 stays 5). If the source spells a number in words ("five"), translate it as words. For mixed forms (e.g., "5th", "5/10", times, dates, codes), keep the numerals and translate only the linguistic parts/suffixes.
+- ROMAN URDU: Treat Roman Urdu (Urdu written with Latin letters) exactly as Urdu. Understand slang and phonetic spellings (e.g., "acha", "khana", "kesa hai", "bohot shukriya") and translate naturally without misidentifying the language.
 - Prioritize accuracy in conveying the author's exact meaning. Maintain the original tone, formality level, and writing style.
 - Your translation should read as if the original author wrote it directly in the target language. Preserve nuance, idioms, and cultural context appropriately.
 - Focus on delivering translations that capture not just what was said, but how it was said - including humor, emotion, and subtle implications.
