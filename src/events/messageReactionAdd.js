@@ -2,7 +2,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const { getFlagLanguage, getLanguageDisplayName } = require('../utils/flagMapping');
 const { translateText, detectLanguage, analyzeAndTranslateImage } = require('../services/mistralService');
 
-const FLAG_TRANSLATION_MODEL = 'devstral-small-latest';
+const FLAG_TRANSLATION_MODEL = 'mistral-medium-2505';
 const { getPersonalTranslationSettings, recordPersonalTranslation, getToneSettings } = require('../services/databaseService');
 const monetizationService = require('../services/monetizationService');
 const analyticsService = require('../services/analyticsService');
@@ -506,7 +506,7 @@ async function messageReactionAdd(client, reaction, user) {
             })
             
             .setFooter({
-                text: 'Auto-deletes in 15 min',
+                text: `Auto-deletes in 15 min • Requested by ${user.username}`,
                 iconURL: client.user.displayAvatarURL()
             });
 
