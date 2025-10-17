@@ -374,7 +374,7 @@ const analyzeToneContext = (text) => {
  * @param {string} [apiKey] - Optional custom API key
  */
 const RETRY_MODELS = {
-    alternate: 'mistral-small-2501',
+    alternate: 'mistral-large-2411',
 };
 
 const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_API_KEY) => {
@@ -971,15 +971,21 @@ const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLan
     }
     await Promise.all(
         targetLanguages.map(async (targetLanguage) => {
-            translations[targetLanguage] = await translateText(
-                text,
-                targetLanguage,
-                detected,
-                useToneUnderstanding,
-                apiKey
-            );
+            try {
+                translations[targetLanguage] = await translateText(
+                    text,
+                    targetLanguage,
+                    detected,
+                    useToneUnderstanding,
+                    apiKey
+                );
+            } catch (error) {
+                console.error(`❌ Error translating to ${targetLanguage}:`, error?.message || error);
+                translations[targetLanguage] = null;
+            }
         })
     );
+
     return translations;
 };
 

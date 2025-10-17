@@ -406,7 +406,7 @@ async function translateAndReply(message, languages, options = {}) {
         
         // Record analytics for successful translations
         for (const [language, translation] of Object.entries(translations)) {
-            if (translation && translation.length > 0 && translation !== message.content) {
+            if (translation && translation.length > 0) {
                 analyticsService.recordTranslation(detectedLanguage, language, message.channel.id, message.author.id);
                 console.log(`✅ Translated to ${language} for message`);
             }
