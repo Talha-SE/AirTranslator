@@ -23,13 +23,80 @@ const keepAliveHttpsAgent = new https.Agent({
 const axiosMistral = axios.create({
     httpAgent: keepAliveHttpAgent,
     httpsAgent: keepAliveHttpsAgent,
-    timeout: 150000,
+    timeout: 45000,
     decompress: true,
     headers: {
         'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
     },
 });
+
+// Simple per-API-key concurrency limiter to prevent 429s and reduce latency spikes
+const MAX_PARALLEL_PER_KEY = 2;
+const keySemaphores = new Map(); // apiKey -> { active, queue: [fn] }
+const withKeySemaphore = (apiKey, fn) => {
+    const key = apiKey || 'default';
+    if (!keySemaphores.has(key)) keySemaphores.set(key, { active: 0, queue: [] });
+    const sem = keySemaphores.get(key);
+    return new Promise((resolve, reject) => {
+        const run = async () => {
+            sem.active++;
+            try {
+                const res = await fn();
+                resolve(res);
+            } catch (e) {
+                reject(e);
+            } finally {
+                sem.active--;
+                const next = sem.queue.shift();
+                if (next) next();
+            }
+        };
+        if (sem.active < MAX_PARALLEL_PER_KEY) run(); else sem.queue.push(run);
+    });
+};
+
+// Lightweight LRU cache with TTL
+class LRUCache {
+    constructor(max = 500, ttlMs = 10 * 60 * 1000) {
+        this.max = max;
+        this.ttl = ttlMs;
+        this.map = new Map();
+    }
+    _now() { return Date.now(); }
+    get(key) {
+        const ent = this.map.get(key);
+        if (!ent) return null;
+        if (ent.exp <= this._now()) { this.map.delete(key); return null; }
+        // refresh LRU order
+        this.map.delete(key);
+        this.map.set(key, ent);
+        return ent.val;
+    }
+    set(key, val, ttlMs) {
+        if (this.map.has(key)) this.map.delete(key);
+        this.map.set(key, { val, exp: this._now() + (ttlMs ?? this.ttl) });
+        if (this.map.size > this.max) {
+            const firstKey = this.map.keys().next().value;
+            this.map.delete(firstKey);
+        }
+    }
+}
+
+const detectionCache = new LRUCache(1000, 10 * 60 * 1000);
+const translationCache = new LRUCache(800, 10 * 60 * 1000);
+
+// In-flight request de-duplication
+const inflight = new Map();
+const withInflight = (key, createFn) => {
+    if (inflight.has(key)) return inflight.get(key);
+    const p = (async () => {
+        try { return await createFn(); }
+        finally { inflight.delete(key); }
+    })();
+    inflight.set(key, p);
+    return p;
+};
 
 /**
  * Detects and marks proper names for transliteration (not translation)
@@ -377,20 +444,20 @@ const RETRY_MODELS = {
     alternate: 'mistral-large-2411',
 };
 
-const postMistralWithRetry = async (payload, maxRetries = 5, apiKey = MISTRAL_API_KEY) => {
+const postMistralWithRetry = async (payload, maxRetries = 3, apiKey = MISTRAL_API_KEY) => {
     let attempt = 0;
     let originalModel = payload.model;
     let hasTriedAlternate = false;
     
     while (true) {
         try {
-            return await axiosMistral.post(mistralAPIUrl, payload, {
-
+            const inflightKey = `${apiKey}|${payload.model}|${stableRandomSeed(JSON.stringify(payload.messages))}|${payload.max_tokens}`;
+            return await withKeySemaphore(apiKey, () => withInflight(inflightKey, () => axiosMistral.post(mistralAPIUrl, payload, {
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json'
                 }
-            });
+            })));
         } catch (err) {
             const status = err.response?.status;
             
@@ -440,17 +507,20 @@ const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'mistral-small-2503';
 //const TRANSLATION_MODEL = 'voxtral-mini-latest';
 //const TRANSLATION_MODEL = 'devstral-small-latest';
-const TRANSLATION_MODEL = 'mistral-medium-2505';
-//const TRANSLATION_MODEL = 'mistral-large-2411';
+//const TRANSLATION_MODEL = 'mistral-medium-2505';
+const TRANSLATION_MODEL = 'mistral-large-2411';
 /**
  * Detects the language of a given text
  * @param {string} text - The text to detect the language for
  * @returns {string} - The detected language code
  */
-const detectLanguage = async (text) => {
+const detectLanguage = async (text, apiKey = MISTRAL_API_KEY) => {
     try {
         // Normalize the text before detection
         const normalizedText = normalizeElongatedText(text);
+        // Fast path: cache
+        const cached = detectionCache.get(normalizedText);
+        if (cached) return cached;
         
         const response = await postMistralWithRetry({
             model: 'mistral-tiny-latest',
@@ -466,12 +536,13 @@ const detectLanguage = async (text) => {
             ],
             temperature: 0.2,
             max_tokens: 10
-        });
+        }, 3, apiKey);
 
         let langCode = response.data.choices[0].message.content.trim().toLowerCase();
         
         // Clean up the language code (remove quotes, punctuation, etc.)
         langCode = langCode.replace(/[^\w]/g, '');
+        if (langCode) detectionCache.set(normalizedText, langCode);
         
         return langCode;
     } catch (error) {
@@ -490,15 +561,25 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         // Normalize elongated text before translation
         const normalizedText = normalizeElongatedText(text);
 
+        // Fast no-op: emojis-only or numbers/punctuation-only
+        const noEmojiText = stripEmojis(normalizedText).trim();
+        if (noEmojiText.length === 0) return text; // emojis only
+        if (/^[\d\s\p{P}]+$/u.test(noEmojiText)) return text; // only digits/punct
+
         // If no source language is provided and target isn't auto, detect the language
         if (!sourceLanguage && targetLanguage !== AUTO_DETECT_LANGUAGE) {
-            sourceLanguage = await detectLanguage(normalizedText);
+            sourceLanguage = await detectLanguage(normalizedText, apiKey);
         }
 
         // If the detected source language is the same as the target, no translation needed
         if (sourceLanguage && sourceLanguage === targetLanguage) {
             return text;
         }
+
+        // Cache key (safe: depends only on inputs and flags)
+        const cacheKey = `${modelOverride || TRANSLATION_MODEL}|${sourceLanguage || 'auto'}|${targetLanguage}|${useToneUnderstanding ? 'tone' : 'plain'}|${normalizedText}`;
+        const cached = translationCache.get(cacheKey);
+        if (cached) return cached;
 
         // --- Handle very long texts by translating in smaller chunks to avoid context/token limits ---
         const MAX_CHUNK_LENGTH = 2500; // characters, chosen to stay comfortably within provider limits
@@ -830,8 +911,8 @@ For Korean translations, you MUST add cute chatting elements:
             // Stop when model tries to add notes/explanations
             stop: STOP_SEQUENCES,
             // Dynamically set max_tokens but cap it to avoid hitting hard limits
-            max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2))) // Allow sufficient tokens while preventing truncation
-        }, apiKey);
+            max_tokens: Math.min(4096, Math.max(120, Math.ceil(normalizedText.length * 1.2))) // Lower floor for short inputs
+        }, 3, apiKey);
 
         let translation = response.data.choices[0].message.content.trim();
         
@@ -868,8 +949,8 @@ For Korean translations, you MUST add cute chatting elements:
                     temperature: 0.1,
                     random_seed: stableRandomSeed(processedText + ':' + targetLangName + ':emoji-retry'),
                     stop: STOP_SEQUENCES,
-                    max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2)))
-                }, apiKey);
+                    max_tokens: Math.min(4096, Math.max(120, Math.ceil(normalizedText.length * 1.2)))
+                }, 3, apiKey);
                 let retryTranslation = retryResponse.data.choices[0].message.content.trim();
                 if ((retryTranslation.startsWith('"') && retryTranslation.endsWith('"')) ||
                     (retryTranslation.startsWith("'") && retryTranslation.endsWith("'"))) {
@@ -907,8 +988,8 @@ For Korean translations, you MUST add cute chatting elements:
                     top_p: 0.95,
                     random_seed: stableRandomSeed(processedText + ':' + targetLangName + ':anti-rep'),
                     stop: STOP_SEQUENCES,
-                    max_tokens: Math.min(4096, Math.max(400, Math.ceil(normalizedText.length * 1.2)))
-                }, apiKey);
+                    max_tokens: Math.min(4096, Math.max(120, Math.ceil(normalizedText.length * 1.2)))
+                }, 3, apiKey);
                 let retry = retryResponse.data.choices[0].message.content.trim();
                 if ((retry.startsWith('"') && retry.endsWith('"')) || (retry.startsWith("'") && retry.endsWith("'"))) {
                     retry = retry.slice(1, -1);
@@ -950,6 +1031,7 @@ For Korean translations, you MUST add cute chatting elements:
         }
 
         // Keep full translation lines
+        translationCache.set(cacheKey, translation);
         return translation;
 
     } catch (error) {
