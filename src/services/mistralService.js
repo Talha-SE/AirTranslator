@@ -474,8 +474,9 @@ const postMistralWithRetry = async (payload, maxRetries = 3, apiKey = MISTRAL_AP
                 hasTriedAlternate = true;
             }
 
-            // Retry only on 429 or network errors (no status code)
-            if (attempt >= maxRetries || (status && status !== 429)) {
+            // Retry on 429 and transient 5xx (e.g., 502/503/504). Network errors (no status) are also retried.
+            const retriableStatuses = new Set([429, 502, 503, 504]);
+            if (attempt >= maxRetries || (status && !retriableStatuses.has(status))) {
                 // Restore original model before throwing error
                 payload.model = originalModel;
                 throw err;
