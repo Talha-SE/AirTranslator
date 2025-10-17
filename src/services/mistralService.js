@@ -1068,6 +1068,29 @@ const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLan
         })
     );
 
+    // If all results are null/empty, try a quick fallback model once
+    const hasAny = Object.values(translations).some(v => typeof v === 'string' && v.length > 0);
+    if (!hasAny) {
+        const fallbackModel = 'mistral-small-latest';
+        await Promise.all(
+            targetLanguages.map(async (targetLanguage) => {
+                try {
+                    translations[targetLanguage] = await translateText(
+                        text,
+                        targetLanguage,
+                        detected,
+                        useToneUnderstanding,
+                        apiKey,
+                        fallbackModel
+                    );
+                } catch (error) {
+                    console.error(`❌ Fallback error translating to ${targetLanguage}:`, error?.message || error);
+                    translations[targetLanguage] = null;
+                }
+            })
+        );
+    }
+
     return translations;
 };
 

@@ -413,8 +413,8 @@ async function translateAndReply(message, languages, options = {}) {
         }
         
         // If we have translations, send them with modern design
-        if (Object.keys(translations).length > 0) {
-            const translationEntries = Object.entries(translations);
+        const translationEntries = Object.entries(translations).filter(([, t]) => typeof t === 'string' && t.length > 0);
+        if (translationEntries.length > 0) {
             const MAX_FIELDS_PER_EMBED = 6; // Limit fields per embed for better readability
             const chunks = [];
             
