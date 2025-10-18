@@ -506,10 +506,10 @@ const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'mistral-small-2501';
 //const TRANSLATION_MODEL = 'mistral-small-2503';
-//const TRANSLATION_MODEL = 'voxtral-mini-latest';
+//const TRANSLATION_MODEL = 'voxtral-small-2507';
 //const TRANSLATION_MODEL = 'devstral-small-latest';
-//const TRANSLATION_MODEL = 'mistral-medium-2505';
-const TRANSLATION_MODEL = 'mistral-large-2411';
+const TRANSLATION_MODEL = 'mistral-medium-2505';
+//const TRANSLATION_MODEL = 'mistral-large-2411';
 /**
  * Detects the language of a given text
  * @param {string} text - The text to detect the language for
