@@ -643,10 +643,6 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
 CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
 - TRANSLATE ONLY THE INPUT TEXT - do not add, expand, or create additional content
 - Give translation in required language with good grammar and punctuation
-- Use italic in sentences to highlight important words and phrases or names and nicknames
-- Use color to highlight important words and phrases or names and nicknames
-- Use brackets with some specific or difficult or strange words to represent meaning or something to make it helpful for the user to understand it
-- Use internet knowledge to translate the text about current events, culture, traditions, news, technology, and all other topics.
 - NEVER add any notes, explanations, disclaimers, comments, or parenthetical remarks
 - NEVER write anything like "(Note: ...)", "(Translation: ...)", or "(The original...)"
 - NEVER explain ambiguities, difficulties, or interpretation choices
