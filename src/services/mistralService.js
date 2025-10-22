@@ -234,6 +234,54 @@ const filterEmojisToAllowed = (text, allowedEmojis) => {
     });
 };
 
+const romanUrduKeywords = new Set([
+    'hai', 'hain', 'he', 'hoon', 'ho', 'hona', 'nahi', 'nai', 'nah', 'acha', 'achha', 'accha', 'theek', 'thik',
+    'kaisa', 'kesa', 'kaise', 'kese', 'kyun', 'kyu', 'kya', 'kaam', 'kar', 'kr', 'karo', 'karna', 'karunga',
+    'karungi', 'karoge', 'karenge', 'raha', 'rahe', 'rahi', 'rha', 'rhe', 'rhi', 'rahen', 'rahay', 'chalo',
+    'chalein', 'jana', 'jaon', 'jao', 'jaungi', 'jaunga', 'aya', 'aaya', 'aao', 'aana', 'aap', 'ap', 'aapka',
+    'apka', 'aapki', 'apki', 'aapke', 'apke', 'tum', 'tera', 'teri', 'tumhara', 'tumhari', 'tumhare', 'mere',
+    'mera', 'meri', 'mujhe', 'mujhko', 'hum', 'ham', 'hamara', 'hamari', 'hamare', 'humara', 'humari', 'humare',
+    'ammi', 'amma', 'abbu', 'abba', 'bhai', 'behan', 'baji', 'bhaiya', 'yaar', 'dost', 'beta', 'beti', 'bhooka',
+    'bhooki', 'bhook', 'bhookh', 'pyaar', 'pyar', 'mohabbat', 'ishq', 'jazakallah', 'inshallah', 'allah', 'khuda',
+    'dua', 'zindagi', 'masla', 'maslay', 'hal', 'halaat', 'wahan', 'yahan', 'yahaan', 'haan', 'han', 'jee', 'ji',
+    'bohot', 'bahut', 'bohut', 'zaroor', 'bilkul', 'thoda', 'thora', 'thori', 'zara', 'jaldi', 'der', 'raat',
+    'subha', 'shaam', 'kal', 'aaj', 'subha', 'shaam', 'raat', 'zara', 'thoda', 'thora', 'thori'
+]);
+
+const englishStopwords = new Set([
+    'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'am', 'an', 'and', 'or', 'for', 'with', 'this',
+    'that', 'these', 'those', 'of', 'to', 'from', 'in', 'on', 'at', 'it', 'its', 'you', 'your', 'yours', 'we',
+    'our', 'ours', 'i', 'me', 'my', 'mine', 'they', 'them', 'their', 'theirs', 'he', 'she', 'his', 'her', 'hers',
+    'but', 'if', 'then', 'else'
+]);
+
+const romanUrduRegex = /\b(?:main|mein|mai|tum|tera|teri|tumhara|tumhari|tumhare|aap|ap|aapka|apka|aapki|apki|aapke|apke|mera|meri|mere|mujhe|mujhko|hum|ham|humara|humari|humare|hamara|hamari|hamare|wahan|yahan|yahaan|haan|han|bohot|bahut|bohut|shukriya|jazakallah|inshallah|allah|khuda|zindagi|dost|yaar|bhai|behan|raha|rahe|rahi|unga|ungi|ega|egi|onga|ongi|lo|karo|karna|mat|nah|nahi|nai|kese|kaise|kaisa|kesa|acha|achha|accha|beta|beti|ammi|abbu|bhook|pyar|pyaar|ishq|sabar|meherbani|maaf|kya|kyun|kyu|abhi|kal|aaj|subha|shaam|raat|zara|thoda|thora|thori)\b/g;
+
+const romanUrduDigraphRegex = /\b[a-z]*(?:kh|gh|bh|ph|sh|ch|aa|oo|uu|iy|ay|ai|au|qa)[a-z]*\b/g;
+
+const isRomanUrdu = (text) => {
+    if (!text || typeof text !== 'string') return false;
+    const plain = stripEmojis(text);
+    if (/[^\n\r\t\x20-\x7E]/.test(plain)) return false;
+    const lower = plain.toLowerCase();
+    const words = lower.replace(/[^a-z\s']/g, ' ').split(/\s+/).filter(Boolean);
+    if (words.length === 0) return false;
+    let keywordScore = 0;
+    for (const word of words) {
+        if (romanUrduKeywords.has(word)) keywordScore += 2;
+    }
+    const regexMatches = lower.match(romanUrduRegex);
+    const digraphMatches = lower.match(romanUrduDigraphRegex);
+    const englishMatches = words.reduce((acc, word) => englishStopwords.has(word) ? acc + 1 : acc, 0);
+    const score = keywordScore + (regexMatches ? regexMatches.length : 0) + (digraphMatches ? Math.min(digraphMatches.length, 3) : 0);
+    const romanRatio = score / words.length;
+    const englishRatio = englishMatches / words.length;
+    if (score >= 5 && romanRatio >= 0.3) return true;
+    if (score >= 3 && romanRatio >= 0.2 && romanRatio > englishRatio + 0.05) return true;
+    if (score >= 2 && romanRatio >= 0.25 && englishMatches <= 1 && words.length <= 4) return true;
+    return false;
+};
+
 /**
  * Removes unwanted explanatory notes from translations
  * @param {string} translation - The translated text
@@ -541,11 +589,13 @@ const detectLanguage = async (text, apiKey = MISTRAL_API_KEY) => {
         }, 3, apiKey);
 
         let langCode = response.data.choices[0].message.content.trim().toLowerCase();
-        
         // Clean up the language code (remove quotes, punctuation, etc.)
         langCode = langCode.replace(/[^\w]/g, '');
-        if (langCode) detectionCache.set(normalizedText, langCode);
-        
+        if ((!langCode || langCode === 'en' || langCode === 'und' || langCode === 'id' || langCode === 'ms' || langCode === 'pt') && isRomanUrdu(normalizedText)) {
+            langCode = 'ur';
+        }
+        if (!langCode) langCode = 'en';
+        detectionCache.set(normalizedText, langCode);
         return langCode;
     } catch (error) {
         console.error('Error detecting language:', error);
@@ -642,6 +692,7 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         let systemContent = `You are a professional native translator. Translate text accurately while preserving meaning and style. Give complete accurate translation and complete meaningful sentences.
 
 CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
+- Understand roman urdu and translate it 
 - TRANSLATE ONLY THE INPUT TEXT - do not add, expand, or create additional content
 - Give translation in required language with good grammar and punctuation
 - NEVER add any notes, explanations, disclaimers, comments, or parenthetical remarks
