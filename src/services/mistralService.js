@@ -489,7 +489,7 @@ const analyzeToneContext = (text) => {
  * @param {string} [apiKey] - Optional custom API key
  */
 const RETRY_MODELS = {
-    alternate: 'mistral-large-2411',
+    alternate: 'mistral-small-2501',
 };
 
 const postMistralWithRetry = async (payload, maxRetries = 3, apiKey = MISTRAL_API_KEY) => {
