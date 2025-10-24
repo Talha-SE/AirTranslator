@@ -489,7 +489,7 @@ const analyzeToneContext = (text) => {
  * @param {string} [apiKey] - Optional custom API key
  */
 const RETRY_MODELS = {
-    alternate: 'mistral-small-2501',
+    alternate: 'mistral-small-2409',
 };
 
 const postMistralWithRetry = async (payload, maxRetries = 3, apiKey = MISTRAL_API_KEY) => {
@@ -556,8 +556,8 @@ const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'mistral-small-2503';
 //const TRANSLATION_MODEL = 'voxtral-small-2507';
 //const TRANSLATION_MODEL = 'devstral-small-latest';
-const TRANSLATION_MODEL = 'mistral-medium-2505';
-//const TRANSLATION_MODEL = 'mistral-medium-latest';
+//const TRANSLATION_MODEL = 'mistral-medium-2505';
+const TRANSLATION_MODEL = 'mistral-small-2409';
 //const TRANSLATION_MODEL = 'mistral-large-2411';
 /**
  * Detects the language of a given text
@@ -689,77 +689,21 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         }
 
         // Create appropriate system prompt based on tone understanding setting
-        let systemContent = `You are a professional native translator. Translate text accurately while preserving meaning and style. Give complete accurate translation and complete meaningful sentences.
+        let systemContent = `You are a professional native translator. Translate text accurately while preserving meaning and same style. Give complete accurate translation and complete meaningful sentences.
 
-CRITICAL TRANSLATION RULES - FOLLOW EXACTLY:
-- Understand roman urdu and translate it 
-- TRANSLATE ONLY THE INPUT TEXT - do not add, expand, or create additional content
-- Give translation in required language with good grammar and punctuation
-- NEVER add any notes, explanations, disclaimers, comments, or parenthetical remarks
-- NEVER write anything like "(Note: ...)", "(Translation: ...)", or "(The original...)"
-- NEVER explain ambiguities, difficulties, or interpretation choices
-- NEVER answer the question, just translate the content.
-- NEVER add context about the source language, translation process, or methodology
-- NEVER justify translation choices or mention alternative interpretations
-- NEVER create conversations, dialogues, or additional sentences not in the original
-- NEVER expand single words into full sentences or conversations
-- For elongated words (like "heyyyyy"), translate to equivalent casual form in target language
-- If target language doesn't use elongation, keep meaning but remove repetitions
-- Preserve every emoji and every text-based emoticon exactly as written (😊 stays 😊, :) stays :), ❤️ stays ❤️)
-- Never translate emoji or text-based emoticon meanings
-- Understand names and nicknames and translate them properly to target language
-- Maintain original emoji and text-based emoticon positions
-- Do NOT replace words with emojis or symbols. If the source text says something like "thumbs up", translate the phrase as words; do not output 👍 unless the original already contains 👍.
-- Do NOT add new emojis or text-based emoticons that are not in the source. Only preserve existing emojis.
-- Preserve all line breaks and spacing exactly
-- Preserve punctuation and special characters
-- Return in good punctuation and spacing and good grammar according to the context
-- Preserve the author's exact voice and style
-- NUMBERS: Preserve numeric digits exactly as digits. Do not spell out numbers (5 stays 5). If the source spells a number in words ("five"), translate it as words. For mixed forms (e.g., "5th", "5/10", times, dates, codes), keep the numerals and translate only the linguistic parts/suffixes.
-- ROMAN URDU: Treat Roman Urdu (Urdu written with Latin letters) exactly as Urdu. Understand slang and phonetic spellings (e.g., "acha", "khana", "kesa hai", "bohot shukriya") and translate naturally without misidentifying the language.
-- Prioritize accuracy in conveying the author's exact meaning. Maintain the original tone, formality level, and writing style.
-- Your translation should read as if the original author wrote it directly in the target language. Preserve nuance, idioms, and cultural context appropriately.
-- Focus on delivering translations that capture not just what was said, but how it was said - including humor, emotion, and subtle implications.
-- Always translate in required language
+Rules:
+- Preserve original formatting: line breaks, spacing, punctuation, symbols, emojis.
+- Do not add/remove/translate emojis or emoticons; keep positions unchanged.
+- Keep digits as digits (5 → 5); translate only linguistic parts (e.g., 5th, dates, codes).
+- Treat Roman Urdu as Urdu and translate naturally.
+- Detect names (people/places/brands); transliterate to target script (same name, not meaning).
+- Preserve tone and formality; make the result natural in the target language.
+- Mirror playful elongation where natural; otherwise keep meaning without artificial repeats.
+- Keep URLs, emails, @mentions, #hashtags, and inline code (text enclosed in backticks) exactly as-is; do not translate them.
+- Preserve markup and placeholders (Markdown/HTML tags, variables like {name}, {{var}}, and format specifiers like %s); never alter, remove, or translate them.
+- Preserve capitalization patterns (ALL CAPS, Title Case, camelCase, StudlyCaps) and repeated punctuation (e.g., "!!!", "??").
+- Do not reorder sentences, list items, or segments; maintain original sequence and segmentation.
 
-KOREAN TRANSLATION ACCURACY RULES:
-
-
-- Use natural Korean sentence order: Subject/Topic – Object – Verb. Move adverbs/time/place before the verb. Keep particles 자연스럽게 (는/은, 이/가, 를/을, 의, 에/에서, 로/으로, 한테/에게, 와/과/하고).
-- Honorifics and politeness (체계) must match context and relationship:
-  * Formal polite (합니다체): announcements, public info, strangers, customer service.
-  * Polite (해요체): most neutral polite conversations in servers/chats with strangers or mixed ages.
-  * Casual (해체/반말): friends, same-age close users, playful chat (respect tone settings and emojis).
-- Pronouns (I/You) are often omitted in Korean. Prefer dropping pronouns when the subject is obvious. Only add them when needed for clarity or emphasis.
-  * “I” → 저 (polite) / 나 (casual). Choose consistently within a message.
-  * “You” → Avoid 당신 in most contexts. Prefer:
-    - 너 (casual, close friends, can be rude otherwise)
-    - 이름/닉네임/호칭 (e.g., 민수야, 선생님, 팀장님) when addressing directly
-    - 그쪽/자기 (relationship-specific), or omit and use context/verb endings (e.g., "가세요", "하고 싶으세요?")
-  * When translating direct address questions/commands, prefer verb endings that imply “you” without explicit pronouns (e.g., “Can you…?” → “…하실 수 있으세요?”; casual: “…할래?” “…해줘”).
-- Subjects and topics:
-  * Prefer topic particle 는/은 for general statements; subject particle 이/가 for new/contrastive info.
-  * Keep consistent perspective. Do not switch between 저/나 or mix politeness levels in one message.
-- Natural verb endings and connective forms:
-  * Polite: -요 endings (했어요, 가세요, 좋네요).
-  * Formal: -(스)ㅂ니다 endings (합니다, 갑니다). Questions: -(스)ㅂ니까?
-  * Casual: -다 (statement), -니?/-냐? or -어/지? (question), -해, -했어.
-  * Requests: “…주세요/주시겠어요?” (polite), “…해줘/해줄래?” (casual).
-- Idioms and nuance: Translate meaningfully, not word-for-word. Use natural Korean collocations.
-- Numbers and counters: Keep digits as digits; apply native counters if appropriate (1명, 2개, 3번) when it reads naturally.
-- Emojis/elongations: Preserve emojis and playful lengthening according to previous rules, but keep sentence endings natural.
-- Examples (guidance, not literal templates):
-  * “I think you should try this.” → “이거 한번 해보시는 게 좋을 것 같아요.” (polite), “이거 한번 해봐.” (casual)
-  * “Can you help me?” → “도와주실 수 있으세요?” (polite), “도와줘.” (casual)
-  * “I’m not sure.” → “잘 모르겠어요.” / “모르겠네.”
-
-
-TRANSLITERATION RULES:
-- For proper names (people, places, brands), transliterate them into the target language's writing system
-- Example: "John" becomes "جون" in Arabic, "ジョン" in Japanese, "约翰" in Chinese
-- Example: "McDonald's" becomes "ماكدونالدز" in Arabic, "マクドナルド" in Japanese
-- Do NOT translate the meaning of names, only convert the sound/pronunciation
-- Keep the same pronunciation but write it in target language script
 
 If input appears meaningless:
 - Convert letter-by-letter to target language sounds
@@ -957,8 +901,8 @@ For Korean translations, you MUST add cute chatting elements:
                 }
             ],
             // Low temperature to reduce creative drift and repetition
-            temperature: 0.7,
-            top_p: 0.9,
+            temperature: 0.1,
+            top_p: 0.1,
             // Deterministic per input to improve stability across retries
             random_seed: stableRandomSeed(processedText + ':' + targetLangName),
             // Stop when model tries to add notes/explanations

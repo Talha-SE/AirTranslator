@@ -489,7 +489,7 @@ async function messageReactionAdd(client, reaction, user) {
 
         // Create embed using the same design as auto-translation system - only show translation
         const embed = new EmbedBuilder()
-            .setColor('#5865F2')
+            .setColor('#00FF00')
             .setAuthor({
                 name: `${message.author.displayName}`,
                 iconURL: message.author.displayAvatarURL({ dynamic: true, size: 128 })
