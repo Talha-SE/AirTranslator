@@ -556,8 +556,8 @@ const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'mistral-small-2503';
 //const TRANSLATION_MODEL = 'voxtral-small-2507';
 //const TRANSLATION_MODEL = 'devstral-small-latest';
-//const TRANSLATION_MODEL = 'mistral-medium-2505';
-const TRANSLATION_MODEL = 'mistral-small-2409';
+//const TRANSLATION_MODEL = 'mistral-medium-2508';
+const TRANSLATION_MODEL = 'mistral-small-2506';
 //const TRANSLATION_MODEL = 'mistral-large-2411';
 /**
  * Detects the language of a given text
@@ -691,7 +691,15 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         // Create appropriate system prompt based on tone understanding setting
         let systemContent = `You are a professional native translator. Translate text accurately while preserving meaning and same style. Give complete accurate translation and complete meaningful sentences.
 
-Rules:
+CRITICAL GRAMMATICAL RULES:
+- Preserve the grammatical subject-object relationships exactly as in the source
+- The sentence agent (who performs the action) must remain the same in translation
+- Never swap subjects and objects or change who is doing the action
+- Pay strict attention to grammatical particles (가/이, を, etc.) that mark subjects and objects
+- Maintain the original perspective and point of view (first person, third person, etc.)
+- If the source has a proper name as subject, keep it as subject in translation
+
+FORMATTING & CONTENT RULES:
 - Preserve original formatting: line breaks, spacing, punctuation, symbols, emojis.
 - Do not add/remove/translate emojis or emoticons; keep positions unchanged.
 - Keep digits as digits (5 → 5); translate only linguistic parts (e.g., 5th, dates, codes).
@@ -704,6 +712,11 @@ Rules:
 - Preserve capitalization patterns (ALL CAPS, Title Case, camelCase, StudlyCaps) and repeated punctuation (e.g., "!!!", "??").
 - Do not reorder sentences, list items, or segments; maintain original sequence and segmentation.
 
+SENTENCE CORRECTION (prior to translation):
+- Before translating, minimally correct obvious typos, spacing, and basic punctuation/grammar without changing meaning; do not rewrite or paraphrase.
+- Translate the corrected version; if no correction is needed, translate the original verbatim.
+
+
 
 If input appears meaningless:
 - Convert letter-by-letter to target language sounds
@@ -714,6 +727,14 @@ FINAL RULE: Return ONLY the translated text. Nothing else. No explanations whats
 
         if (useToneUnderstanding) {
             systemContent = `You are an expert cultural translator with advanced emotional intelligence. Your role is to perfectly preserve the author's intent, emotional state, formality level, and cultural context while adapting the message naturally to the target language.
+
+CRITICAL GRAMMATICAL RULES:
+- Preserve the grammatical subject-object relationships exactly as in the source
+- The sentence agent (who performs the action) must remain the same in translation
+- Never swap subjects and objects or change who is doing the action
+- Pay strict attention to grammatical particles (가/이, を, etc.) that mark subjects and objects
+- Maintain the original perspective and point of view (first person, third person, etc.)
+- If the source has a proper name as subject, keep it as subject in translation
 
 CORE TRANSLATION PHILOSOPHY:
 - Understand the FEELING and INTENT behind each word, not just literal meaning

@@ -1,6 +1,34 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { getServerSetups } = require('../services/databaseService');
 
+const MAX_CHANNEL_CHARS = 350;
+const MAX_LANGUAGE_CHARS = 550;
+
+function formatList(items = [], formatter, maxLength) {
+    const unique = [...new Set(items)].map(formatter).filter(Boolean);
+    if (unique.length === 0) return 'None';
+
+    const parts = [];
+    let remaining = unique.length;
+    let currentLength = 0;
+
+    for (const entry of unique) {
+        const separator = parts.length > 0 ? ', ' : '';
+        const projectedLength = currentLength + separator.length + entry.length;
+
+        if (projectedLength > maxLength) {
+            parts.push(`+${remaining} more`);
+            break;
+        }
+
+        parts.push(entry);
+        currentLength = projectedLength;
+        remaining -= 1;
+    }
+
+    return parts.join(', ');
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('listsetups')
@@ -25,9 +53,9 @@ module.exports = {
                 .setTimestamp();
 
             server.setups.forEach((setup, index) => {
-                const channelMentions = setup.channels.map(channelId => `<#${channelId}>`).join(', ');
-                const languages = setup.languages.join(', ');
-                
+                const channelMentions = formatList(setup.channels, (channelId) => `<#${channelId}>`, MAX_CHANNEL_CHARS);
+                const languages = formatList(setup.languages, (lang) => lang, MAX_LANGUAGE_CHARS);
+
                 embed.addFields({
                     name: `${index + 1}. ${setup.name}`,
                     value: `**Channels:** ${channelMentions}\n**Languages:** ${languages}`,

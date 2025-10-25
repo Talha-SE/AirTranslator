@@ -312,8 +312,26 @@ client.on('guildCreate', async (guild) => {
     logger.success(`Joined new server: ${guild.name}`);
     
     try {
-        const channel = guild.systemChannel || guild.channels.cache.find(c => c.type === 0 && c.permissionsFor(guild.me).has('SEND_MESSAGES'));
-        if (!channel) return;
+        const botMember = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null);
+        const canSendToChannel = (candidate) => {
+            if (!candidate || candidate.type !== ChannelType.GuildText) {
+                return false;
+            }
+            const perms = candidate.permissionsFor(botMember ?? client.user);
+            return perms?.has(['ViewChannel', 'SendMessages', 'EmbedLinks'], true) ?? false;
+        };
+
+        const channel = [
+            guild.systemChannel,
+            ...guild.channels.cache
+                .filter((ch) => ch.type === ChannelType.GuildText)
+                .sort((a, b) => a.rawPosition - b.rawPosition)
+        ].find(canSendToChannel);
+
+        if (!channel) {
+            logger.warn('No welcome channel with send permissions found', { guildId: guild.id, guildName: guild.name });
+            return;
+        }
         
         const welcomeEmbed = new EmbedBuilder()
             .setColor(0x5865F2)
@@ -324,7 +342,7 @@ client.on('guildCreate', async (guild) => {
             );
             
         await channel.send({ embeds: [welcomeEmbed] });
-        
+
         // Send a concise AutoSetup message with short steps
         const guidedEmbed = new EmbedBuilder()
             .setColor(0x2ECC71)
