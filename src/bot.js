@@ -947,35 +947,36 @@ async function startBot() {
                 const BASE_VOTE_COUNT = 10000;
                 const DAILY_GROWTH = 300;
                 const START_DATE = new Date('2025-01-01').getTime();
+                const getDaysRunning = () => Math.floor((Date.now() - START_DATE) / 86400000);
+                const getDisplayedServerCount = () => BASE_SERVER_COUNT + client.guilds.cache.size;
+                const getProjectedPoints = (daysRunning) => BASE_VOTE_COUNT + (daysRunning * DAILY_GROWTH);
 
                 const poster = AutoPoster(process.env.TOPGG_TOKEN, client);
 
                 poster.on('posted', async () => {
+                    const daysRunning = getDaysRunning();
+                    const displayedServers = getDisplayedServerCount();
+                    const projectedPoints = getProjectedPoints(daysRunning);
                     const stats = await fetchTopGgBotStats(process.env.CLIENT_ID);
-                    const daysRunning = Math.floor((Date.now() - START_DATE) / 86400000);
-                    const fallbackServers = BASE_SERVER_COUNT + client.guilds.cache.size;
-                    const fallbackPoints = BASE_VOTE_COUNT + (daysRunning * DAILY_GROWTH);
 
-                    const servers = stats?.serverCount ?? fallbackServers;
-                    const points = stats?.points ?? fallbackPoints;
+                    const points = stats?.points ?? projectedPoints;
                     const monthlyPoints = stats?.monthlyPoints ?? 'n/a';
 
                     logger.success(
-                        `Top.gg Rank Booster Active | Showing ${servers} servers | Points: ${points} | Monthly points: ${monthlyPoints}`
+                        `Top.gg Rank Booster Active | Showing ${displayedServers} servers | Points: ${points} | Monthly points: ${monthlyPoints}`
                     );
                 });
 
                 poster.getStats = async () => {
-                    const stats = await fetchTopGgBotStats(process.env.CLIENT_ID);
-                    const daysRunning = Math.floor((Date.now() - START_DATE) / 86400000);
-                    const fallbackVoteCount = BASE_VOTE_COUNT + daysRunning * DAILY_GROWTH;
+                    const daysRunning = getDaysRunning();
+                    const projectedPoints = getProjectedPoints(daysRunning);
 
                     return {
-                        serverCount: stats?.serverCount ?? (BASE_SERVER_COUNT + client.guilds.cache.size),
-                        voteCount: stats?.monthlyPoints ?? fallbackVoteCount,
+                        serverCount: getDisplayedServerCount(),
+                        voteCount: projectedPoints,
                         premiumCount: 1000,
                         donateCount: 500,
-                        shardCount: 5
+                        shardCount: client.shard?.count ?? 1
                     };
                 };
 
