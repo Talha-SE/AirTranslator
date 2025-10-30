@@ -711,12 +711,11 @@ FORMATTING & CONTENT RULES:
 - Preserve markup and placeholders (Markdown/HTML tags, variables like {name}, {{var}}, and format specifiers like %s); never alter, remove, or translate them.
 - Preserve capitalization patterns (ALL CAPS, Title Case, camelCase, StudlyCaps) and repeated punctuation (e.g., "!!!", "??").
 - Do not reorder sentences, list items, or segments; maintain original sequence and segmentation.
+- Return the complete sentence in the desired translation language with correct terminal punctuation appropriate to that language (., !, ?, etc.).
 
 SENTENCE CORRECTION (prior to translation):
 - Before translating, minimally correct obvious typos, spacing, and basic punctuation/grammar without changing meaning; do not rewrite or paraphrase.
 - Translate the corrected version; if no correction is needed, translate the original verbatim.
-
-
 
 If input appears meaningless:
 - Convert letter-by-letter to target language sounds
@@ -922,7 +921,7 @@ For Korean translations, you MUST add cute chatting elements:
                 }
             ],
             // Low temperature to reduce creative drift and repetition
-            temperature: 0.1,
+            temperature: 0.7,
             top_p: 0.1,
             // Deterministic per input to improve stability across retries
             random_seed: stableRandomSeed(processedText + ':' + targetLangName),
