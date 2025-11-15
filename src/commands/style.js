@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { toggleTranslationStyle, getServer } = require('../services/databaseService');
 
 module.exports = {
@@ -23,7 +23,7 @@ module.exports = {
         if (!interaction.member.permissions.has('ManageMessages')) {
             return interaction.reply({
                 content: '❌ You need the `Manage Messages` permission to configure translation styles.',
-                ephemeral: true
+                flags: MessageFlags.Ephemeral
             });
         }
 
@@ -122,7 +122,7 @@ module.exports = {
                 if (interaction.deferred || interaction.replied) {
                     await interaction.editReply({ embeds: [errorEmbed] });
                 } else {
-                    await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+                    await interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
                 }
             } catch (replyError) {
                 console.error('Failed to send error reply in style command:', replyError);

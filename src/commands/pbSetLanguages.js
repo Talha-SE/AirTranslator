@@ -1,4 +1,4 @@
-const { ContextMenuCommandBuilder, ApplicationCommandType, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { ContextMenuCommandBuilder, ApplicationCommandType, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new ContextMenuCommandBuilder()
@@ -24,7 +24,7 @@ module.exports = {
 
       await interaction.showModal(modal);
     } catch (e) {
-      try { await interaction.reply({ content: '❌ Could not open the languages modal.', ephemeral: true }); } catch {}
+      try { await interaction.reply({ content: '❌ Could not open the languages modal.', flags: MessageFlags.Ephemeral }); } catch {}
     }
   }
 };

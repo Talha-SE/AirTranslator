@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { togglePersonalTranslation, getPersonalTranslationSettings } = require('../services/databaseService');
 
 module.exports = {
@@ -40,7 +40,7 @@ module.exports = {
             if (!result) {
                 return interaction.reply({
                     content: '❌ There was an error updating your personal translation buddy settings.',
-                    ephemeral: true
+                    flags: MessageFlags.Ephemeral
                 });
             }
 
@@ -89,16 +89,36 @@ module.exports = {
                 })
                 .setTimestamp();
 
-            return interaction.reply({ 
-                embeds: [embed], 
-                ephemeral: true
-            });
+            // Optionally show a "Personal Buddy App" button that opens an external
+            // OAuth/authorize or dashboard URL, if configured via env.
+            const components = [];
+            const authUrl = process.env.PERSONAL_BUDDY_AUTH_URL;
+            if (authUrl && typeof authUrl === 'string' && authUrl.trim().length > 0) {
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setLabel('Open Personal Buddy App')
+                        .setStyle(ButtonStyle.Link)
+                        .setURL(authUrl.trim())
+                );
+                components.push(row);
+            }
+
+            const replyPayload = {
+                embeds: [embed],
+                flags: MessageFlags.Ephemeral
+            };
+
+            if (components.length > 0) {
+                replyPayload.components = components;
+            }
+
+            return interaction.reply(replyPayload);
             
         } catch (error) {
             console.error('Error in personal buddy command:', error);
             return interaction.reply({
                 content: '❌ There was an error processing your personal translation buddy settings.',
-                ephemeral: true
+                flags: MessageFlags.Ephemeral
             });
         }
     }

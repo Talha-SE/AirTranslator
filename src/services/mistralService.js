@@ -558,7 +558,7 @@ const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'devstral-small-latest';
 //const TRANSLATION_MODEL = 'mistral-medium-2508';
 const TRANSLATION_MODEL = 'mistral-small-2506';
-//const TRANSLATION_MODEL = 'mistral-large-2411';
+//const TRANSLATION_MODEL = 'mistral-large-latest';
 /**
  * Detects the language of a given text
  * @param {string} text - The text to detect the language for
@@ -921,7 +921,7 @@ For Korean translations, you MUST add cute chatting elements:
                 }
             ],
             // Low temperature to reduce creative drift and repetition
-            temperature: 0.1,
+            temperature: 0.3,
             top_p: 0.1,
             // Deterministic per input to improve stability across retries
             random_seed: stableRandomSeed(processedText + ':' + targetLangName),

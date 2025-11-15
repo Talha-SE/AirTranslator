@@ -690,12 +690,28 @@ client.on(Events.InteractionCreate, async interaction => {
                             .setTimestamp(new Date())
                             .setFooter({ text: 'Air Translator • Admin Alert' });
 
+                        // Attach Approve/Reject buttons for quick handling in admin DM/channel
+                        const adminComponents = [];
+                        if (created?._id) {
+                            const row = new ActionRowBuilder().addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId(`premium_approve:${created._id.toString()}`)
+                                    .setLabel('Approve')
+                                    .setStyle(ButtonStyle.Success),
+                                new ButtonBuilder()
+                                    .setCustomId(`premium_reject:${created._id.toString()}`)
+                                    .setLabel('Reject')
+                                    .setStyle(ButtonStyle.Danger)
+                            );
+                            adminComponents.push(row);
+                        }
+
                         // DM the admin user, if configured
                         if (adminUserId && client) {
                             try {
                                 const adminUser = await client.users.fetch(adminUserId);
                                 if (adminUser) {
-                                    await adminUser.send({ embeds: [adminEmbed] }).catch(async () => {
+                                    await adminUser.send({ embeds: [adminEmbed], components: adminComponents }).catch(async () => {
                                         await adminUser.send(`New premium request: ${serverName} (${serverId}) by ${requester.displayName || requester.username} (${requester.id})\nRequest ID: ${created?._id || 'N/A'}`);
                                     });
                                 }
@@ -724,7 +740,7 @@ client.on(Events.InteractionCreate, async interaction => {
                                 }
                                 if (targetChannel && targetChannel.permissionsFor(client.user)?.has(['SendMessages'])) {
                                     if (targetChannel.permissionsFor(client.user)?.has(['EmbedLinks'])) {
-                                        await targetChannel.send({ embeds: [adminEmbed] });
+                                        await targetChannel.send({ embeds: [adminEmbed], components: adminComponents });
                                     } else {
                                         await targetChannel.send(`New premium request: ${serverName} (${serverId}) by ${requester.displayName || requester.username} (${requester.id})\nRequest ID: ${created?._id || 'N/A'}`);
                                     }
