@@ -23,7 +23,7 @@ module.exports = {
         if (!interaction.member.permissions.has('ManageMessages')) {
             return interaction.reply({
                 content: '❌ You need the `Manage Messages` permission to configure translation styles.',
-                flags: ['Ephemeral']
+                ephemeral: true
             });
         }
 
@@ -34,7 +34,9 @@ module.exports = {
         const isThreadBased = styleType === 'thread';
 
         try {
-            await interaction.deferReply();
+            if (!interaction.deferred && !interaction.replied) {
+                await interaction.deferReply();
+            }
 
             // Update the translation style setting
             const result = await toggleTranslationStyle(serverId, channelId, isThreadBased);
@@ -111,15 +113,19 @@ module.exports = {
         } catch (error) {
             console.error('Error in style command:', error);
             
-            const errorEmbed = new EmbedBuilder()
-                .setTitle('❌ Error')
-                .setDescription('There was an error updating the translation style. Please try again later.')
-                .setColor('#ef4444');
+            try {
+                const errorEmbed = new EmbedBuilder()
+                    .setTitle('❌ Error')
+                    .setDescription('There was an error updating the translation style. Please try again later.')
+                    .setColor('#ef4444');
 
-            if (interaction.deferred) {
-                await interaction.editReply({ embeds: [errorEmbed] });
-            } else {
-                await interaction.reply({ embeds: [errorEmbed], flags: ['Ephemeral'] });
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply({ embeds: [errorEmbed] });
+                } else {
+                    await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+                }
+            } catch (replyError) {
+                console.error('Failed to send error reply in style command:', replyError);
             }
         }
     }

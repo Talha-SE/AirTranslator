@@ -40,7 +40,7 @@ module.exports = {
             if (!result) {
                 return interaction.reply({
                     content: '❌ There was an error updating your personal translation buddy settings.',
-                    flags: ['Ephemeral']
+                    ephemeral: true
                 });
             }
 
@@ -70,7 +70,7 @@ module.exports = {
                         inline: false
                     },
                     {
-                        name: '� Quick Start Guide',
+                        name: '📚 Quick Start Guide',
                         value: '```\n1️⃣ Find any message you want to translate\n2️⃣ React with a flag emoji (🇰🇷 🇪🇸 🇫🇷 etc.)\n3️⃣ Check your DMs for instant translation!\n4️⃣ Works on old and new messages\n```',
                         inline: false
                     },
@@ -91,14 +91,14 @@ module.exports = {
 
             return interaction.reply({ 
                 embeds: [embed], 
-                flags: ['Ephemeral'] 
+                ephemeral: true
             });
             
         } catch (error) {
             console.error('Error in personal buddy command:', error);
             return interaction.reply({
                 content: '❌ There was an error processing your personal translation buddy settings.',
-                flags: ['Ephemeral']
+                ephemeral: true
             });
         }
     }
