@@ -6,8 +6,12 @@ class TranslationQueueService {
         this.maxRetries = 3;
         this.apiKeys = [
             process.env.MISTRAL_API_KEY, // Primary API key
-            process.env.MISTRAL_API_KEY_2 // Secondary API key
-        ];
+            process.env.MISTRAL_API_KEY_2, // Secondary API key
+            process.env.MISTRAL_API_KEY_3,
+            process.env.MISTRAL_API_KEY_4,
+            process.env.MISTRAL_API_KEY_5,
+            process.env.MISTRAL_API_KEY_6
+        ].filter(Boolean);
         this.currentApiIndex = 0;
     }
 
@@ -60,37 +64,32 @@ class TranslationQueueService {
 
                     // Process translations for each target language in parallel
                     const translationPromises = [];
-                    const languagesPerApi = Math.ceil(message.targetLanguages.length / 2);
-                    
-                    // Split languages between two APIs
-                    const api1Languages = message.targetLanguages.slice(0, languagesPerApi);
-                    const api2Languages = message.targetLanguages.slice(languagesPerApi);
-                    
-                    if (api1Languages.length > 0) {
-                        console.log(`Processing ${api1Languages.join(', ')} with API 1`);
+
+                    const activeApiKeys = this.apiKeys && this.apiKeys.length > 0
+                        ? this.apiKeys
+                        : [process.env.MISTRAL_API_KEY];
+
+                    const apiCount = activeApiKeys.length;
+                    const languagesPerApi = Array.from({ length: apiCount }, () => []);
+
+                    message.targetLanguages.forEach((lang, index) => {
+                        const apiIndex = index % apiCount;
+                        languagesPerApi[apiIndex].push(lang);
+                    });
+
+                    languagesPerApi.forEach((langs, index) => {
+                        if (langs.length === 0) return;
+                        console.log(`Processing ${langs.join(', ')} with API ${index + 1}`);
                         translationPromises.push(
                             translateTextToMultipleLanguages(
-                                message.content, 
-                                api1Languages,
+                                message.content,
+                                langs,
                                 null, // auto-detect
                                 null, // tone settings
-                                this.apiKeys[0] // primary API
+                                activeApiKeys[index]
                             )
                         );
-                    }
-                    
-                    if (api2Languages.length > 0) {
-                        console.log(`Processing ${api2Languages.join(', ')} with API 2`);
-                        translationPromises.push(
-                            translateTextToMultipleLanguages(
-                                message.content, 
-                                api2Languages,
-                                null, // auto-detect
-                                null, // tone settings
-                                this.apiKeys[1] // secondary API
-                            )
-                        );
-                    }
+                    });
                     
                     // Wait for all translations to complete
                     const results = await Promise.all(translationPromises);

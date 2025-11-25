@@ -550,6 +550,7 @@ const postMistralWithRetry = async (payload, maxRetries = 3, apiKey = MISTRAL_AP
 };
 
 const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
+const DETECT_API_KEY = process.env.MISTRAL_DETECT_API_KEY || MISTRAL_API_KEY;
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'mistral-small-2501';
@@ -558,13 +559,13 @@ const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'devstral-small-latest';
 //const TRANSLATION_MODEL = 'mistral-medium-2508';
 const TRANSLATION_MODEL = 'mistral-small-2506';
-//const TRANSLATION_MODEL = 'mistral-large-latest';
+//const TRANSLATION_MODEL = 'mistral-small-latest';
 /**
  * Detects the language of a given text
  * @param {string} text - The text to detect the language for
  * @returns {string} - The detected language code
  */
-const detectLanguage = async (text, apiKey = MISTRAL_API_KEY) => {
+const detectLanguage = async (text, apiKey = DETECT_API_KEY) => {
     try {
         // Normalize the text before detection
         const normalizedText = normalizeElongatedText(text);
@@ -620,7 +621,7 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
 
         // If no source language is provided and target isn't auto, detect the language
         if (!sourceLanguage && targetLanguage !== AUTO_DETECT_LANGUAGE) {
-            sourceLanguage = await detectLanguage(normalizedText, apiKey);
+            sourceLanguage = await detectLanguage(normalizedText);
         }
 
         // If the detected source language is the same as the target, no translation needed

@@ -1,547 +1,1030 @@
 const { SlashCommandBuilder, ChannelType, PermissionFlagsBits, MessageFlags } = require('discord.js');
-const { joinVoiceChannel, EndBehaviorType, getVoiceConnection, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
+const { joinVoiceChannel, getVoiceConnection, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
 const prism = require('prism-media');
-const axios = require('axios');
-// Google disabled by request; keep import removed
 const STTSettings = require('../models/STTSettings');
-const { FALLBACK_TRANSLATION_MODEL } = require('../utils/constants');
+const { processTranscription, createTranscriptionEmbed } = require('../services/voiceTranscriptionService');
 
-// Env keys (documented in reply): MISTRAL_API_KEY, GOOGLE_API_KEY
-const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
-// Force Mistral-only per user request
-const GOOGLE_API_KEY = undefined;
+// Configuration
+const SILENCE_TIMEOUT_MS = 1500; // Stop recording after 1.5 seconds of silence (allow natural pauses)
+const MIN_AUDIO_DURATION_MS = 400; // Minimum audio duration to process
 
-// Default transcription model (can be overridden per guild via DB)
-const DEFAULT_MISTRAL_MODEL = 'voxtral-mini-latest';
-
-// Provider IDs
-const PROVIDERS = ['mistral'];
-
-// In-memory sessions per guild: { connection, outputChannelId, model, silenceDurationMs, captures: Map<userId, CaptureState>, idleTimer }
+// Active sessions per guild (guildId -> GuildSession)
 const sessions = new Map();
 
-// Simple stable hash for routing
-function hashString(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0);
-}
-
-function routeProviderForUser(userId) { return 'mistral'; }
-
-// WAV utils
-function pcmToWav(buffer, sampleRate = 48000, numChannels = 1) {
+/**
+ * Convert PCM buffer to WAV format
+ */
+function pcmToWav(pcmBuffer, sampleRate = 48000, numChannels = 1) {
   const byteRate = sampleRate * numChannels * 2;
   const blockAlign = numChannels * 2;
-  const dataSize = buffer.length;
-  const riffSize = 36 + dataSize;
+  const dataSize = pcmBuffer.length;
   const header = Buffer.alloc(44);
+  
   header.write('RIFF', 0);
-  header.writeUInt32LE(riffSize, 4);
+  header.writeUInt32LE(36 + dataSize, 4);
   header.write('WAVE', 8);
   header.write('fmt ', 12);
-  header.writeUInt32LE(16, 16); // PCM chunk size
-  header.writeUInt16LE(1, 20); // PCM format
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
   header.writeUInt16LE(numChannels, 22);
   header.writeUInt32LE(sampleRate, 24);
   header.writeUInt32LE(byteRate, 28);
   header.writeUInt16LE(blockAlign, 32);
-  header.writeUInt16LE(16, 34); // bits per sample
+  header.writeUInt16LE(16, 34);
   header.write('data', 36);
   header.writeUInt32LE(dataSize, 40);
-  return Buffer.concat([header, buffer]);
+  
+  return Buffer.concat([header, pcmBuffer]);
 }
 
-// Transcribers
-async function transcribeWithMistral(wavBuffer, modelOverride = null) {
-  const url = 'https://api.mistral.ai/v1/audio/transcriptions';
-  const model = modelOverride || DEFAULT_MISTRAL_MODEL;
-  let hasTriedFallback = false;
-  
-  // Function to create and send the transcription request
-  const attemptTranscription = async (currentModel) => {
-    const form = new (require('form-data'))();
-    form.append('model', currentModel);
-    form.append('response_format', 'json');
-    form.append('file', wavBuffer, { filename: 'audio.wav', contentType: 'audio/wav' });
-    // Compatibility: also send under 'audio' key and include basic metadata
-    form.append('audio', wavBuffer, { filename: 'audio.wav', contentType: 'audio/wav' });
-    form.append('encoding', 'wav');
-    form.append('sample_rate', '48000');
-    form.append('channels', '1');
-    
-    return await axios.post(url, form, {
-      headers: {
-        Authorization: `Bearer ${MISTRAL_API_KEY}`,
-        ...form.getHeaders(),
-      },
-      timeout: 120000,
-      maxContentLength: Infinity,
-      maxBodyLength: Infinity,
-    });
-  };
+/**
+ * Manages audio capture for a single user
+ * Key insight: Don't destroy recorder between recordings - reuse it
+ */
+class UserRecorder {
+  constructor(userId, session) {
+    this.userId = userId;
+    this.session = session;
+    this.audioChunks = [];
+    this.isRecording = false;
+    this.silenceTimer = null;
+    this.startTime = null;
+    this.isProcessing = false;
+    this.currentStream = null;
+    this.decoder = null;
+  }
 
-  try {
-    const resp = await attemptTranscription(model);
-    // Expect { text: '...' }
-    return resp.data.text || '';
-  } catch (err) {
-    const status = err.response?.status;
-    const data = err.response?.data;
-    
-    // If this is not a rate limit error and we haven't tried fallback yet
-    if (status && status !== 429 && !hasTriedFallback && model !== FALLBACK_TRANSLATION_MODEL) {
-      console.log(`[STT] Mistral transcription failed with model ${model} (status ${status}). Trying fallback model (${FALLBACK_TRANSLATION_MODEL})`);
-      hasTriedFallback = true;
-      
-      try {
-        const fallbackResp = await attemptTranscription(FALLBACK_TRANSLATION_MODEL);
-        console.log(`[STT] Fallback transcription successful (${FALLBACK_TRANSLATION_MODEL})`);
-        return fallbackResp.data.text || '';
-      } catch (fallbackErr) {
-        console.log('[STT] Fallback transcription also failed', { 
-          status: fallbackErr.response?.status, 
-          data: fallbackErr.response?.data 
-        });
-        // Throw the original error, not the fallback error
-        console.log('[STT] Original Mistral transcription error', { status, data });
-        throw err;
+  /**
+   * Called when user starts speaking
+   */
+  onSpeakingStart() {
+    // Clear any pending silence timer - user is speaking again
+    if (this.silenceTimer) {
+      clearTimeout(this.silenceTimer);
+      this.silenceTimer = null;
+      console.log(`[STT] User ${this.userId} resumed speaking, cleared silence timer`);
+    }
+
+    // If processing, we'll catch next speaking event
+    if (this.isProcessing) {
+      console.log(`[STT] Ignoring speaking start for ${this.userId} - still processing`);
+      return;
+    }
+
+    // If not recording, start a new recording
+    if (!this.isRecording) {
+      console.log(`[STT] User ${this.userId} started speaking`);
+      this.startRecording();
+    } else {
+      // Already recording - just make sure stream is alive
+      console.log(`[STT] User ${this.userId} continued speaking`);
+      // If stream died, recreate it
+      if (!this.currentStream) {
+        console.log(`[STT] Recreating dead stream for ${this.userId}`);
+        this.createNewStream();
       }
     }
+  }
+
+  /**
+   * Called when user stops speaking
+   */
+  onSpeakingEnd() {
+    if (!this.isRecording) return;
+
+    console.log(`[STT] User ${this.userId} stopped speaking, waiting ${SILENCE_TIMEOUT_MS}ms before finalize`);
+
+    // Mark stream as potentially dead
+    this.hasActiveStream = false;
+
+    // Start silence timer
+    if (this.silenceTimer) {
+      clearTimeout(this.silenceTimer);
+    }
+
+    this.silenceTimer = setTimeout(() => {
+      console.log(`[STT] Silence timeout reached for ${this.userId}, finalizing recording`);
+      this.finalize();
+    }, SILENCE_TIMEOUT_MS);
+  }
+
+  /**
+   * Create a new audio stream (for initial or continued recording)
+   */
+  createNewStream() {
+    // ALWAYS destroy old stream completely
+    if (this.currentStream) {
+      try {
+        this.currentStream.unpipe();
+        this.currentStream.removeAllListeners();
+        this.currentStream.destroy();
+      } catch (e) {}
+      this.currentStream = null;
+    }
+
+    // ALWAYS create a fresh decoder - never reuse from previous stream
+    try {
+      if (this.decoder) {
+        this.decoder.unpipe();
+        this.decoder.removeAllListeners();
+        this.decoder.destroy();
+      }
+    } catch (e) {}
+
+    // Create brand new decoder
+    this.decoder = new prism.opus.Decoder({
+      frameSize: 960,
+      channels: 1,
+      rate: 48000,
+    });
+
+    this.decoder.on('error', (err) => {
+      console.log(`[STT] Decoder error for ${this.userId}:`, err?.message);
+    });
+
+    this.decoder.on('data', (chunk) => {
+      if (this.isRecording && chunk && chunk.length > 0) {
+        this.audioChunks.push(Buffer.from(chunk));
+      }
+    });
+
+    // Subscribe to user's audio
+    try {
+      // Use behavior 0 (manual end) to have full control over stream lifetime
+      this.currentStream = this.session.receiver.subscribe(this.userId, {
+        end: {
+          behavior: 0, // Manual - we control when it ends
+        },
+      });
+
+      this.currentStream.on('error', (err) => {
+        if (!err?.message?.includes('DAVE')) {
+          console.log(`[STT] Stream error for ${this.userId}:`, err?.message);
+        }
+      });
+
+      // Pipe to decoder
+      this.currentStream.pipe(this.decoder);
+      
+      console.log(`[STT] Created new audio stream for ${this.userId} (manual end)`);
+
+    } catch (err) {
+      console.log(`[STT] Failed to create stream for ${this.userId}:`, err?.message);
+    }
+  }
+
+  /**
+   * Start a new recording session
+   */
+  startRecording() {
+    if (this.isRecording) {
+      console.log(`[STT] Recording already active for ${this.userId}, skipping start`);
+      return;
+    }
+
+    this.isRecording = true;
+    this.audioChunks = [];
+    this.startTime = Date.now();
+
+    // Clean up old stream only (not decoder, we'll create fresh one immediately)
+    if (this.currentStream) {
+      try {
+        this.currentStream.unpipe();
+        this.currentStream.removeAllListeners();
+        this.currentStream.destroy();
+      } catch (e) {}
+      this.currentStream = null;
+    }
+
+    // Create new stream and decoder immediately
+    this.createNewStream();
+
+    console.log(`[STT] Started recording for user ${this.userId}`);
+  }
+
+  /**
+   * Finalize recording and send for transcription
+   */
+  async finalize() {
+    if (!this.isRecording || this.isProcessing) {
+      console.log(`[STT] Skipping finalize for ${this.userId} - isRecording:${this.isRecording}, isProcessing:${this.isProcessing}`);
+      return;
+    }
+
+    this.isRecording = false;
+    this.isProcessing = true;
+
+    // Clear silence timer
+    if (this.silenceTimer) {
+      clearTimeout(this.silenceTimer);
+      this.silenceTimer = null;
+    }
+
+    // End the current stream manually (since we're using behavior: 0)
+    if (this.currentStream) {
+      try {
+        this.currentStream.destroy();
+      } catch (e) {}
+      this.currentStream = null;
+    }
+
+    const duration = Date.now() - this.startTime;
     
-    console.log('[STT] Mistral transcription error', { status, data });
-    throw err;
+    // Wait for any pending data
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Copy chunks
+    const chunks = this.audioChunks.slice();
+    const chunkCount = chunks.length;
+    const totalBytes = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    
+    // Cleanup decoder for next recording
+    this.cleanupDecoder();
+
+    console.log(`[STT] Finalizing for ${this.userId} - duration:${duration}ms, chunks:${chunkCount}, bytes:${totalBytes}`);
+
+    // Check if we have audio data
+    if (chunkCount === 0 || totalBytes === 0) {
+      console.log(`[STT] Discarded audio for ${this.userId} - no data received (${duration}ms, ${chunkCount} chunks)`);
+      this.isProcessing = false;
+      return;
+    }
+
+    if (duration < MIN_AUDIO_DURATION_MS) {
+      console.log(`[STT] Discarded short audio for ${this.userId} (${duration}ms, ${totalBytes} bytes)`);
+      this.isProcessing = false;
+      return;
+    }
+
+    // Combine chunks and convert to WAV
+    const pcmBuffer = Buffer.concat(chunks);
+    const wavBuffer = pcmToWav(pcmBuffer);
+
+    console.log(`[STT] Finalized recording for ${this.userId} | ${duration}ms | ${wavBuffer.length} bytes | ${chunkCount} chunks`);
+
+    // Process transcription
+    try {
+      await this.session.processAudio(this.userId, wavBuffer);
+    } catch (err) {
+      console.log(`[STT] Transcription error for ${this.userId}:`, err?.message);
+    }
+
+    this.isProcessing = false;
+  }
+
+  /**
+   * Cleanup decoder only
+   */
+  cleanupDecoder() {
+    if (this.decoder) {
+      try {
+        this.decoder.removeAllListeners();
+        this.decoder.destroy();
+      } catch (e) {}
+      this.decoder = null;
+    }
+  }
+
+  /**
+   * Cleanup all streams
+   */
+  cleanupAll() {
+    this.audioChunks = [];
+
+    if (this.currentStream) {
+      try {
+        this.currentStream.unpipe();
+        this.currentStream.removeAllListeners();
+        this.currentStream.destroy();
+      } catch (e) {}
+      this.currentStream = null;
+    }
+
+    this.cleanupDecoder();
+  }
+
+  /**
+   * Force stop
+   */
+  stop() {
+    this.isRecording = false;
+    this.isProcessing = false;
+    
+    if (this.silenceTimer) {
+      clearTimeout(this.silenceTimer);
+      this.silenceTimer = null;
+    }
+    
+    this.cleanupAll();
   }
 }
 
-// Google path removed by request
+/**
+ * Manages voice transcription session for a guild
+ */
+class GuildSession {
+  constructor(options) {
+    this.guildId = options.guildId;
+    this.guild = options.guild;
+    this.connection = options.connection;
+    this.receiver = options.connection.receiver;
+    this.outputChannelId = options.outputChannelId;
+    this.client = options.client;
+    
+    this.language1 = options.language1 || null;
+    this.language2 = options.language2 || null;
+    this.language3 = options.language3 || null;
 
-async function transcribeRouted(userId, wavBuffer, modelOverride = null) {
-  // Always Mistral per user request
-  return await transcribeWithMistral(wavBuffer, modelOverride);
-}
+    this.userRecorders = new Map();
+    this.idleTimer = null;
+    this.isDestroyed = false;
 
-// Create an Opus->PCM stream for each user and chunk it by inactivity
-function startUserCapture(receiver, userId, options = {}) {
-  const {
-    silenceDurationMs = 2000,
-    minSpeechMs = 200,
-    onChunkReady = async () => {},
-    onCleanup = () => {},
-  } = options;
+    this.setupSpeakingListeners();
+  }
 
-  const SILENCE_MS = Math.max(1500, Math.min(15000, silenceDurationMs));
-  const MIN_PCM_BYTES = Math.max(1, Math.floor(48000 * 2 * (minSpeechMs / 1000)));
+  /**
+   * Setup speaking event listeners
+   */
+  setupSpeakingListeners() {
+    // Handle speaking start
+    this.onSpeakingStart = (userId) => {
+      if (this.isDestroyed) return;
+      
+      // Get or create recorder for this user
+      let recorder = this.userRecorders.get(userId);
+      if (!recorder) {
+        recorder = new UserRecorder(userId, this);
+        this.userRecorders.set(userId, recorder);
+      }
 
-  const opusStream = receiver.subscribe(userId, {
-    end: { behavior: EndBehaviorType.AfterSilence, duration: SILENCE_MS },
-  });
+      // Cancel idle timer
+      this.cancelIdleTimer();
 
-  const decoder = new prism.opus.Decoder({ frameSize: 960, channels: 1, rate: 48000 });
-  const pcmStream = opusStream.pipe(decoder);
+      recorder.onSpeakingStart();
+    };
 
-  const chunks = [];
-  let totalBytes = 0;
-  const startedAt = Date.now();
-  let finished = false;
-  let loggedStart = false;
+    // Handle speaking end
+    this.onSpeakingEnd = (userId) => {
+      if (this.isDestroyed) return;
 
-  const finalize = async (reason) => {
-    if (finished) return;
-    finished = true;
+      const recorder = this.userRecorders.get(userId);
+      if (recorder) {
+        recorder.onSpeakingEnd();
+      }
 
-    opusStream.removeAllListeners();
-    pcmStream.removeAllListeners();
-    try { opusStream.destroy(); } catch (_) {}
+      // Check if anyone is still speaking
+      this.checkIdleState();
+    };
 
-    const durationMs = Date.now() - startedAt;
-    let wav = null;
-    let pcmBytes = totalBytes;
-    if (totalBytes >= MIN_PCM_BYTES) {
-      const pcm = Buffer.concat(chunks);
-      wav = pcmToWav(pcm);
-      pcmBytes = pcm.length;
-      console.log(`[STT] Finalizing capture for user ${userId} | pcmBytes=${pcm.length} | duration=${durationMs}ms | reason=${reason}`);
-    } else if (totalBytes > 0) {
-      console.log(`[STT] Discarded short capture for user ${userId} | pcmBytes=${totalBytes}`);
-    }
+    this.receiver.speaking.on('start', this.onSpeakingStart);
+    this.receiver.speaking.on('end', this.onSpeakingEnd);
+  }
 
-    const meta = { reason, durationMs, pcmBytes, hadSpeech: !!wav };
-
-    chunks.length = 0;
-    totalBytes = 0;
-
-    try { onCleanup(meta); } catch (_) {}
-
-    if (wav) {
-      try {
-        await onChunkReady(wav, meta);
-      } catch (err) {
-        console.log('[STT] Error delivering chunk', { userId, error: err?.message });
+  /**
+   * Check if session is idle and schedule shutdown if needed
+   */
+  checkIdleState() {
+    // Check if any user is actively recording
+    let anyActive = false;
+    for (const recorder of this.userRecorders.values()) {
+      if (recorder.isRecording || recorder.isProcessing) {
+        anyActive = true;
+        break;
       }
     }
-  };
 
-  pcmStream.on('data', (data) => {
-    if (finished) return;
-    if (!loggedStart) {
-      loggedStart = true;
-      console.log(`[STT] Started capture for user ${userId} | silenceWindow=${SILENCE_MS}ms`);
+    if (!anyActive) {
+      this.scheduleIdleShutdown();
     }
-    chunks.push(data);
-    totalBytes += data.length;
-  });
+  }
 
-  opusStream.once('end', () => finalize('silence'));
-  opusStream.once('close', () => finalize('closed'));
-  opusStream.once('error', (err) => {
-    console.log('[STT] Recorder stream error', { userId, error: err?.message });
-    finalize('recorder-error');
-  });
-  decoder.once('error', (err) => {
-    console.log('[STT] Decoder error', { userId, error: err?.message });
-    finalize('decoder-error');
-  });
+  /**
+   * Schedule idle shutdown
+   */
+  scheduleIdleShutdown() {
+    if (this.idleTimer) return;
 
-  return {
-    stop: (reason = 'manual-stop') => finalize(reason),
-  };
+    // Check if voice channel is now empty
+    this.idleTimer = setTimeout(async () => {
+      try {
+        // Check if anyone is still in the voice channel
+        const channelId = this.connection?.joinConfig?.channelId;
+        if (channelId) {
+          const voiceChannel = this.guild.channels.cache.get(channelId);
+          if (voiceChannel) {
+            const memberCount = voiceChannel.members.filter(m => !m.user.bot).size;
+            if (memberCount > 0) {
+              // Users still present, don't shut down
+              console.log(`[STT] Idle check: ${memberCount} user(s) still in ${voiceChannel.name}, keeping session alive`);
+              return;
+            }
+          }
+        }
+        
+        console.log(`[STT] Voice channel empty, destroying session for guild ${this.guildId}`);
+        this.destroy();
+        sessions.delete(this.guildId);
+      } catch (err) {
+        console.log(`[STT] Idle shutdown check error:`, err?.message);
+        // On error, destroy anyway
+        this.destroy();
+        sessions.delete(this.guildId);
+      }
+    }, 120000); // 2 minutes idle timeout
+  }
+
+  /**
+   * Cancel idle shutdown timer
+   */
+  cancelIdleTimer() {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+  }
+
+  /**
+   * Check if voice channel is empty and leave immediately if so
+   */
+  async checkVoiceChannelOccupancy() {
+    try {
+      const channelId = this.connection?.joinConfig?.channelId;
+      if (!channelId) return;
+
+      const voiceChannel = this.guild.channels.cache.get(channelId);
+      if (!voiceChannel) {
+        console.log(`[STT] Voice channel not found, destroying session`);
+        this.destroy();
+        sessions.delete(this.guildId);
+        return;
+      }
+
+      const memberCount = voiceChannel.members.filter(m => !m.user.bot).size;
+      if (memberCount === 0) {
+        console.log(`[STT] Voice channel ${voiceChannel.name} is now empty, leaving immediately`);
+        this.destroy();
+        sessions.delete(this.guildId);
+      }
+    } catch (err) {
+      console.log(`[STT] Error checking voice channel occupancy:`, err?.message);
+    }
+  }
+
+  /**
+   * Process transcribed audio
+   */
+  async processAudio(userId, wavBuffer) {
+    try {
+      // Get transcription with translations
+      const result = await processTranscription(wavBuffer, {
+        language1: this.language1,
+        language2: this.language2,
+        language3: this.language3,
+      });
+
+      if (!result || !result.original?.text?.trim()) {
+        return;
+      }
+
+      // Get user info
+      let displayName = 'User';
+      let avatar = null;
+
+      try {
+        const member = await this.guild.members.fetch(userId);
+        displayName = member.displayName || member.user.globalName || member.user.username;
+        avatar = member.user.displayAvatarURL({ dynamic: true, size: 64 });
+      } catch (e) {
+        try {
+          const user = await this.client.users.fetch(userId);
+          displayName = user.globalName || user.username;
+          avatar = user.displayAvatarURL({ dynamic: true, size: 64 });
+        } catch (e2) {}
+      }
+
+      // Resolve output channel. Allow the stored output to be a voice channel ID
+      // by attempting to find a suitable text channel to post into.
+      let outputChannel = this.client.channels.cache.get(this.outputChannelId)
+        || await this.client.channels.fetch(this.outputChannelId).catch(() => null);
+
+      // If user selected a voice channel as the output, try to resolve a nearby text channel:
+      // 1) Text channel with the same name
+      // 2) Any text channel in the same category (parentId)
+      // 3) First text channel in the guild where the bot can send messages
+      if (outputChannel && !outputChannel?.isTextBased()) {
+        try {
+          const voiceChannel = this.guild.channels.cache.get(outputChannel.id);
+          let candidate = null;
+
+          if (voiceChannel) {
+            // 1) same name
+            candidate = this.guild.channels.cache.find(c => c.isTextBased() && c.name === voiceChannel.name);
+
+            // 2) same category
+            if (!candidate && voiceChannel.parentId) {
+              candidate = this.guild.channels.cache.find(c => c.isTextBased() && c.parentId === voiceChannel.parentId);
+            }
+          }
+
+          // 3) fallback: first text channel where the bot can send messages
+          if (!candidate) {
+            candidate = this.guild.channels.cache.find(c => c.isTextBased() && c.permissionsFor(this.client.user)?.has('SendMessages'));
+          }
+
+          if (candidate) {
+            outputChannel = candidate;
+            console.log(`[STT] Resolved voice-channel output to text channel ${outputChannel.name} for guild ${this.guildId}`);
+          } else {
+            console.log(`[STT] No text channel found to post transcriptions for guild ${this.guildId}`);
+            return;
+          }
+        } catch (e) {
+          console.log(`[STT] Error resolving output channel for ${this.guildId}:`, e?.message);
+          return;
+        }
+      }
+
+      if (!outputChannel || !outputChannel.isTextBased()) {
+        console.log(`[STT] Output channel unavailable: ${this.outputChannelId}`);
+        return;
+      }
+
+      // Send transcription embed
+      const embed = createTranscriptionEmbed(result, displayName, avatar);
+      await outputChannel.send({ embeds: [embed] });
+
+      console.log(`[STT] Transcription sent for ${displayName}: "${result.original.text.substring(0, 50)}..."`);
+
+    } catch (err) {
+      console.log(`[STT] Process audio error:`, err?.message);
+    }
+  }
+
+  /**
+   * Update language settings
+   */
+  updateSettings(options) {
+    if (options.language1 !== undefined) this.language1 = options.language1;
+    if (options.language2 !== undefined) this.language2 = options.language2;
+    if (options.language3 !== undefined) this.language3 = options.language3;
+    if (options.outputChannelId) this.outputChannelId = options.outputChannelId;
+  }
+
+  /**
+   * Destroy session and cleanup
+   */
+  destroy() {
+    if (this.isDestroyed) return;
+    this.isDestroyed = true;
+
+    // Remove speaking listeners
+    this.receiver.speaking.off('start', this.onSpeakingStart);
+    this.receiver.speaking.off('end', this.onSpeakingEnd);
+
+    // Stop all recorders
+    for (const recorder of this.userRecorders.values()) {
+      recorder.stop();
+    }
+    this.userRecorders.clear();
+
+    // Cancel idle timer
+    this.cancelIdleTimer();
+
+    // Destroy voice connection
+    try {
+      this.connection.destroy();
+    } catch (e) {}
+
+    console.log(`[STT] Session destroyed for guild ${this.guildId}`);
+  }
 }
 
-async function ensureConnection(guild, voiceChannel) {
-  let conn = getVoiceConnection(guild.id);
-  if (conn) return conn;
-  conn = joinVoiceChannel({
-    channelId: voiceChannel.id,
-    guildId: guild.id,
-    adapterCreator: guild.voiceAdapterCreator,
-    selfDeaf: false,
-    selfMute: false,
-  });
-  await entersState(conn, VoiceConnectionStatus.Ready, 20_000);
-  return conn;
-}
+// Language choices
+const LANGUAGE_CHOICES = [
+  { name: 'English', value: 'en' },
+  { name: 'Spanish', value: 'es' },
+  { name: 'French', value: 'fr' },
+  { name: 'German', value: 'de' },
+  { name: 'Italian', value: 'it' },
+  { name: 'Portuguese', value: 'pt' },
+  { name: 'Russian', value: 'ru' },
+  { name: 'Japanese', value: 'ja' },
+  { name: 'Korean', value: 'ko' },
+  { name: 'Chinese', value: 'zh' },
+  { name: 'Arabic', value: 'ar' },
+  { name: 'Hindi', value: 'hi' },
+  { name: 'Urdu', value: 'ur' },
+  { name: 'Turkish', value: 'tr' },
+  { name: 'Dutch', value: 'nl' },
+  { name: 'Polish', value: 'pl' },
+  { name: 'Ukrainian', value: 'uk' },
+  { name: 'Vietnamese', value: 'vi' },
+  { name: 'Thai', value: 'th' },
+  { name: 'Indonesian', value: 'id' },
+  { name: 'Filipino', value: 'tl' },
+  { name: 'Greek', value: 'el' },
+  { name: 'Hebrew', value: 'he' },
+  { name: 'Persian', value: 'fa' },
+  { name: 'Bengali', value: 'bn' },
+];
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('speechtotext')
-    .setDescription('Manage real-time speech-to-text (enable/disable)')
-    .addSubcommand(sc => sc
+    .setDescription('Real-time voice transcription with optional translation')
+    .addSubcommand(sub => sub
       .setName('enable')
-      .setDescription('Enable STT for a voice channel and post to an output channel')
+      .setDescription('Enable voice transcription')
       .addChannelOption(opt => opt
-        .setName('input_channel')
-        .setDescription('Voice channel to listen (required)')
+        .setName('voice_channel')
+        .setDescription('Voice channel to listen to')
+        .addChannelTypes(ChannelType.GuildVoice)
         .setRequired(true))
       .addChannelOption(opt => opt
         .setName('output_channel')
-        .setDescription('Text channel where transcripts will be posted')
+        .setDescription('Channel to post transcriptions')
         .setRequired(true))
-    )
-    .addSubcommand(sc => sc
+      .addStringOption(opt => opt
+        .setName('language1')
+        .setDescription('First translation language (optional)')
+        .addChoices(...LANGUAGE_CHOICES))
+      .addStringOption(opt => opt
+        .setName('language2')
+        .setDescription('Second translation language (optional)')
+        .addChoices(...LANGUAGE_CHOICES))
+      .addStringOption(opt => opt
+        .setName('language3')
+        .setDescription('Third translation language (optional)')
+        .addChoices(...LANGUAGE_CHOICES)))
+    .addSubcommand(sub => sub
       .setName('disable')
-      .setDescription('Disable STT for this server and stop listening'))
+      .setDescription('Disable voice transcription'))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   async execute(interaction) {
-    try {
-      if (!interaction.inGuild()) {
-        return interaction.reply({ content: 'Use this in a server.', flags: MessageFlags.Ephemeral });
-      }
-
-      // Prevent timeout while checking/joining voice
-      try { if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ flags: MessageFlags.Ephemeral }); } catch {}
-      const sub = interaction.options.getSubcommand();
-      if (sub === 'disable') {
-        // Disable and tear down
-        await STTSettings.findOneAndUpdate(
-          { guildId: interaction.guildId },
-          { $set: { enabled: false, updatedBy: interaction.user.id } },
-          { upsert: true }
-        );
-        const sess = sessions.get(interaction.guildId);
-        if (sess?.connection) { try { sess.connection.destroy(); } catch {} }
-        sessions.delete(interaction.guildId);
-        return interaction.editReply({ content: '🛑 STT disabled and voice session stopped.' });
-      }
-
-      // Enable flow
-      const inputChannel = interaction.options.getChannel('input_channel');
-      const outputChannel = interaction.options.getChannel('output_channel');
-      const prev = await STTSettings.findOne({ guildId: interaction.guildId }).lean().catch(() => null);
-      const chosenModel = prev?.model || DEFAULT_MISTRAL_MODEL;
-      const silenceDurationMs = prev?.flushIntervalMs ? Math.max(1500, Math.min(15000, prev.flushIntervalMs)) : 2000;
-
-      // Resolve voice channel to listen to
-      let voiceChannel = null;
-      if (inputChannel && inputChannel.type === ChannelType.GuildVoice) {
-        voiceChannel = inputChannel;
-      } else {
-        const member = await interaction.guild.members.fetch(interaction.user.id);
-        voiceChannel = member.voice?.channel || null;
-      }
-
-      if (!voiceChannel) {
-        return interaction.editReply({ content: 'No voice channel specified or joined. Join a voice channel or specify one.' });
-      }
-
-      // Permission checks
-      const me = interaction.guild.members.me || await interaction.guild.members.fetchMe();
-      const voicePerms = voiceChannel.permissionsFor(me);
-      const missingVoice = [];
-      if (!voicePerms?.has('ViewChannel')) missingVoice.push('ViewChannel');
-      if (!voicePerms?.has('Connect')) missingVoice.push('Connect');
-      if (missingVoice.length) {
-        return interaction.editReply({ content: `I need these permissions in ${voiceChannel}: ${missingVoice.join(', ')}` });
-      }
-
-      const outPerms = outputChannel.permissionsFor(me);
-      const missingOut = [];
-      if (!outPerms?.has('ViewChannel')) missingOut.push('ViewChannel');
-      if (!outPerms?.has('SendMessages')) missingOut.push('SendMessages');
-      if (missingOut.length) {
-        return interaction.editReply({ content: `I need these permissions in ${outputChannel}: ${missingOut.join(', ')}` });
-      }
-
-      // Persist settings (single active per guild)
-      await STTSettings.findOneAndUpdate(
-        { guildId: interaction.guildId },
-        {
-          $set: {
-            enabled: true,
-            inputChannelId: voiceChannel.id,
-            outputChannelId: outputChannel.id,
-            model: chosenModel,
-            flushIntervalMs: silenceDurationMs,
-            updatedBy: interaction.user.id,
-          }
-        },
-        { upsert: true }
-      );
-
-      // Single active config per guild is enough; history can be added later if needed
-
-      // Create or reuse a session per guild
-      let sess = sessions.get(interaction.guildId);
-      if (sess && sess.connection && sess.connection.joinConfig.channelId !== voiceChannel.id) {
-        try { sess.connection.destroy(); } catch (_) {}
-        sessions.delete(interaction.guildId);
-        sess = null;
-      }
-
-      if (!sess) {
-        const conn = await ensureConnection(interaction.guild, voiceChannel);
-        sess = {
-          connection: conn,
-          outputChannelId: outputChannel.id,
-          model: chosenModel,
-          silenceDurationMs,
-          captures: new Map(),
-          idleTimer: null,
-        };
-        sessions.set(interaction.guildId, sess);
-        // Handle speaking events for per-user concurrent segmentation
-        const receiver = conn.receiver;
-        const scheduleIdleShutdown = () => {
-          if (sess.idleTimer) return;
-          sess.idleTimer = setTimeout(() => {
-            try { sess.connection.destroy(); } catch {}
-            sessions.delete(interaction.guildId);
-            console.log('[STT] Auto-stopped due to inactivity');
-          }, 60000).unref();
-        };
-
-        const beginUserCapture = async (userId, sourceTag = 'start') => {
-          if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
-          // Only one active capture per user
-          const state = sess.captures.get(userId);
-          if (!state || state.state !== 'pending') return; // canceled or already recording
-          // Clear the start timer to avoid double-start
-          if (state.startTimer) { try { clearTimeout(state.startTimer); } catch {} state.startTimer = null; }
-
-          if (sess.idleTimer) { try { clearTimeout(sess.idleTimer); } catch {} sess.idleTimer = null; }
-          const controller = startUserCapture(receiver, userId, {
-            silenceDurationMs: sess.silenceDurationMs, // 2s silence window
-            minSpeechMs: 200,
-            onChunkReady: async (wav) => {
-              try {
-                const transcript = await transcribeRouted(userId, wav, sess.model);
-                const trimmed = transcript?.trim();
-                if (!trimmed) return;
-                const user = await interaction.client.users.fetch(userId).catch(() => null);
-                const name = user ? (user.globalName || user.username) : 'User';
-                const chanFromCache = interaction.client.channels.cache.get(sess.outputChannelId);
-                const out = chanFromCache || await interaction.client.channels.fetch(sess.outputChannelId).catch(() => null);
-                if (out && out.isTextBased()) {
-                  await out.send(`${name}: ${trimmed}`);
-                }
-              } catch (e) {
-                console.log('[STT] Transcription pipeline error', { error: e?.message });
-              }
-            },
-            onCleanup: () => {
-              // When this user's segment finalizes (after 2s break), free slot
-              const cur = sess.captures.get(userId);
-              if (cur && cur.state === 'recording') {
-                sess.captures.delete(userId);
-              }
-              // If no active captures left, schedule idle shutdown
-              if (sess.captures.size === 0) scheduleIdleShutdown();
-            },
-          });
-
-          sess.captures.set(userId, { state: 'recording', controller, startedAt: Date.now(), startTimer: null });
-          console.log(`[STT] Started recording segment for user ${userId} (${sourceTag})`);
-        };
-
-        const scheduleUserPending = (userId, sourceTag = 'start') => {
-          // If already pending or recording, do nothing
-          const existing = sess.captures.get(userId);
-          if (existing) return;
-          // Start after 1s sustained speaking
-          const t = setTimeout(() => beginUserCapture(userId, sourceTag), 1000).unref();
-          sess.captures.set(userId, { state: 'pending', startTimer: t });
-          console.log(`[STT] Pending start for user ${userId} (will start after 1s)`);
-        };
-
-        receiver.speaking.on('start', (userId) => scheduleUserPending(userId, 'speaking-start'));
-        receiver.speaking.on('end', (userId) => {
-          const state = sess.captures.get(userId);
-          if (!state) return;
-          if (state.state === 'pending') {
-            // User stopped before 1s; cancel pending
-            if (state.startTimer) { try { clearTimeout(state.startTimer); } catch {} }
-            sess.captures.delete(userId);
-            console.log(`[STT] Canceled pending start for user ${userId} (spoke < 1s)`);
-          }
-          // If recording, do nothing; the capture will close after 2s silence automatically
-        });
-      } else {
-        // Update session config
-        sess.outputChannelId = outputChannel.id;
-        sess.model = chosenModel;
-        sess.silenceDurationMs = silenceDurationMs;
-        if (!sess.captures) sess.captures = new Map();
-      }
-
-      await interaction.editReply({
-        content: `✅ STT enabled. Listening in <#${voiceChannel.id}> and posting to <#${outputChannel.id}>.`,
+    if (!interaction.inGuild()) {
+      return interaction.reply({ 
+        content: '❌ This command can only be used in a server.', 
+        flags: MessageFlags.Ephemeral 
       });
-    } catch (err) {
-      try {
-        if (interaction.deferred && !interaction.replied) {
-          await interaction.editReply({ content: '❌ Failed to start speech-to-text.' });
-        } else if (!interaction.replied) {
-          await interaction.reply({ content: '❌ Failed to start speech-to-text.', flags: MessageFlags.Ephemeral });
-        }
-      } catch (_) {}
     }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const subcommand = interaction.options.getSubcommand();
+
+    if (subcommand === 'disable') {
+      return this.handleDisable(interaction);
+    }
+
+    return this.handleEnable(interaction);
   },
-  // Auto-resume helper usable from bot.js
+
+  async handleDisable(interaction) {
+    // Update database
+    await STTSettings.findOneAndUpdate(
+      { guildId: interaction.guildId },
+      { $set: { enabled: false, updatedBy: interaction.user.id } },
+      { upsert: true }
+    );
+
+    // Destroy session
+    const session = sessions.get(interaction.guildId);
+    if (session) {
+      session.destroy();
+      sessions.delete(interaction.guildId);
+    }
+
+    return interaction.editReply({ content: '🛑 Voice transcription disabled.' });
+  },
+
+  async handleEnable(interaction) {
+    const voiceChannel = interaction.options.getChannel('voice_channel');
+    const outputChannel = interaction.options.getChannel('output_channel');
+    const language1 = interaction.options.getString('language1') || null;
+    const language2 = interaction.options.getString('language2') || null;
+    const language3 = interaction.options.getString('language3') || null;
+
+    // Check permissions
+    const me = interaction.guild.members.me || await interaction.guild.members.fetchMe();
+    
+    const voicePerms = voiceChannel.permissionsFor(me);
+    if (!voicePerms?.has('Connect') || !voicePerms?.has('ViewChannel')) {
+      return interaction.editReply({ 
+        content: `❌ I need \`Connect\` and \`View Channel\` permissions in ${voiceChannel}.` 
+      });
+    }
+
+    const outPerms = outputChannel.permissionsFor(me);
+    if (!outPerms?.has('SendMessages') || !outPerms?.has('ViewChannel')) {
+      return interaction.editReply({ 
+        content: `❌ I need \`Send Messages\` and \`View Channel\` permissions in ${outputChannel}.` 
+      });
+    }
+
+    // Save to database
+    await STTSettings.findOneAndUpdate(
+      { guildId: interaction.guildId },
+      {
+        $set: {
+          enabled: true,
+          inputChannelId: voiceChannel.id,
+          outputChannelId: outputChannel.id,
+          language1,
+          language2,
+          language3,
+          updatedBy: interaction.user.id,
+        }
+      },
+      { upsert: true }
+    );
+
+    // Check existing session
+    let session = sessions.get(interaction.guildId);
+
+    if (session) {
+      // If different voice channel, destroy and recreate
+      if (session.connection.joinConfig.channelId !== voiceChannel.id) {
+        session.destroy();
+        sessions.delete(interaction.guildId);
+        session = null;
+      } else {
+        // Update settings
+        session.updateSettings({
+          language1,
+          language2,
+          language3,
+          outputChannelId: outputChannel.id,
+        });
+      }
+    }
+
+    // Create new session if needed
+    if (!session) {
+      try {
+        // Get or create connection
+        let connection = getVoiceConnection(interaction.guildId);
+        
+        if (!connection) {
+          connection = joinVoiceChannel({
+            channelId: voiceChannel.id,
+            guildId: interaction.guildId,
+            adapterCreator: interaction.guild.voiceAdapterCreator,
+            selfDeaf: false,
+            selfMute: true,
+          });
+          
+          await entersState(connection, VoiceConnectionStatus.Ready, 20000);
+        }
+
+        session = new GuildSession({
+          guildId: interaction.guildId,
+          guild: interaction.guild,
+          connection,
+          outputChannelId: outputChannel.id,
+          client: interaction.client,
+          language1,
+          language2,
+          language3,
+        });
+
+        sessions.set(interaction.guildId, session);
+
+      } catch (err) {
+        console.error('[STT] Failed to create session:', err);
+        return interaction.editReply({ 
+          content: '❌ Failed to join voice channel. Please try again.' 
+        });
+      }
+    }
+
+    // Build response
+    const langs = [language1, language2, language3].filter(Boolean);
+    const langText = langs.length > 0
+      ? `\n📝 **Translations:** ${langs.map(l => `\`${l}\``).join(', ')}`
+      : '\n📝 **Translations:** None (original only)';
+
+    return interaction.editReply({
+      content: `✅ **Voice transcription enabled!**\n\n🎤 **Listening:** ${voiceChannel}\n💬 **Output:** ${outputChannel}${langText}\n\n*I'll transcribe after 1 second of silence.*`
+    });
+  },
+
+  /**
+   * Resume/manage sessions based on voice channel occupancy
+   * Automatically joins when users are present, leaves when empty
+   */
   async resumeIfNeeded(client, guild) {
     try {
-      const settings = await STTSettings.findOne({ guildId: guild.id, enabled: true }).lean();
-      if (!settings?.inputChannelId || !settings?.outputChannelId) return;
+      const settings = await STTSettings.findOne({ 
+        guildId: guild.id, 
+        enabled: true 
+      }).lean();
+
+      if (!settings?.inputChannelId || !settings?.outputChannelId) {
+        // No settings, but check if we have an active session to clean up
+        const existingSession = sessions.get(guild.id);
+        if (existingSession) {
+          console.log(`[STT] No settings found, destroying orphaned session for ${guild.id}`);
+          existingSession.destroy();
+          sessions.delete(guild.id);
+        }
+        return;
+      }
+
       const voiceChannel = guild.channels.cache.get(settings.inputChannelId);
       const outputChannel = guild.channels.cache.get(settings.outputChannelId);
-      if (!voiceChannel || voiceChannel.type !== ChannelType.GuildVoice || !outputChannel) return;
 
-      // Only run if members present
-      const nonBotCount = voiceChannel.members.filter(m => !m.user.bot).size;
-      if (nonBotCount === 0) return;
-
-      // Reuse or create session
-      let sess = sessions.get(guild.id);
-      if (sess && sess.connection && sess.connection.joinConfig.channelId !== voiceChannel.id) {
-        try { sess.connection.destroy(); } catch {}
-        sessions.delete(guild.id);
-        sess = null;
+      if (!voiceChannel || voiceChannel.type !== ChannelType.GuildVoice) {
+        // Voice channel not found or invalid
+        const existingSession = sessions.get(guild.id);
+        if (existingSession) {
+          console.log(`[STT] Voice channel unavailable, destroying session for ${guild.id}`);
+          existingSession.destroy();
+          sessions.delete(guild.id);
+        }
+        return;
       }
-      const chosenModel = settings.model || DEFAULT_MISTRAL_MODEL;
-      const silenceDurationMs = settings.flushIntervalMs ? Math.max(1500, Math.min(15000, settings.flushIntervalMs)) : 2000;
 
-      if (!sess) {
-        const conn = await ensureConnection(guild, voiceChannel);
-        sess = {
-          connection: conn,
-          outputChannelId: outputChannel.id,
-          model: chosenModel,
-          silenceDurationMs,
-          captures: new Map(),
-          idleTimer: null,
-        };
-        sessions.set(guild.id, sess);
-        // Attach receiver handlers with per-user concurrent segmentation
-        const receiver = conn.receiver;
-        const scheduleIdleShutdown = () => {
-          if (sess.idleTimer) return;
-          sess.idleTimer = setTimeout(() => {
-            try { sess.connection.destroy(); } catch {}
-            sessions.delete(guild.id);
-            console.log('[STT] Auto-stopped due to inactivity');
-          }, 60000).unref();
-        };
+      if (!outputChannel) {
+        // Output channel not found
+        const existingSession = sessions.get(guild.id);
+        if (existingSession) {
+          console.log(`[STT] Output channel unavailable, destroying session for ${guild.id}`);
+          existingSession.destroy();
+          sessions.delete(guild.id);
+        }
+        return;
+      }
 
-        const beginUserCapture = async (userId, sourceTag = 'resume-start') => {
-          if (!sess.connection || sess.connection.state.status === VoiceConnectionStatus.Destroyed) return;
-          const state = sess.captures.get(userId);
-          if (!state || state.state !== 'pending') return;
-          if (state.startTimer) { try { clearTimeout(state.startTimer); } catch {} state.startTimer = null; }
-          if (sess.idleTimer) { try { clearTimeout(sess.idleTimer); } catch {} sess.idleTimer = null; }
+      // Count non-bot members in the voice channel
+      const memberCount = voiceChannel.members.filter(m => !m.user.bot).size;
+      const existingSession = sessions.get(guild.id);
 
-          const controller = startUserCapture(receiver, userId, {
-            silenceDurationMs: sess.silenceDurationMs,
-            minSpeechMs: 200,
-            onChunkReady: async (wav) => {
-              try {
-                const transcript = await transcribeRouted(userId, wav, sess.model);
-                const trimmed = transcript?.trim();
-                if (!trimmed) return;
-                const chanFromCache = client.channels.cache.get(sess.outputChannelId);
-                const out = chanFromCache || await client.channels.fetch(sess.outputChannelId).catch(() => null);
-                if (!out || !out.isTextBased()) return;
+      if (memberCount === 0) {
+        // No users in channel - destroy session if it exists
+        if (existingSession) {
+          console.log(`[STT] Voice channel empty, leaving and destroying session for ${guild.name}`);
+          existingSession.destroy();
+          sessions.delete(guild.id);
+        }
+        return;
+      }
 
-                const member = await guild.members.fetch(userId).catch(() => null);
-                const displayName = member ? member.displayName : null;
-                const user = member?.user || await client.users.fetch(userId).catch(() => null);
-                const name = displayName || user?.globalName || user?.username || 'User';
-                await out.send(`${name}: ${trimmed}`);
-              } catch (e) { console.log('[STT] Transcription pipeline error', { error: e?.message }); }
-            },
-            onCleanup: () => {
-              const cur = sess.captures.get(userId);
-              if (cur && cur.state === 'recording') {
-                sess.captures.delete(userId);
-              }
-              if (sess.captures.size === 0) scheduleIdleShutdown();
-            },
+      // Users present in channel
+      if (existingSession) {
+        // Session already exists - verify it's connected to the right channel
+        if (existingSession.connection?.joinConfig?.channelId !== voiceChannel.id) {
+          // Connected to wrong channel, recreate
+          console.log(`[STT] Wrong channel, recreating session for ${guild.name}`);
+          existingSession.destroy();
+          sessions.delete(guild.id);
+        } else {
+          // Session exists and is in the right channel - all good
+          return;
+        }
+      }
+
+      // No session exists but users are present - create one
+      // Use a creation lock to prevent race conditions
+      if (!this._creatingSession) this._creatingSession = new Set();
+      
+      if (this._creatingSession.has(guild.id)) {
+        console.log(`[STT] Already creating session for ${guild.id}, skipping duplicate`);
+        return;
+      }
+
+      this._creatingSession.add(guild.id);
+
+      try {
+        // Double-check no session was created while we were waiting
+        if (sessions.has(guild.id)) {
+          console.log(`[STT] Session created by another call, aborting duplicate creation`);
+          return;
+        }
+
+        // Get or create connection
+        let connection = getVoiceConnection(guild.id);
+        
+        if (!connection) {
+          console.log(`[STT] Joining voice channel for ${guild.name} (${memberCount} user${memberCount > 1 ? 's' : ''} present)`);
+          
+          connection = joinVoiceChannel({
+            channelId: voiceChannel.id,
+            guildId: guild.id,
+            adapterCreator: guild.voiceAdapterCreator,
+            selfDeaf: false,
+            selfMute: true,
           });
 
-          sess.captures.set(userId, { state: 'recording', controller, startedAt: Date.now(), startTimer: null });
-          console.log(`[STT] (resume) Started recording segment for user ${userId} (${sourceTag})`);
-        };
+          await entersState(connection, VoiceConnectionStatus.Ready, 20000);
+        }
 
-        const scheduleUserPending = (userId, sourceTag = 'resume-start') => {
-          if (sess.captures.get(userId)) return;
-          const t = setTimeout(() => beginUserCapture(userId, sourceTag), 1000).unref();
-          sess.captures.set(userId, { state: 'pending', startTimer: t });
-          console.log(`[STT] (resume) Pending start for user ${userId} (will start after 1s)`);
-        };
+        // Final race condition check
+        if (sessions.has(guild.id)) {
+          console.log(`[STT] Race condition detected, destroying duplicate connection`);
+          try { connection.destroy(); } catch (e) {}
+          return;
+        }
 
-        receiver.speaking.on('start', (userId) => scheduleUserPending(userId, 'speaking-start'));
-        receiver.speaking.on('end', (userId) => {
-          const state = sess.captures.get(userId);
-          if (!state) return;
-          if (state.state === 'pending') {
-            if (state.startTimer) { try { clearTimeout(state.startTimer); } catch {} }
-            sess.captures.delete(userId);
-            console.log(`[STT] (resume) Canceled pending start for user ${userId} (spoke < 1s)`);
-          }
+        const session = new GuildSession({
+          guildId: guild.id,
+          guild,
+          connection,
+          outputChannelId: settings.outputChannelId,
+          client,
+          language1: settings.language1,
+          language2: settings.language2,
+          language3: settings.language3,
         });
+
+        sessions.set(guild.id, session);
+        console.log(`[STT] Started session for ${guild.name} in ${voiceChannel.name}`);
+
+      } catch (err) {
+        console.log(`[STT] Failed to create session for ${guild.id}:`, err?.message);
+      } finally {
+        // Always remove the creation lock
+        this._creatingSession.delete(guild.id);
       }
-    } catch (_) { /* ignore */ }
+
+    } catch (err) {
+      console.log(`[STT] Resume check failed for ${guild.id}:`, err?.message);
+    }
+  },
+
+  getSessions() {
+    return sessions;
+  },
+
+  /**
+   * Handle voice state updates - check if we need to join or leave
+   */
+  async handleVoiceStateUpdate(client, oldState, newState) {
+    try {
+      const guild = newState?.guild || oldState?.guild;
+      if (!guild) return;
+
+      // Ignore bot's own voice state changes to prevent loops
+      const userId = newState?.id || oldState?.id;
+      if (userId === client.user.id) {
+        return;
+      }
+
+      // Get settings for this guild
+      const settings = await STTSettings.findOne({ 
+        guildId: guild.id, 
+        enabled: true 
+      }).lean();
+
+      if (!settings?.inputChannelId) return;
+
+      // Check if the state change affects our monitored voice channel
+      const affectsOurChannel = 
+        oldState?.channelId === settings.inputChannelId ||
+        newState?.channelId === settings.inputChannelId;
+
+      if (!affectsOurChannel) return;
+
+      // Debounce: wait a bit to avoid race conditions from multiple rapid events
+      const debounceKey = `${guild.id}_voiceUpdate`;
+      if (this._debounceTimers?.[debounceKey]) {
+        clearTimeout(this._debounceTimers[debounceKey]);
+      }
+
+      if (!this._debounceTimers) this._debounceTimers = {};
+      
+      this._debounceTimers[debounceKey] = setTimeout(async () => {
+        delete this._debounceTimers[debounceKey];
+        
+        try {
+          // Get fresh voice channel state
+          const voiceChannel = guild.channels.cache.get(settings.inputChannelId);
+          if (!voiceChannel) return;
+
+          const memberCount = voiceChannel.members.filter(m => !m.user.bot).size;
+          const session = sessions.get(guild.id);
+
+          if (memberCount === 0) {
+            // Channel is empty - destroy session if exists
+            if (session) {
+              console.log(`[STT] Voice channel ${voiceChannel.name} empty (last user left), leaving`);
+              session.destroy();
+              sessions.delete(guild.id);
+            }
+          } else {
+            // Channel has users - ensure we're joined
+            if (!session) {
+              console.log(`[STT] User in ${voiceChannel.name}, joining (${memberCount} user${memberCount > 1 ? 's' : ''})`);
+              await this.resumeIfNeeded(client, guild);
+            }
+          }
+        } catch (err) {
+          console.log(`[STT] Debounced voice state handler error:`, err?.message);
+        }
+      }, 500); // 500ms debounce
+
+    } catch (err) {
+      console.log(`[STT] Voice state update handler error:`, err?.message);
+    }
   }
 };

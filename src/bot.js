@@ -242,14 +242,18 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 // Also reactively check for STT auto-resume when voice states change
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
-        const guild = newState?.guild || oldState?.guild;
-        if (!guild) return;
-        // Attempt to resume STT if configured and members present
-        if (typeof speechToTextCommand?.resumeIfNeeded === 'function') {
-            await speechToTextCommand.resumeIfNeeded(client, guild);
+        // Use the dedicated voice state handler if available
+        if (typeof speechToTextCommand?.handleVoiceStateUpdate === 'function') {
+            await speechToTextCommand.handleVoiceStateUpdate(client, oldState, newState);
+        } else if (typeof speechToTextCommand?.resumeIfNeeded === 'function') {
+            // Fallback to resumeIfNeeded
+            const guild = newState?.guild || oldState?.guild;
+            if (guild) {
+                await speechToTextCommand.resumeIfNeeded(client, guild);
+            }
         }
     } catch (e) {
-        logger.debug('[STT] resumeIfNeeded on voiceStateUpdate failed', { error: e?.message || e });
+        logger.debug('[STT] voiceStateUpdate handler failed', { error: e?.message || e });
     }
 });
 
@@ -258,43 +262,54 @@ setInterval(async () => {
     try {
         const guilds = client.guilds.cache;
         for (const guild of guilds.values()) {
-            const settings = await TTSSettings.findOne({ guildId: guild.id, enabled: true }).lean();
+            const ttsSettings = await TTSSettings.findOne({ guildId: guild.id, enabled: true }).lean();
+            const sttSettings = await require('./models/STTSettings').findOne({ guildId: guild.id, enabled: true }).lean();
             const connection = getVoiceConnection(guild.id);
             
-            // If no TTS setup exists but bot is connected
-            if (!settings && connection) {
+            // If no TTS or STT setup exists but bot is connected
+            if (!ttsSettings && !sttSettings && connection) {
                 connection.destroy();
-                logger.info('[PeriodicCheck] Left voice channel - no TTS setup found', { guildId: guild.id });
+                logger.info('[PeriodicCheck] Left voice channel - no TTS/STT setup found', { guildId: guild.id });
                 continue;
             }
             
-            if (!settings?.voiceChannelId) continue;
-            
-            const voiceChannel = guild.channels.cache.get(settings.voiceChannelId);
-            if (!voiceChannel) {
-                if (connection) connection.destroy();
-                continue;
+            // Handle TTS feature
+            if (ttsSettings?.voiceChannelId) {
+                const voiceChannel = guild.channels.cache.get(ttsSettings.voiceChannelId);
+                if (!voiceChannel) {
+                    if (connection) connection.destroy();
+                    continue;
+                }
+                
+                const nonBotCount = voiceChannel.members.filter(m => !m.user.bot).size;
+                
+                if (nonBotCount > 0 && !connection) {
+                    joinVoiceChannel({
+                        channelId: voiceChannel.id,
+                        guildId: guild.id,
+                        adapterCreator: guild.voiceAdapterCreator,
+                        selfDeaf: true,
+                    });
+                    continue;
+                }
+                
+                if (nonBotCount === 0 && connection) {
+                    connection.destroy();
+                    continue;
+                }
             }
             
-            const nonBotCount = voiceChannel.members.filter(m => !m.user.bot).size;
-            
-            if (nonBotCount > 0 && !connection) {
-                joinVoiceChannel({
-                    channelId: voiceChannel.id,
-                    guildId: guild.id,
-                    adapterCreator: guild.voiceAdapterCreator,
-                    selfDeaf: true,
-                });
-                logger.info('[PeriodicCheck] Rejoined voice channel', { guildId: guild.id, channelId: voiceChannel.id });
-            } else if (nonBotCount === 0 && connection) {
-                connection.destroy();
-                logger.info('[PeriodicCheck] Left empty voice channel', { guildId: guild.id, channelId: voiceChannel.id });
+            // Handle STT feature - just keep connection alive if STT is enabled
+            // STT sessions manage their own lifecycle
+            if (sttSettings?.enabled && connection) {
+                // Connection already exists and STT is enabled, keep it alive
+                continue;
             }
         }
     } catch (error) {
-        logger.error('[PeriodicCheck] Error', error);
+        logger.error('Periodic voice check error:', error?.message);
     }
-}, 120000); // Check every 2 minutes
+}, 60000); // Check every 60 seconds
 
 // Periodic STT auto-resume (every 60 seconds)
 setInterval(async () => {
@@ -1012,14 +1027,22 @@ async function startBot() {
         // Start processing queued translations
         translationQueueService.startQueueProcessor((content, targetLanguage) => {
             // Determine which API to use based on targetLanguage
-            const apiIndex = targetLanguage.charCodeAt(0) % 2; // Simple hash to distribute
+            const activeApiKeys = translationQueueService.apiKeys && translationQueueService.apiKeys.length > 0
+                ? translationQueueService.apiKeys
+                : [undefined];
+
+            const apiCount = activeApiKeys.length;
+            const apiIndex = targetLanguage && apiCount > 0
+                ? (targetLanguage.charCodeAt(0) % apiCount)
+                : 0;
+
             logger.debug(`Using API ${apiIndex + 1} for ${targetLanguage}`);
             return translateTextToMultipleLanguages(
                 content, 
                 [targetLanguage],
                 null, // auto-detect
                 null, // tone settings
-                translationQueueService.apiKeys[apiIndex]
+                activeApiKeys[apiIndex]
             );
         });
     } catch (error) {

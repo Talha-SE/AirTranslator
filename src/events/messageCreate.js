@@ -367,37 +367,33 @@ async function translateAndReply(message, languages, options = {}) {
             const toneSettings = await getToneSettings(message.guild.id, message.channel.id);
             
             // Split languages between APIs for parallel processing
-            const languagesPerApi = Math.ceil(targetLanguagesArray.length / 2);
-            const api1Languages = targetLanguagesArray.slice(0, languagesPerApi);
-            const api2Languages = targetLanguagesArray.slice(languagesPerApi);
-            
+            const activeApiKeys = translationQueueService.apiKeys && translationQueueService.apiKeys.length > 0
+                ? translationQueueService.apiKeys
+                : [undefined];
+
+            const apiCount = activeApiKeys.length;
+            const languagesPerApi = Array.from({ length: apiCount }, () => []);
+
+            targetLanguagesArray.forEach((lang, index) => {
+                const apiIndex = index % apiCount;
+                languagesPerApi[apiIndex].push(lang);
+            });
+
             const translationPromises = [];
-            
-            if (api1Languages.length > 0) {
-                console.log(`🔄 API 1 processing: ${api1Languages.join(', ')}`);
+
+            languagesPerApi.forEach((langs, index) => {
+                if (langs.length === 0) return;
+                console.log(`🔄 API ${index + 1} processing: ${langs.join(', ')}`);
                 translationPromises.push(
                     translateTextToMultipleLanguages(
-                        message.content, 
-                        api1Languages, 
-                        detectedLanguage, 
+                        message.content,
+                        langs,
+                        detectedLanguage,
                         toneSettings,
-                        translationQueueService.apiKeys[0]
+                        activeApiKeys[index]
                     )
                 );
-            }
-            
-            if (api2Languages.length > 0) {
-                console.log(`🔄 API 2 processing: ${api2Languages.join(', ')}`);
-                translationPromises.push(
-                    translateTextToMultipleLanguages(
-                        message.content, 
-                        api2Languages, 
-                        detectedLanguage, 
-                        toneSettings,
-                        translationQueueService.apiKeys[1]
-                    )
-                );
-            }
+            });
             
             // Wait for all translations and combine results
             const results = await Promise.all(translationPromises);
