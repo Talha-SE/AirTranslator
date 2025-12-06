@@ -5,8 +5,21 @@ const STTSettings = require('../models/STTSettings');
 const { processTranscription, createTranscriptionEmbed } = require('../services/voiceTranscriptionService');
 
 // Configuration
-const SILENCE_TIMEOUT_MS = 1500; // Stop recording after 1.5 seconds of silence (allow natural pauses)
+const SILENCE_TIMEOUT_MS = 1000; // Stop recording after 1.0 second of silence (allow brief pauses)
 const MIN_AUDIO_DURATION_MS = 400; // Minimum audio duration to process
+
+// Logging control for STT subsystem. Set to `true` to enable verbose STT logs.
+const STT_VERBOSE = false;
+const sttLog = (...args) => {
+  if (STT_VERBOSE) {
+    console.log(...args);
+  }
+};
+
+// Sensitivity tuning: small arming window to measure ambient level before committing to record.
+// Increase VOICE_SENSITIVITY_THRESHOLD to be less sensitive (larger value), decrease to be more sensitive.
+const ARM_WINDOW_MS = 300; // how long to sample before deciding if it's real speech
+const VOICE_SENSITIVITY_THRESHOLD = 200; // RMS threshold for considering audio as speech (tweak as needed)
 
 // Active sessions per guild (guildId -> GuildSession)
 const sessions = new Map();
@@ -38,6 +51,21 @@ function pcmToWav(pcmBuffer, sampleRate = 48000, numChannels = 1) {
 }
 
 /**
+ * Compute RMS for 16-bit PCM buffer (Int16LE)
+ */
+function computeRms(pcmBuffer) {
+  if (!pcmBuffer || pcmBuffer.length === 0) return 0;
+  const sampleCount = Math.floor(pcmBuffer.length / 2);
+  let sumSq = 0;
+  for (let i = 0; i < sampleCount; i++) {
+    const s = pcmBuffer.readInt16LE(i * 2);
+    sumSq += s * s;
+  }
+  const meanSq = sumSq / Math.max(1, sampleCount);
+  return Math.sqrt(meanSq);
+}
+
+/**
  * Manages audio capture for a single user
  * Key insight: Don't destroy recorder between recordings - reuse it
  */
@@ -52,6 +80,11 @@ class UserRecorder {
     this.isProcessing = false;
     this.currentStream = null;
     this.decoder = null;
+    // Pre-buffering / arming for noise thresholding
+    this.prebufferChunks = [];
+    this.arming = false;
+    this.armTimer = null;
+    this.armStart = null;
   }
 
   /**
@@ -62,25 +95,54 @@ class UserRecorder {
     if (this.silenceTimer) {
       clearTimeout(this.silenceTimer);
       this.silenceTimer = null;
-      console.log(`[STT] User ${this.userId} resumed speaking, cleared silence timer`);
+      sttLog(`[STT] User ${this.userId} resumed speaking, cleared silence timer`);
     }
 
     // If processing, we'll catch next speaking event
     if (this.isProcessing) {
-      console.log(`[STT] Ignoring speaking start for ${this.userId} - still processing`);
+      sttLog(`[STT] Ignoring speaking start for ${this.userId} - still processing`);
       return;
     }
 
-    // If not recording, start a new recording
-    if (!this.isRecording) {
-      console.log(`[STT] User ${this.userId} started speaking`);
-      this.startRecording();
+    // If not recording, start a new recording (but use arming window to avoid background noise)
+    if (!this.isRecording && !this.arming) {
+      sttLog(`[STT] User ${this.userId} started speaking (arming)`);
+      // Begin arming: create stream and sample briefly to decide if it's real speech
+      this.arming = true;
+      this.prebufferChunks = [];
+      this.armStart = Date.now();
+      // Create stream/decoder to capture audio into prebuffer
+      this.createNewStream();
+      // After ARM_WINDOW_MS evaluate rms
+      this.armTimer = setTimeout(() => {
+        try {
+          const pcm = Buffer.concat(this.prebufferChunks || []);
+          const rms = computeRms(pcm);
+          if (rms >= VOICE_SENSITIVITY_THRESHOLD) {
+            // Confirmed speech -> start recording and keep prebuffer
+            this.isRecording = true;
+            this.audioChunks = (this.prebufferChunks || []).slice();
+            // approximate start time a bit earlier
+            this.startTime = Date.now() - Math.min(ARM_WINDOW_MS, Date.now() - this.armStart);
+            sttLog(`[STT] Arming confirmed for ${this.userId} (rms:${Math.round(rms)})`);
+          } else {
+            // Not speech -> cleanup
+            try { if (this.currentStream) { this.currentStream.destroy(); this.currentStream = null; } } catch (e) {}
+            this.cleanupDecoder();
+            sttLog(`[STT] Arming rejected for ${this.userId} (rms:${Math.round(rms)})`);
+          }
+        } catch (e) {
+          sttLog(`[STT] Arming eval error for ${this.userId}:`, e?.message || e);
+        }
+        this.arming = false;
+        if (this.armTimer) { clearTimeout(this.armTimer); this.armTimer = null; }
+      }, ARM_WINDOW_MS);
     } else {
       // Already recording - just make sure stream is alive
-      console.log(`[STT] User ${this.userId} continued speaking`);
+      sttLog(`[STT] User ${this.userId} continued speaking`);
       // If stream died, recreate it
       if (!this.currentStream) {
-        console.log(`[STT] Recreating dead stream for ${this.userId}`);
+        sttLog(`[STT] Recreating dead stream for ${this.userId}`);
         this.createNewStream();
       }
     }
@@ -90,9 +152,20 @@ class UserRecorder {
    * Called when user stops speaking
    */
   onSpeakingEnd() {
+    // If we're still arming (deciding if speech), cancel arming
+    if (this.arming) {
+      if (this.armTimer) { clearTimeout(this.armTimer); this.armTimer = null; }
+      this.arming = false;
+      this.prebufferChunks = [];
+      try { if (this.currentStream) { this.currentStream.destroy(); this.currentStream = null; } } catch (e) {}
+      this.cleanupDecoder();
+      sttLog(`[STT] Arming cancelled for ${this.userId}`);
+      return;
+    }
+
     if (!this.isRecording) return;
 
-    console.log(`[STT] User ${this.userId} stopped speaking, waiting ${SILENCE_TIMEOUT_MS}ms before finalize`);
+    sttLog(`[STT] User ${this.userId} stopped speaking, waiting ${SILENCE_TIMEOUT_MS}ms before finalize`);
 
     // Mark stream as potentially dead
     this.hasActiveStream = false;
@@ -103,7 +176,7 @@ class UserRecorder {
     }
 
     this.silenceTimer = setTimeout(() => {
-      console.log(`[STT] Silence timeout reached for ${this.userId}, finalizing recording`);
+      sttLog(`[STT] Silence timeout reached for ${this.userId}, finalizing recording`);
       this.finalize();
     }, SILENCE_TIMEOUT_MS);
   }
@@ -139,11 +212,17 @@ class UserRecorder {
     });
 
     this.decoder.on('error', (err) => {
-      console.log(`[STT] Decoder error for ${this.userId}:`, err?.message);
+      sttLog(`[STT] Decoder error for ${this.userId}:`, err?.message);
     });
 
     this.decoder.on('data', (chunk) => {
-      if (this.isRecording && chunk && chunk.length > 0) {
+      if (!chunk || chunk.length === 0) return;
+      // While arming, collect into prebuffer for RMS evaluation
+      if (this.arming) {
+        this.prebufferChunks.push(Buffer.from(chunk));
+      }
+      // If already recording, append to main audio buffer
+      if (this.isRecording) {
         this.audioChunks.push(Buffer.from(chunk));
       }
     });
@@ -159,17 +238,17 @@ class UserRecorder {
 
       this.currentStream.on('error', (err) => {
         if (!err?.message?.includes('DAVE')) {
-          console.log(`[STT] Stream error for ${this.userId}:`, err?.message);
+          sttLog(`[STT] Stream error for ${this.userId}:`, err?.message);
         }
       });
 
       // Pipe to decoder
       this.currentStream.pipe(this.decoder);
       
-      console.log(`[STT] Created new audio stream for ${this.userId} (manual end)`);
+      sttLog(`[STT] Created new audio stream for ${this.userId} (manual end)`);
 
     } catch (err) {
-      console.log(`[STT] Failed to create stream for ${this.userId}:`, err?.message);
+      sttLog(`[STT] Failed to create stream for ${this.userId}:`, err?.message);
     }
   }
 
@@ -178,7 +257,7 @@ class UserRecorder {
    */
   startRecording() {
     if (this.isRecording) {
-      console.log(`[STT] Recording already active for ${this.userId}, skipping start`);
+      sttLog(`[STT] Recording already active for ${this.userId}, skipping start`);
       return;
     }
 
@@ -199,7 +278,7 @@ class UserRecorder {
     // Create new stream and decoder immediately
     this.createNewStream();
 
-    console.log(`[STT] Started recording for user ${this.userId}`);
+    sttLog(`[STT] Started recording for user ${this.userId}`);
   }
 
   /**
@@ -207,7 +286,7 @@ class UserRecorder {
    */
   async finalize() {
     if (!this.isRecording || this.isProcessing) {
-      console.log(`[STT] Skipping finalize for ${this.userId} - isRecording:${this.isRecording}, isProcessing:${this.isProcessing}`);
+      sttLog(`[STT] Skipping finalize for ${this.userId} - isRecording:${this.isRecording}, isProcessing:${this.isProcessing}`);
       return;
     }
 
@@ -241,17 +320,17 @@ class UserRecorder {
     // Cleanup decoder for next recording
     this.cleanupDecoder();
 
-    console.log(`[STT] Finalizing for ${this.userId} - duration:${duration}ms, chunks:${chunkCount}, bytes:${totalBytes}`);
+    sttLog(`[STT] Finalizing for ${this.userId} - duration:${duration}ms, chunks:${chunkCount}, bytes:${totalBytes}`);
 
     // Check if we have audio data
     if (chunkCount === 0 || totalBytes === 0) {
-      console.log(`[STT] Discarded audio for ${this.userId} - no data received (${duration}ms, ${chunkCount} chunks)`);
+      sttLog(`[STT] Discarded audio for ${this.userId} - no data received (${duration}ms, ${chunkCount} chunks)`);
       this.isProcessing = false;
       return;
     }
 
     if (duration < MIN_AUDIO_DURATION_MS) {
-      console.log(`[STT] Discarded short audio for ${this.userId} (${duration}ms, ${totalBytes} bytes)`);
+      sttLog(`[STT] Discarded short audio for ${this.userId} (${duration}ms, ${totalBytes} bytes)`);
       this.isProcessing = false;
       return;
     }
@@ -260,13 +339,13 @@ class UserRecorder {
     const pcmBuffer = Buffer.concat(chunks);
     const wavBuffer = pcmToWav(pcmBuffer);
 
-    console.log(`[STT] Finalized recording for ${this.userId} | ${duration}ms | ${wavBuffer.length} bytes | ${chunkCount} chunks`);
+    sttLog(`[STT] Finalized recording for ${this.userId} | ${duration}ms | ${wavBuffer.length} bytes | ${chunkCount} chunks`);
 
     // Process transcription
     try {
       await this.session.processAudio(this.userId, wavBuffer);
     } catch (err) {
-      console.log(`[STT] Transcription error for ${this.userId}:`, err?.message);
+      sttLog(`[STT] Transcription error for ${this.userId}:`, err?.message);
     }
 
     this.isProcessing = false;
@@ -290,6 +369,12 @@ class UserRecorder {
    */
   cleanupAll() {
     this.audioChunks = [];
+    this.prebufferChunks = [];
+    if (this.armTimer) {
+      clearTimeout(this.armTimer);
+      this.armTimer = null;
+    }
+    this.arming = false;
 
     if (this.currentStream) {
       try {
@@ -315,6 +400,13 @@ class UserRecorder {
       this.silenceTimer = null;
     }
     
+    if (this.armTimer) {
+      clearTimeout(this.armTimer);
+      this.armTimer = null;
+    }
+    this.arming = false;
+    this.prebufferChunks = [];
+
     this.cleanupAll();
   }
 }
