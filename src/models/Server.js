@@ -95,7 +95,7 @@ const serverSchema = new mongoose.Schema({
         },
         isRestricted: {
             type: Boolean,
-            default: false
+            default: true
         },
         isExempt: {
             type: Boolean,

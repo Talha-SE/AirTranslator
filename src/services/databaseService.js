@@ -290,7 +290,7 @@ const saveServerConfig = async (serverId, config) => {
                 translationCount: 0,
                 monetization: {
                     freeTranslationLimit: 20,
-                    isRestricted: false,
+                    isRestricted: true,
                     isExempt: false,
                     lastReset: new Date(),
                     customLimit: null
@@ -561,7 +561,7 @@ const incrementTranslationCount = async (serverId) => {
                     serverName: 'Unknown Server',
                     monetization: {
                         freeTranslationLimit: 20,
-                        isRestricted: false,
+                        isRestricted: true,
                         isExempt: false,
                         lastReset: new Date(),
                         customLimit: null
@@ -613,7 +613,7 @@ const updateServerTranslationCount = async (serverId, count) => {
                     serverName: 'Unknown Server',
                     monetization: {
                         freeTranslationLimit: 20,
-                        isRestricted: false,
+                        isRestricted: true,
                         isExempt: false,
                         lastReset: new Date(),
                         customLimit: null

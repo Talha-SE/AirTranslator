@@ -80,7 +80,7 @@ class MonetizationService {
             // Return safe defaults
             return {
                 freeTranslationLimit: this.globalSettings.defaultFreeTranslationLimit,
-                isRestricted: false,
+                isRestricted: true,
                 isExempt: false,
                 lastReset: new Date(),
                 customLimit: null
