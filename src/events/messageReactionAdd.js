@@ -27,13 +27,8 @@ async function startVoteTrackingForServer(serverId, userInfo, client) {
                                 if (channel) {
                                     const confirmEmbed = new EmbedBuilder()
                                         .setTitle('🎉 Free Credits Added!')
-                                        .setDescription(`**${VOTE_BONUS_AMOUNT} free translations** have been added to your server!`)
+                                        .setDescription(`**${VOTE_BONUS_AMOUNT} free translations** have been added to this server.\n\nThanks to **${userInfo?.displayName || 'a user'}** for supporting AirTranslator!`)
                                         .setColor('#00ff88')
-                                        .addFields({
-                                            name: '✨ Thank you!',
-                                            value: `Thanks to ${userInfo?.displayName || 'a user'} for supporting AirTranslator!`,
-                                            inline: false
-                                        })
                                         .setFooter({
                                             text: 'AirTranslator • Vote rewards',
                                             iconURL: client.user.displayAvatarURL()

@@ -113,13 +113,8 @@ function startVoteTracking(serverId, userInfo = null, client = null) {
                             if (channel) {
                                 const confirmEmbed = new EmbedBuilder()
                                     .setTitle('🎉 Free Credits Added!')
-                                    .setDescription(`**${VOTE_BONUS_AMOUNT} free translations** have been added to your server!`)
+                                    .setDescription(`**${VOTE_BONUS_AMOUNT} free translations** have been added to this server.\n\nThanks to **${userInfo?.displayName || 'a user'}** for supporting AirTranslator!`)
                                     .setColor('#00ff88')
-                                    .addFields({
-                                        name: '✨ Thank you!',
-                                        value: `Thanks to ${userInfo?.displayName || 'a user'} for supporting AirTranslator!`,
-                                        inline: false
-                                    })
                                     .setFooter({
                                         text: 'AirTranslator • Vote rewards',
                                         iconURL: client.user.displayAvatarURL()
@@ -507,7 +502,7 @@ async function translateAndReply(message, languages, options = {}) {
                         new ButtonBuilder()
                             .setCustomId(`vote_on_topgg:${message.guild.id}`)
                             .setLabel('Free (Vote)')
-                            .setStyle(ButtonStyle.Secondary),
+                            .setStyle(ButtonStyle.Success),
                         new ButtonBuilder()
                             .setCustomId(`see_payment_options:${message.guild.id}`)
                             .setLabel('Paid Options')

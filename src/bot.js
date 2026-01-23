@@ -625,7 +625,7 @@ client.on(Events.InteractionCreate, async interaction => {
                                 const successEmbed = new EmbedBuilder()
                                     .setColor('#00ff88')
                                     .setTitle('🎉 Free Credits Added!')
-                                    .setDescription(`**${BONUS} free translations** have been added to this server. Thank you for supporting AirTranslator!`)
+                                    .setDescription(`**${BONUS} free translations** have been added to this server.\n\nThanks to **${requester?.displayName || 'a user'}** for supporting AirTranslator!`)
                                     .setFooter({ text: 'Air Translator • Vote rewards', iconURL: interaction.client.user.displayAvatarURL() })
                                     .setTimestamp(new Date());
 
