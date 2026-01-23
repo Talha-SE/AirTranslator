@@ -34,18 +34,24 @@ class VoteCheckService {
             this.checkRecentVotes();
         }, this.checkInterval);
 
-        // Periodic cleanup of expired cooldowns (every hour)
+        // Periodic cleanup of expired cooldowns and old vote events (every hour)
         if (this.cooldownCleanupTimer) {
             clearInterval(this.cooldownCleanupTimer);
         }
         this.cooldownCleanupTimer = setInterval(async () => {
             try {
-                const deleted = await databaseService.cleanupExpiredVoteCooldowns(12);
-                if (deleted > 0) {
-                    console.log(`🧹 Cleaned ${deleted} expired vote cooldowns`);
+                const deletedCooldowns = await databaseService.cleanupExpiredVoteCooldowns(12);
+                if (deletedCooldowns > 0) {
+                    console.log(`🧹 Cleaned ${deletedCooldowns} expired vote cooldowns`);
+                }
+                
+                // Backup cleanup for vote events (TTL index should handle this, but manual cleanup as backup)
+                const deletedEvents = await databaseService.cleanupOldVoteEvents(24);
+                if (deletedEvents > 0) {
+                    console.log(`🧹 Cleaned ${deletedEvents} old vote events (24h+)`);
                 }
             } catch (e) {
-                console.error('Error during cooldown cleanup:', e.message);
+                console.error('Error during cleanup:', e.message);
             }
         }, 60 * 60 * 1000);
     }
@@ -127,41 +133,41 @@ class VoteCheckService {
                         }
                     }
                     
-                    // Enforce 12-hour per-user cooldown (persisted in DB)
+                    // Enforce 12-hour per-user-per-server cooldown (persisted in DB)
                     let lastRewarded = 0;
                     try {
-                        const cooldown = await databaseService.getUserVoteCooldown(userId);
+                        const cooldown = await databaseService.getUserVoteCooldown(userId, targetServerId, 'topgg');
                         lastRewarded = cooldown?.lastRewardedAt ? new Date(cooldown.lastRewardedAt).getTime() : 0;
                     } catch (_) { /* ignore lookup errors */ }
                     const canReward = now - lastRewarded >= twelveHoursMs;
 
                     if (targetServerId && canReward) {
-                        console.log(`⏳ Scheduling 20 free translations for user ${userId} in server ${targetServerId} after 1 minute`);
+                        console.log(`⏳ Scheduling 25 free translations for user ${userId} in server ${targetServerId} after 1 minute`);
 
                         // Persist cooldown immediately to avoid duplicate scheduling
                         try {
-                            // Upsert new cooldown timestamp (acts like delete+add semantics)
-                            await databaseService.upsertUserVoteCooldown(userId, new Date(now));
+                            // Upsert new cooldown timestamp for this user+server combination
+                            await databaseService.upsertUserVoteCooldown(userId, targetServerId, new Date(now), 'topgg');
                         } catch (err) {
                             console.error('Failed to upsert cooldown before scheduling:', err.message);
                         }
 
                         setTimeout(async () => {
                             try {
-                                const result = await monetizationService.handleVoteReward(userId, targetServerId, 25);
-                                if (result.success) {
+                                const result = await monetizationService.handleVoteReward(userId, targetServerId, 25, null, 'topgg');
+                                if (result && result.success) {
                                     console.log(`✅ Vote reward (25 translations) granted to server ${targetServerId} by user ${userId}`);
                                     await this.sendVoteConfirmation(userId, targetServerId, 25);
-                                    // Refresh cooldown to actual grant time
-                                    try { await databaseService.upsertUserVoteCooldown(userId, new Date()); } catch (_) {}
+                                    // Refresh cooldown to actual grant time for this server
+                                    try { await databaseService.upsertUserVoteCooldown(userId, targetServerId, new Date(), 'topgg'); } catch (_) {}
                                 } else {
                                     console.log(`⚠️ Failed to grant vote reward for user ${userId}: ${result.error || 'unknown error'}`);
-                                    // Roll back cooldown to allow retry next cycle
-                                    try { await databaseService.deleteUserVoteCooldown(userId); } catch (_) {}
+                                    // Roll back cooldown to allow retry next cycle for this server
+                                    try { await databaseService.deleteUserVoteCooldown(userId, targetServerId, 'topgg'); } catch (_) {}
                                 }
                             } catch (err) {
                                 console.error('Error during delayed vote reward:', err);
-                                try { await databaseService.deleteUserVoteCooldown(userId); } catch (_) {}
+                                try { await databaseService.deleteUserVoteCooldown(userId, targetServerId, 'topgg'); } catch (_) {}
                             }
                         }, ONE_MINUTE_MS);
 
@@ -229,7 +235,7 @@ class VoteCheckService {
             const { EmbedBuilder } = require('discord.js');
             const confirmEmbed = new EmbedBuilder()
                 .setTitle('🎉 Free Credits Added!')
-                .setDescription(`**${amount} free translations** have been added to this server. Thank you <@${userId}> for voting!`)
+                .setDescription(`**${user.username}** voted for this server!\n\n**${amount} free translations** have been added to this server. Thank you for supporting AirTranslator!`)
                 .setColor('#00ff88')
                 .setFooter({
                     text: 'AirTranslator • Vote rewards',

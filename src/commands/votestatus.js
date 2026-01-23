@@ -60,7 +60,7 @@ module.exports = {
                     },
                     {
                         name: '📋 How to Vote',
-                        value: '1️⃣ Click the **Vote on Top.gg** button below\n2️⃣ Complete the voting process on Top.gg\n3️⃣ Get 10 bonus translations within 5 minutes!\n4️⃣ No manual claiming needed - it\'s automatic!',
+                        value: '1️⃣ Click the **Vote on Top.gg** button below 👇\n2️⃣ Complete the voting process on Top.gg\n3️⃣ Get 10 bonus translations within 5 minutes!\n4️⃣ No manual claiming needed - it\'s automatic!',
                         inline: false
                     }
                 );

@@ -354,49 +354,62 @@ class MonetizationService {
     /**
      * Handle vote reward - grant additional translations
      */
-    async handleVoteReward(userId, serverId = null, bonusAmount = 30, userInfo = null) {
+    async handleVoteReward(userId, serverId = null, bonusAmount = 30, userInfo = null, source = 'topgg') {
         try {
-            // Check if user can vote (12-hour cooldown)
-            if (!(await this.canUserVote(userId))) {
-                const remainingTime = await this.getUserCooldownRemaining(userId);
+            if (!serverId) {
+                console.error('handleVoteReward: serverId is required');
+                return { success: false, error: 'Server ID is required' };
+            }
+
+            // Check if user can vote for this specific server (12-hour cooldown per server)
+            if (!(await this.canUserVote(userId, serverId, source))) {
+                const remainingTime = await this.getUserCooldownRemaining(userId, serverId, source);
                 const hoursRemaining = Math.ceil(remainingTime / (60 * 60 * 1000));
                 
                 // Record the vote click but don't grant credits
                 const infoFallback = userInfo || (userId ? { id: userId } : null);
-                await this.recordVoteEvent(serverId, 0, infoFallback);
+                await this.recordVoteEvent(serverId, 0, infoFallback, source);
                 
-                console.log(`Vote blocked: User ${userId} is on cooldown for ${hoursRemaining} hours`);
+                console.log(`Vote blocked: User ${userId} is on cooldown for ${hoursRemaining} hours for source ${source}`);
                 return { 
                     success: false, 
                     onCooldown: true,
                     hoursRemaining,
-                    message: `You can vote again in ${hoursRemaining} hours` 
+                    message: `You can vote again on ${source === 'topgg' ? 'Top.gg' : 'our Official Site'} in ${hoursRemaining} hours` 
                 };
             }
 
             if (serverId) {
-                // Grant bonus translations to the server
+                // Grant bonus translations by increasing the limit
+                // Get the current effective limit (custom limit or default)
                 const serverSettings = await this.getServerSettings(serverId);
-                const newLimit = serverSettings.freeTranslationLimit + bonusAmount;
+                const currentEffectiveLimit = serverSettings.customLimit || this.globalSettings.defaultFreeTranslationLimit;
                 
-                await this.updateServerSettings(serverId, {
-                    ...serverSettings,
-                    freeTranslationLimit: newLimit
-                });
+                // Add bonus to the effective limit
+                const newLimit = currentEffectiveLimit + bonusAmount;
                 
-                // Record the vote event with credits granted
-                const infoFallback = userInfo || (userId ? { id: userId } : null);
-                await this.recordVoteEvent(serverId, bonusAmount, infoFallback);
+                // Update the custom limit with the new total
+                serverSettings.customLimit = newLimit;
+                await this.updateServerSettings(serverId, serverSettings);
                 
-                console.log(`Vote reward granted: ${bonusAmount} bonus translations to server ${serverId}`);
-                return { success: true, newLimit, bonusAmount };
-            } else {
-                // Record vote without server-specific reward but still apply cooldown
-                const infoFallback = userInfo || (userId ? { id: userId } : null);
-                await this.recordVoteEvent(null, 0, infoFallback);
-                console.log(`Vote received from user ${userId} - no specific server reward`);
-                return { success: true, message: 'Vote recorded' };
+                // Record the successful vote event
+                await this.recordVoteEvent(serverId, bonusAmount, userInfo, source);
+                
+                const server = await databaseService.getServer(serverId);
+                const currentCount = server?.translationCount || 0;
+                
+                console.log(`✅ Vote reward granted: ${bonusAmount} translations added to server ${serverId} (limit: ${currentEffectiveLimit} → ${newLimit}, used: ${currentCount})`);
+                
+                return { 
+                    success: true, 
+                    bonusAmount,
+                    newLimit,
+                    currentCount,
+                    message: `Successfully added ${bonusAmount} free translations to your server! (${currentCount}/${newLimit})` 
+                };
             }
+            
+            return { success: false, error: 'No server ID provided' };
         } catch (error) {
             console.error('Error handling vote reward:', error);
             return { success: false, error: error.message };
@@ -404,20 +417,36 @@ class MonetizationService {
     }
 
     /**
-     * Check if user can vote (12-hour cooldown) - now uses database
+     * Check if user can vote for a specific server (12-hour cooldown per server) - now uses database
      */
-    async canUserVote(userId) {
-        if (!userId) return false;
+    async canUserVote(userId, serverId, source = 'topgg') {
+        if (!userId || !serverId) {
+            console.warn(`⚠️ canUserVote: Missing userId or serverId - userId: ${userId}, serverId: ${serverId}`);
+            return false;
+        }
         
         try {
-            const cooldown = await databaseService.getUserVoteCooldown(userId);
-            if (!cooldown) return true;
+            const cooldown = await databaseService.getUserVoteCooldown(userId, serverId, source);
+            
+            if (!cooldown) {
+                console.log(`✅ No cooldown found for user ${userId} on server ${serverId} (${source}) - can vote`);
+                return true;
+            }
             
             const TWELVE_HOURS = 12 * 60 * 60 * 1000;
             const now = Date.now();
             const timeSinceLastVote = now - cooldown.lastRewardedAt.getTime();
+            const hoursRemaining = Math.max(0, Math.ceil((TWELVE_HOURS - timeSinceLastVote) / (60 * 60 * 1000)));
             
-            return timeSinceLastVote >= TWELVE_HOURS;
+            const canVote = timeSinceLastVote >= TWELVE_HOURS;
+            
+            if (canVote) {
+                console.log(`✅ Cooldown expired for user ${userId} on server ${serverId} (${source}) - can vote`);
+            } else {
+                console.log(`❌ Cooldown active for user ${userId} on server ${serverId} (${source}) - ${hoursRemaining}h remaining`);
+            }
+            
+            return canVote;
         } catch (error) {
             console.error('Error checking user vote cooldown:', error);
             return true; // Allow vote on error
@@ -425,22 +454,36 @@ class MonetizationService {
     }
 
     /**
-     * Get remaining cooldown time for user - now uses database
+     * Get remaining cooldown time for user for a specific server - now uses database
      */
-    async getUserCooldownRemaining(userId) {
-        if (!userId) return 0;
+    async getUserCooldownRemaining(userId, serverId, source = 'topgg') {
+        if (!userId || !serverId) {
+            console.warn(`⚠️ getUserCooldownRemaining: Missing userId or serverId`);
+            return 0;
+        }
         
         try {
-            const cooldown = await databaseService.getUserVoteCooldown(userId);
-            if (!cooldown) return 0;
+            const cooldown = await databaseService.getUserVoteCooldown(userId, serverId, source);
+            
+            if (!cooldown) {
+                console.log(`ℹ️ No cooldown found for user ${userId} on server ${serverId} (${source}) - 0 remaining`);
+                return 0;
+            }
             
             const TWELVE_HOURS = 12 * 60 * 60 * 1000;
             const now = Date.now();
             const timeSinceLastVote = now - cooldown.lastRewardedAt.getTime();
             
-            if (timeSinceLastVote >= TWELVE_HOURS) return 0;
+            if (timeSinceLastVote >= TWELVE_HOURS) {
+                console.log(`ℹ️ Cooldown expired for user ${userId} on server ${serverId} (${source})`);
+                return 0;
+            }
             
-            return TWELVE_HOURS - timeSinceLastVote;
+            const remaining = TWELVE_HOURS - timeSinceLastVote;
+            const hoursRemaining = Math.ceil(remaining / (60 * 60 * 1000));
+            console.log(`ℹ️ User ${userId} has ${hoursRemaining}h cooldown remaining on server ${serverId} (${source})`);
+            
+            return remaining;
         } catch (error) {
             console.error('Error getting user cooldown remaining:', error);
             return 0;
@@ -450,13 +493,13 @@ class MonetizationService {
     /**
      * Record vote event for admin panel tracking - now uses database
      */
-    async recordVoteEvent(serverId, creditsGranted, userInfo = null) {
+    async recordVoteEvent(serverId, creditsGranted, userInfo = null, source = 'topgg') {
         try {
             const now = new Date();
             
-            // Update user cooldown if credits were granted
-            if (creditsGranted > 0 && userInfo?.id) {
-                await databaseService.upsertUserVoteCooldown(userInfo.id, now);
+            // Update user cooldown if credits were granted (per server)
+            if (creditsGranted > 0 && userInfo?.id && serverId) {
+                await databaseService.upsertUserVoteCooldown(userInfo.id, serverId, now, source);
             }
             
             // Save vote event to database
@@ -472,7 +515,7 @@ class MonetizationService {
                     displayName: safeDisplayName,
                     avatar: avatarUrl,
                     creditsGranted,
-                    timestamp: now,
+                    timestamp: now, 
                     status: creditsGranted > 0 ? 'granted' : 'blocked_cooldown'
                 };
                 

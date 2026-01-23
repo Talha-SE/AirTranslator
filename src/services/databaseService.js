@@ -27,12 +27,41 @@ const connectDB = async () => {
             console.warn('Index maintenance warning:', idxErr.message || idxErr);
         }
 
+        // Drop old userId_1 unique index from votecooldowns that causes duplicate key errors
+        try {
+            const voteCooldownIndexes = await mongoose.connection.db.collection('votecooldowns').indexes();
+            const oldUserIdIndex = voteCooldownIndexes.find(idx => idx.name === 'userId_1' && idx.unique === true);
+            if (oldUserIdIndex) {
+                await mongoose.connection.db.collection('votecooldowns').dropIndex('userId_1');
+                console.log('Dropped old unique userId_1 index from votecooldowns');
+            }
+        } catch (idxErr) {
+            // Non-fatal - index might not exist
+            console.warn('VoteCooldown index cleanup warning:', idxErr.message || idxErr);
+        }
+
         // Align collection indexes with Mongoose schema (will create missing and remove extraneous)
         try {
             await require('../models/Server').syncIndexes();
             console.log('Server indexes synced');
         } catch (syncErr) {
             console.warn('Server index sync warning:', syncErr.message || syncErr);
+        }
+
+        // Sync VoteCooldown indexes
+        try {
+            await require('../models/VoteCooldown').syncIndexes();
+            console.log('VoteCooldown indexes synced');
+        } catch (syncErr) {
+            console.warn('VoteCooldown index sync warning:', syncErr.message || syncErr);
+        }
+
+        // Sync VoteEvent indexes (includes TTL index for 24h auto-deletion)
+        try {
+            await require('../models/VoteEvent').syncIndexes();
+            console.log('VoteEvent indexes synced (24h TTL active)');
+        } catch (syncErr) {
+            console.warn('VoteEvent index sync warning:', syncErr.message || syncErr);
         }
     } catch (error) {
         console.error('MongoDB connection error:', error);
@@ -41,13 +70,39 @@ const connectDB = async () => {
 };
 
 /**
- * Get a user's vote cooldown record
+ * Get user vote cooldown for a specific server and source
  * @param {String} userId - The Discord user ID
+ * @param {String} serverId - The Discord server ID
+ * @param {String} source - The vote source ('topgg' or 'official')
  * @returns {Promise<Object|null>} - The cooldown document or null
  */
-const getUserVoteCooldown = async (userId) => {
+const getUserVoteCooldown = async (userId, serverId, source = 'topgg') => {
     try {
-        return await VoteCooldown.findOne({ userId }).lean();
+        if (!serverId) {
+            console.warn('⚠️ getUserVoteCooldown called without serverId');
+            return null;
+        }
+        
+        // Try to find cooldown with serverId (new schema)
+        let cooldown = await VoteCooldown.findOne({ userId, serverId, source }).lean();
+        
+        // Fallback: Check for old records without serverId (migration support)
+        if (!cooldown) {
+            const oldCooldown = await VoteCooldown.findOne({ userId, source, serverId: { $exists: false } }).lean();
+            if (oldCooldown) {
+                console.log(`🔄 Found old cooldown record for user ${userId}, migrating to new schema with serverId ${serverId}`);
+                // Migrate old record to new schema
+                await VoteCooldown.deleteOne({ _id: oldCooldown._id });
+                cooldown = await VoteCooldown.create({
+                    userId,
+                    serverId,
+                    source,
+                    lastRewardedAt: oldCooldown.lastRewardedAt
+                });
+            }
+        }
+        
+        return cooldown;
     } catch (error) {
         console.error('Error getting user vote cooldown:', error);
         return null;
@@ -55,16 +110,21 @@ const getUserVoteCooldown = async (userId) => {
 };
 
 /**
- * Upsert a user's vote cooldown timestamp
+ * Upsert a user's vote cooldown timestamp for a specific server and source
  * @param {String} userId - The Discord user ID
+ * @param {String} serverId - The Discord server ID
  * @param {Date} lastRewardedAt - The timestamp to set
+ * @param {String} source - The vote source ('topgg' or 'official')
  * @returns {Promise<Object>} - The upserted cooldown document
  */
-const upsertUserVoteCooldown = async (userId, lastRewardedAt) => {
+const upsertUserVoteCooldown = async (userId, serverId, lastRewardedAt, source = 'topgg') => {
     try {
+        if (!serverId) {
+            throw new Error('serverId is required for upsertUserVoteCooldown');
+        }
         return await VoteCooldown.findOneAndUpdate(
-            { userId },
-            { $set: { lastRewardedAt } },
+            { userId, serverId, source },
+            { $set: { lastRewardedAt, serverId } },
             { new: true, upsert: true }
         );
     } catch (error) {
@@ -74,13 +134,20 @@ const upsertUserVoteCooldown = async (userId, lastRewardedAt) => {
 };
 
 /**
- * Delete a user's vote cooldown (e.g., after 12 hours or during cleanup)
+ * Delete a user's vote cooldown for a specific server and source
  * @param {String} userId - The Discord user ID
+ * @param {String} serverId - The Discord server ID (optional, if not provided deletes all for user+source)
+ * @param {String} source - The vote source
  * @returns {Promise<void>}
  */
-const deleteUserVoteCooldown = async (userId) => {
+const deleteUserVoteCooldown = async (userId, serverId = null, source = 'topgg') => {
     try {
-        await VoteCooldown.deleteOne({ userId });
+        if (serverId) {
+            await VoteCooldown.deleteOne({ userId, serverId, source });
+        } else {
+            // Fallback: delete by userId and source only (for cleanup)
+            await VoteCooldown.deleteOne({ userId, source });
+        }
     } catch (error) {
         console.error('Error deleting user vote cooldown:', error);
     }
@@ -98,6 +165,22 @@ const cleanupExpiredVoteCooldowns = async (hours = 12) => {
         return res.deletedCount || 0;
     } catch (error) {
         console.error('Error cleaning up expired vote cooldowns:', error);
+        return 0;
+    }
+};
+
+/**
+ * Cleanup old vote events older than 24 hours (backup to TTL index)
+ * @param {number} hours - Hours threshold (default 24)
+ * @returns {Promise<number>} - Number of deleted docs
+ */
+const cleanupOldVoteEvents = async (hours = 24) => {
+    try {
+        const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
+        const res = await VoteEvent.deleteMany({ timestamp: { $lt: cutoff } });
+        return res.deletedCount || 0;
+    } catch (error) {
+        console.error('Error cleaning up old vote events:', error);
         return 0;
     }
 };
@@ -853,9 +936,11 @@ module.exports = {
     upsertUserVoteCooldown,
     deleteUserVoteCooldown,
     cleanupExpiredVoteCooldowns,
+    cleanupOldVoteEvents,
     saveVoteEvent,
     getVoteStats,
     getRecentVoteEvents,
+    deleteVoteEventById,
     // Premium requests
     createPremiumRequest,
     getPendingPremiumRequests,

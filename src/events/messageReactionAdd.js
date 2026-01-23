@@ -312,7 +312,7 @@ async function messageReactionAdd(client, reaction, user) {
                     .addFields(
                         {
                             name: '🎯 Get More Translations',
-                            value: 'Vote for AirTranslator on Top.gg to unlock **50 more free translations**!',
+                            value: 'Vote to unlock up to **50 more free translations**!',
                             inline: false
                         },
                         {
@@ -329,7 +329,7 @@ async function messageReactionAdd(client, reaction, user) {
 
                 const voteButton = new ButtonBuilder()
                     .setCustomId(`vote_on_topgg:${message.guild.id}`)
-                    .setLabel('Vote on Top.gg')
+                    .setLabel('Vote to Unlock')
                     .setEmoji('🗳️')
                     .setStyle(ButtonStyle.Success);
 
@@ -357,7 +357,7 @@ async function messageReactionAdd(client, reaction, user) {
                 try {
                     const dmEmbed = new EmbedBuilder()
                         .setTitle('💎 Premium Payment Review')
-                        .setDescription('If you have completed the premium payment, press the button below to request approval. Our team will review and exempt your server shortly.')
+                        .setDescription('**Pricing Details:**\n• $5 USD per month for everything in bot\n\nClick the below button to open the price page.\n\nIf you have completed the premium payment, press the button below to request approval. Our team will review and exempt your server shortly.')
                         .setColor('#5865F2')
                         .addFields(
                             { name: 'Server', value: message.guild.name, inline: true },
@@ -365,12 +365,16 @@ async function messageReactionAdd(client, reaction, user) {
                         )
                         .setTimestamp();
 
-                    const requestApprovalButton = new ButtonBuilder()
-                        .setCustomId(`premium_request:${message.guild.id}`)
-                        .setLabel('✅ I Paid - Request Approval')
-                        .setStyle(ButtonStyle.Primary);
-
-                    const dmRow = new ActionRowBuilder().addComponents(requestApprovalButton);
+                    const dmRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setLabel('💳 Open Payment Options')
+                            .setStyle(ButtonStyle.Link)
+                            .setURL('https://www.patreon.com/cw/TSIO/membership'),
+                        new ButtonBuilder()
+                            .setCustomId(`premium_request:${message.guild.id}`)
+                            .setLabel('✅ I already paid')
+                            .setStyle(ButtonStyle.Primary)
+                    );
                     await user.send({ embeds: [dmEmbed], components: [dmRow] });
                 } catch (dmErr) {
                     console.log('Could not DM user about premium request button (flag path). DMs may be closed.');

@@ -552,6 +552,7 @@ client.on(Events.InteractionCreate, async interaction => {
             if (customId.startsWith('vote_choice_topgg') || customId.startsWith('vote_choice_official')) {
                 try {
                     const isTopgg = customId.startsWith('vote_choice_topgg');
+                    const source = isTopgg ? 'topgg' : 'official';
                     const BONUS = isTopgg ? 25 : 50;
                     const SITE_NAME = isTopgg ? 'Top.gg' : 'Official Site';
                     const DELAY_MS = 60 * 1000;
@@ -566,6 +567,30 @@ client.on(Events.InteractionCreate, async interaction => {
                         await interaction.reply({ content: '❌ Could not determine the target server.', flags: MessageFlags.Ephemeral });
                         return;
                     }
+
+                    // Check cooldown before showing the link (per server)
+                    console.log(`🗳️ Checking vote cooldown for user ${interaction.user.id} on server ${serverId} (${source})`);
+                    const canVote = await monetizationService.canUserVote(interaction.user.id, serverId, source);
+                    
+                    if (!canVote) {
+                        const remainingTime = await monetizationService.getUserCooldownRemaining(interaction.user.id, serverId, source);
+                        const hrs = Math.ceil(remainingTime / (60 * 60 * 1000));
+                        console.log(`⏳ Showing cooldown message to user ${interaction.user.id}: ${hrs} hours remaining`);
+                        
+                        await interaction.reply({
+                            embeds: [new EmbedBuilder()
+                                .setColor('#f59e0b')
+                                .setTitle('⏳ Vote Cooldown Active')
+                                .setDescription(`You have already voted on **${SITE_NAME}** for this server within the last 12 hours. You can claim vote rewards again in about **${hrs} hour(s)**.`)
+                                .setFooter({ text: 'Air Translator • Vote rewards' })
+                                .setTimestamp(new Date())
+                            ],
+                            flags: MessageFlags.Ephemeral
+                        });
+                        return;
+                    }
+                    
+                    console.log(`✅ User ${interaction.user.id} can vote on server ${serverId} (${source})`);
 
                     const linkUrl = isTopgg 
                         ? `https://top.gg/bot/1380177061032759416/vote?guild=${serverId}`
@@ -582,9 +607,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     const pendingEmbed = new EmbedBuilder()
                         .setColor('#129af5')
                         .setTitle('🗳️ Thanks for supporting!')
-                        .setDescription(`We'll add **${BONUS} free translations** to this server in about **${Math.floor(DELAY_MS/1000)} seconds**.\nPlease complete the vote on ${SITE_NAME} in the meantime.`)
-                        .setFooter({ text: 'Air Translator • Vote rewards', iconURL: interaction.client.user.displayAvatarURL() })
-                        .setTimestamp(new Date());
+                        .setDescription(`We'll add **${BONUS} free translations** to this server in about **${Math.floor(DELAY_MS/1000)} seconds**.\nPlease complete the vote on ${SITE_NAME} in the meantime by clicking the button below 👇.`);
 
                     await interaction.reply({ embeds: [pendingEmbed], components: [voteLinkRow], flags: MessageFlags.Ephemeral });
 
@@ -597,7 +620,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
                     setTimeout(async () => {
                         try {
-                            const result = await monetizationService.handleVoteReward(interaction.user.id, serverId, BONUS, requester);
+                            const result = await monetizationService.handleVoteReward(interaction.user.id, serverId, BONUS, requester, source);
                             if (result?.success) {
                                 const successEmbed = new EmbedBuilder()
                                     .setColor('#00ff88')
@@ -624,7 +647,7 @@ client.on(Events.InteractionCreate, async interaction => {
                                         embeds: [new EmbedBuilder()
                                             .setColor('#f59e0b')
                                             .setTitle('⏳ Vote Cooldown Active')
-                                            .setDescription(`You can claim vote rewards again in about **${hrs} hour(s)**.`)
+                                            .setDescription(`You have already voted within the last 12 hours. You can claim vote rewards again in about **${hrs} hour(s)**.`)
                                             .setFooter({ text: 'Air Translator • Vote rewards' })
                                             .setTimestamp(new Date())
                                         ],
@@ -674,7 +697,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
                     const infoEmbed = new EmbedBuilder()
                         .setTitle('💎 Premium Payment Review')
-                        .setDescription('If you have completed the premium payment, press the button below to request approval. Our team will review and exempt your server shortly.')
+                        .setDescription('**Pricing Details:**\n• $5 USD per month for everything in bot\n\nClick the below button to open the price page.\n\nIf you have completed the premium payment, press the button below to request approval. Our team will review and exempt your server shortly.')
                         .setColor('#5865F2')
                         .addFields(
                             { name: 'Server', value: serverName, inline: true },
@@ -689,7 +712,7 @@ client.on(Events.InteractionCreate, async interaction => {
                             .setURL('https://www.patreon.com/cw/TSIO/membership'),
                         new ButtonBuilder()
                             .setCustomId(`premium_request:${serverId}`)
-                            .setLabel('✅ I Paid - Request Approval')
+                            .setLabel('✅ I already paid')
                             .setStyle(ButtonStyle.Primary)
                     );
 
@@ -726,14 +749,18 @@ client.on(Events.InteractionCreate, async interaction => {
 
                 const created = await databaseService.createPremiumRequest(serverId, serverName, requester);
 
-                const msg = `✅ Your premium payment review request has been recorded for server "${serverName}".\nRequest ID: ${created?._id || 'N/A'}\nOur team will review and approve it shortly.`;
-                const embed = {
-                    color: 0x6C8BFF,
-                    title: '💎 Premium Request Recorded',
-                    description: msg,
-                    timestamp: new Date().toISOString(),
-                    footer: { text: 'Air Translator • Confirmation' }
-                };
+                const embed = new EmbedBuilder()
+                    .setColor('#00ff88') // Vibrant green for success
+                    .setTitle('💎 Premium Request Recorded')
+                    .setDescription('Your premium payment review request has been successfully received.')
+                    .addFields(
+                        { name: '📍 Server', value: `**${serverName}**`, inline: true },
+                        { name: '🆔 Request ID', value: `\`${created?._id || 'N/A'}\``, inline: true },
+                        { name: '⏳ Next Step', value: 'Our team will review your payment and approve premium status for your server shortly.', inline: false }
+                    )
+                    .setFooter({ text: 'Air Translator • Confirmation', iconURL: interaction.client.user.displayAvatarURL() })
+                    .setTimestamp();
+
                 // Notify admin(s) immediately in the background
                 (async () => {
                     try {

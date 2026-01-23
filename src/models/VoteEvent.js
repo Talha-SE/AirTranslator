@@ -10,9 +10,11 @@ const VoteEventSchema = new mongoose.Schema({
     timestamp: { type: Date, required: true, default: Date.now },
     status: { type: String, enum: ['granted', 'blocked_cooldown'], default: 'granted' }
 }, { 
-    timestamps: true,
-    index: { timestamp: -1 } // Index for sorting by timestamp descending
+    timestamps: true
 });
+
+// TTL index - automatically delete documents after 24 hours
+VoteEventSchema.index({ timestamp: 1 }, { expireAfterSeconds: 86400 }); // 24 hours = 86400 seconds
 
 // Compound index for efficient queries
 VoteEventSchema.index({ serverId: 1, timestamp: -1 });
