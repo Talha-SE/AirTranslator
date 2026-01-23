@@ -70,6 +70,29 @@ start_mimic3.bat
 *.mp3
 *.ogg
 
+# Git SSH keys
+git_ssh
+git_ssh.pub
+
+# Setup and debug scripts
+*_setup_*.js
+debug-*.js
+setup_*.js
+mimic3_setup_guide.js
+
+# Render config
+render.yaml
+
+# Documentation
+*_SUMMARY.md
+*_MIGRATION_*.md
+
+# HTML files
+*.html
+
+# Python scripts
+*.py
+
 
 
 
