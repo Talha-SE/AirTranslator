@@ -1250,10 +1250,10 @@ async function generateMonetizationContent(client) {
                                 <tr>
                                     <th>Server ID</th>
                                     <th>User</th>
-                                    <th>Credits Granted</th>
-                                    <th>Timestamp</th>
-                                    <th>Status</th>
-                                    <th>Actions</th>
+                                    <th style="text-align: center;">Credits Granted</th>
+                                    <th style="text-align: center;">Timestamp</th>
+                                    <th style="text-align: center;">Status</th>
+                                    <th style="text-align: center;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="recentVotesTbody">
@@ -1269,8 +1269,7 @@ async function generateMonetizationContent(client) {
                                             : rawName || `user_${(vote.user.id || '').toString().slice(-4)}`
                                     ) : 'unknown_user';
                                     const userDisplay = vote.user ? 
-                                        `<td>
-                                            <span class="user-mention">@${safeName}</span>
+                                        `<span class="user-mention">@${safeName}</span>
                                             <br>
                                             <small class="text-muted">ID: ${vote.user.id}</small>
                                             <br><small class="${vote.creditsGranted > 0 ? 'text-success' : 'text-warning'}">
@@ -1283,9 +1282,8 @@ async function generateMonetizationContent(client) {
                                                 <button class="btn btn-sm btn-outline-info" onclick="window.open('https://discord.com/users/${vote.user.id}', '_blank')">
                                                     Profile
                                                 </button>
-                                            </div>
-                                        </td>` : 
-                                        '<td><span class="no-user">Unknown User</span></td>';
+                                            </div>` : 
+                                        '<span class="no-user">Unknown User</span>';
                                     return `
                                     <tr>
                                         <td>
@@ -1295,10 +1293,10 @@ async function generateMonetizationContent(client) {
                                             </div>
                                         </td>
                                         <td>${userDisplay}</td>
-                                        <td><span class="credit-badge">+${vote.creditsGranted}</span></td>
-                                        <td>${timeAgo}</td>
-                                        <td><span class="status-success">✅ Granted</span></td>
-                                        <td>
+                                        <td style="text-align: center;"><span class="credit-badge">+${vote.creditsGranted}</span></td>
+                                        <td style="text-align: center;">${timeAgo}</td>
+                                        <td style="text-align: center;"><span class="status-success">✅ Granted</span></td>
+                                        <td style="text-align: center;">
                                             <button class="btn btn-sm btn-outline-danger" onclick="deleteVoteRecord('${vote.id}')">Delete</button>
                                         </td>
                                     </tr>`;
@@ -6158,8 +6156,7 @@ const server = http.createServer(async (req, res) => {
                         ? '<span class="status-success">✅ Granted</span>' 
                         : '<span class="status-warning">⏳ Blocked</span>';
                     const userDisplay = vote.user ? 
-                        `<td>
-                            <span class="user-mention">@${safeName}</span>
+                        `<span class="user-mention">@${safeName}</span>
                             <br>
                             <small class="text-muted">ID: ${vote.user.id}</small>
                             <br><small class="${vote.creditsGranted > 0 ? 'text-success' : 'text-warning'}">
@@ -6172,9 +6169,8 @@ const server = http.createServer(async (req, res) => {
                                 <button class="btn btn-sm btn-outline-info" onclick="window.open('https://discord.com/users/${vote.user.id}', '_blank')">
                                     Profile
                                 </button>
-                            </div>
-                        </td>` : 
-                        '<td><span class="no-user">Unknown User</span></td>';
+                            </div>` : 
+                        '<span class="no-user">Unknown User</span>';
                     return `
                     <tr>
                         <td>
@@ -6184,10 +6180,10 @@ const server = http.createServer(async (req, res) => {
                             </div>
                         </td>
                         <td>${userDisplay}</td>
-                        <td><span class="credit-badge">+${vote.creditsGranted}</span></td>
-                        <td>${timeAgo}</td>
-                        <td>${statusCell}</td>
-                        <td>
+                        <td style="text-align: center;"><span class="credit-badge">+${vote.creditsGranted}</span></td>
+                        <td style="text-align: center;">${timeAgo}</td>
+                        <td style="text-align: center;">${statusCell}</td>
+                        <td style="text-align: center;">
                             <button class="btn btn-sm btn-outline-danger" onclick="deleteVoteRecord('${vote.id}')">Delete</button>
                         </td>
                     </tr>`;
