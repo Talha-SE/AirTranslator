@@ -559,7 +559,8 @@ const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'devstral-small-latest';
 //const TRANSLATION_MODEL = 'mistral-medium-2508';
 const TRANSLATION_MODEL = 'mistral-small-2506';
-//const TRANSLATION_MODEL = 'mistral-small-latest';
+//const TRANSLATION_MODEL = 'ministral-14b-latest';
+const THINKING_MODE_ENABLED = true; // Enable thinking mode for ministral-14b-latest
 /**
  * Detects the language of a given text
  * @param {string} text - The text to detect the language for
@@ -609,6 +610,13 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         // If target language is "auto", we don't need to translate
         if (targetLanguage === AUTO_DETECT_LANGUAGE) {
             return text;
+        }
+
+        // Enable thinking mode (tone understanding) automatically for ministral-14b-latest model
+        const effectiveModel = modelOverride || TRANSLATION_MODEL;
+        if (THINKING_MODE_ENABLED && effectiveModel === 'ministral-14b-latest') {
+            useToneUnderstanding = true;
+            console.log('🧠 Thinking mode enabled for ministral-14b-latest model');
         }
 
         // Normalize elongated text before translation
@@ -908,6 +916,8 @@ For Korean translations, you MUST add cute chatting elements:
         } else {
             finalSystemContent += '\n\nIMPORTANT: Do not create any placeholder text or markers. Translate the text directly and naturally.';
         }
+        // Add strictest instruction for translation-only output
+        finalSystemContent += '\n\nSTRICT: If you output anything except the translation, it will be discarded. Output ONLY the translation, with no extra text, no commentary, and no formatting.';
 
         const response = await postMistralWithRetry({
             model: modelOverride || TRANSLATION_MODEL,
@@ -933,16 +943,19 @@ For Korean translations, you MUST add cute chatting elements:
         }, 3, apiKey);
 
         let translation = response.data.choices[0].message.content.trim();
-        
+
         // Remove quotes if they exist around the translation
         if ((translation.startsWith('"') && translation.endsWith('"')) || 
             (translation.startsWith("'") && translation.endsWith("'"))) {
             translation = translation.slice(1, -1);
         }
-        
+
         // Remove any explanatory notes or comments that might have slipped through
         translation = removeUnwantedNotes(translation);
-        
+
+        // Remove any lines that look like "thinking..." or non-translation output
+        translation = translation.split('\n').filter(line => !/^\s*thinking\b/i.test(line) && !/^\s*thoughts?\b/i.test(line)).join('\n').trim();
+
         // Restore the preserved technical items (URLs, mentions, etc.)
         translation = restorePreservedItems(translation, nameMap);
 

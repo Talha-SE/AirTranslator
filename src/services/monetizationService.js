@@ -3,7 +3,7 @@ const databaseService = require('./databaseService');
 class MonetizationService {
     constructor() {
         this.globalSettings = {
-            defaultFreeTranslationLimit: 20,
+            defaultFreeTranslationLimit: 50,
             enableGlobalRestriction: false
         };
         this.settingsLoaded = false;
@@ -126,8 +126,8 @@ class MonetizationService {
                 }
             }
 
-            // Get the effective limit (custom or global default)
-            const effectiveLimit = serverSettings.customLimit || serverSettings.freeTranslationLimit;
+            // Get the effective limit (custom limit takes priority, otherwise use global default)
+            const effectiveLimit = serverSettings.customLimit || this.globalSettings.defaultFreeTranslationLimit;
 
             // Check if server is restricted or global restriction is enabled
             if (serverSettings.isRestricted || this.globalSettings.enableGlobalRestriction) {
@@ -166,7 +166,7 @@ class MonetizationService {
                 isExempt: serverSettings.isExempt,
                 exemptUntil: serverSettings.exemptUntil || null,
                 canTranslate: await this.canTranslate(serverId),
-                freeTranslationLimit: serverSettings.customLimit || serverSettings.freeTranslationLimit,
+                freeTranslationLimit: serverSettings.customLimit || this.globalSettings.defaultFreeTranslationLimit,
                 lastReset: serverSettings.lastReset
             };
         } catch (error) {
@@ -282,7 +282,8 @@ class MonetizationService {
                 };
 
                 const translationCount = server.translation_count || 0;
-                const effectiveLimit = sMon.customLimit || sMon.freeTranslationLimit;
+                // Always use global default unless there's a custom limit
+                const effectiveLimit = sMon.customLimit || this.globalSettings.defaultFreeTranslationLimit;
                 const isRestricted = sMon.isRestricted || this.globalSettings.enableGlobalRestriction;
                 const canTranslate = sMon.isExempt ? true : (isRestricted ? translationCount < effectiveLimit : true);
 
@@ -308,24 +309,16 @@ class MonetizationService {
             if (client && client.guilds && client.guilds.cache) {
                 client.guilds.cache.forEach((guild) => {
                     if (!byId.has(guild.id)) {
-                        const sMonDefault = {
-                            freeTranslationLimit: this.globalSettings.defaultFreeTranslationLimit,
-                            isRestricted: this.globalSettings.enableGlobalRestriction,
-                            isExempt: false,
-                            lastReset: new Date(),
-                            customLimit: null
-                        };
-
-                        const effectiveLimit = sMonDefault.customLimit || sMonDefault.freeTranslationLimit;
+                        const effectiveLimit = this.globalSettings.defaultFreeTranslationLimit;
                         const info = {
                             id: guild.id,
                             name: guild.name || 'Unknown Server',
                             translationCount: 0,
-                            isExempt: sMonDefault.isExempt,
-                            isRestricted: sMonDefault.isRestricted || this.globalSettings.enableGlobalRestriction,
-                            canTranslate: !sMonDefault.isRestricted || 0 < effectiveLimit,
+                            isExempt: false,
+                            isRestricted: this.globalSettings.enableGlobalRestriction,
+                            canTranslate: !this.globalSettings.enableGlobalRestriction || 0 < effectiveLimit,
                             freeTranslationLimit: effectiveLimit,
-                            lastReset: sMonDefault.lastReset,
+                            lastReset: new Date(),
                             exemptUntil: null,
                             memberCount: guild.memberCount
                         };

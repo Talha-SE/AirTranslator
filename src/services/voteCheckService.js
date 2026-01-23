@@ -148,10 +148,10 @@ class VoteCheckService {
 
                         setTimeout(async () => {
                             try {
-                                const result = await monetizationService.handleVoteReward(userId, targetServerId, 20);
+                                const result = await monetizationService.handleVoteReward(userId, targetServerId, 25);
                                 if (result.success) {
-                                    console.log(`✅ Vote reward (20 translations) granted to server ${targetServerId} by user ${userId}`);
-                                    await this.sendVoteConfirmation(userId, targetServerId, 20);
+                                    console.log(`✅ Vote reward (25 translations) granted to server ${targetServerId} by user ${userId}`);
+                                    await this.sendVoteConfirmation(userId, targetServerId, 25);
                                     // Refresh cooldown to actual grant time
                                     try { await databaseService.upsertUserVoteCooldown(userId, new Date()); } catch (_) {}
                                 } else {

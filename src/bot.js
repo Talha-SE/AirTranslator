@@ -497,11 +497,9 @@ client.on(Events.InteractionCreate, async interaction => {
                 return;
             }
 
-            // Handle Top.gg vote click -> schedule 50-credit grant after 25 seconds and provide link
+            // Handle Vote Button Click -> Show 2 Options
             if (customId.startsWith('vote_on_topgg')) {
                 try {
-                    const BONUS = 50;
-                    const DELAY_MS = 25 * 1000; // 25 seconds delay
                     // Extract serverId if provided after ':' else fallback to recent mapping or current guild
                     let serverId = customId.includes(':') ? customId.split(':')[1] : null;
                     if (!serverId && global.userServerTracking && interaction.user) {
@@ -517,26 +515,79 @@ client.on(Events.InteractionCreate, async interaction => {
                         return;
                     }
 
-                    // Always provide the Top.gg link so the user can actually vote
+                    const choiceEmbed = new EmbedBuilder()
+                        .setTitle('🗳️ Choose Vote Option')
+                        .setDescription('Select where you want to vote to support AirTranslator:')
+                        .setColor('#5865F2')
+                        .addFields(
+                            { name: 'Official Site', value: 'Get **50 free translations**', inline: true },
+                            { name: 'Top.gg', value: 'Get **25 free translations**', inline: true }
+                        )
+                        .setFooter({ text: 'Air Translator • Vote rewards' });
+
+                    const choiceRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`vote_choice_official:${serverId}`)
+                            .setLabel('Vote on Official Site (50)')
+                            .setEmoji('🌐')
+                            .setStyle(ButtonStyle.Success),
+                        new ButtonBuilder()
+                            .setCustomId(`vote_choice_topgg:${serverId}`)
+                            .setLabel('Vote on Top.gg (25)')
+                            .setEmoji('🗳️')
+                            .setStyle(ButtonStyle.Primary)
+                    );
+
+                    await interaction.reply({ embeds: [choiceEmbed], components: [choiceRow], flags: MessageFlags.Ephemeral });
+                } catch (err) {
+                    logger.warn('vote_on_topgg handler error', { error: err?.message || err });
+                    try {
+                        await interaction.reply({ content: '❌ Error showing vote options.', flags: MessageFlags.Ephemeral });
+                    } catch {}
+                }
+                return;
+            }
+
+            // Handle Vote Choice (Top.gg or Official)
+            if (customId.startsWith('vote_choice_topgg') || customId.startsWith('vote_choice_official')) {
+                try {
+                    const isTopgg = customId.startsWith('vote_choice_topgg');
+                    const BONUS = isTopgg ? 25 : 50;
+                    const SITE_NAME = isTopgg ? 'Top.gg' : 'Official Site';
+                    const DELAY_MS = 60 * 1000;
+                    
+                    let serverId = customId.includes(':') ? customId.split(':')[1] : null;
+                    if (!serverId && global.userServerTracking && interaction.user) {
+                        serverId = global.userServerTracking.get(interaction.user.id) || null;
+                    }
+                    if (!serverId) serverId = interaction.guildId || null;
+
+                    if (!serverId) {
+                        await interaction.reply({ content: '❌ Could not determine the target server.', flags: MessageFlags.Ephemeral });
+                        return;
+                    }
+
+                    const linkUrl = isTopgg 
+                        ? `https://top.gg/bot/1380177061032759416/vote?guild=${serverId}`
+                        : `https://airtranslator.brevios.com`;
+
                     const voteLinkRow = new ActionRowBuilder().addComponents(
                         new ButtonBuilder()
-                            .setLabel('Open Top.gg Voting')
-                            .setEmoji('🗳️')
-                            .setURL(`https://top.gg/bot/1380177061032759416/vote?guild=${serverId}`)
+                            .setLabel(`Open ${SITE_NAME}`)
+                            .setEmoji('🔗')
+                            .setURL(linkUrl)
                             .setStyle(ButtonStyle.Link)
                     );
 
-                    // Acknowledge immediately and schedule the grant
                     const pendingEmbed = new EmbedBuilder()
                         .setColor('#129af5')
                         .setTitle('🗳️ Thanks for supporting!')
-                        .setDescription(`We\'ll add **${BONUS} free translations** to this server in about **${Math.floor(DELAY_MS/1000)} seconds**.\nPlease complete the vote on Top.gg in the meantime.`)
+                        .setDescription(`We'll add **${BONUS} free translations** to this server in about **${Math.floor(DELAY_MS/1000)} seconds**.\nPlease complete the vote on ${SITE_NAME} in the meantime.`)
                         .setFooter({ text: 'Air Translator • Vote rewards', iconURL: interaction.client.user.displayAvatarURL() })
                         .setTimestamp(new Date());
 
                     await interaction.reply({ embeds: [pendingEmbed], components: [voteLinkRow], flags: MessageFlags.Ephemeral });
 
-                    // Prepare requester info for audit logging and cooldown tracking
                     const requester = {
                         id: interaction.user.id,
                         username: interaction.user.username,
@@ -544,7 +595,6 @@ client.on(Events.InteractionCreate, async interaction => {
                         displayAvatarURL: (...args) => interaction.user.displayAvatarURL(...args)
                     };
 
-                    // Schedule the reward after delay
                     setTimeout(async () => {
                         try {
                             const result = await monetizationService.handleVoteReward(interaction.user.id, serverId, BONUS, requester);
@@ -556,10 +606,8 @@ client.on(Events.InteractionCreate, async interaction => {
                                     .setFooter({ text: 'Air Translator • Vote rewards', iconURL: interaction.client.user.displayAvatarURL() })
                                     .setTimestamp(new Date());
 
-                                // Ephemeral follow-up for the user
                                 try { await interaction.followUp({ embeds: [successEmbed], flags: MessageFlags.Ephemeral }); } catch {}
 
-                                // Public confirmation in server if possible
                                 try {
                                     const guild = interaction.client.guilds.cache.get(serverId);
                                     if (guild) {
@@ -592,7 +640,7 @@ client.on(Events.InteractionCreate, async interaction => {
                                 } catch {}
                             }
                         } catch (grantErr) {
-                            logger.warn('vote_on_topgg delayed grant error', { error: grantErr?.message || grantErr });
+                            logger.warn('vote delayed grant error', { error: grantErr?.message || grantErr });
                             try {
                                 await interaction.followUp({
                                     content: '❌ Something went wrong while adding your vote reward. Please try again later.',
@@ -602,7 +650,7 @@ client.on(Events.InteractionCreate, async interaction => {
                         }
                     }, DELAY_MS);
                 } catch (err) {
-                    logger.warn('vote_on_topgg handler error', { error: err?.message || err });
+                    logger.warn('vote choice handler error', { error: err?.message || err });
                     try {
                         await interaction.reply({
                             content: '❌ Something went wrong while processing your vote reward. Please try again later.',

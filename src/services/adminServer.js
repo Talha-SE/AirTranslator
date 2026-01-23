@@ -150,190 +150,303 @@ function generateLoginPage(error = '') {
   <title>AirTranslator • Admin Login</title>
   <style>
     :root {
-      --bg: #0f1220;
-      --bg-soft: #151933;
-      --card: #0b1022;
-      --text: #e9ecf1;
-      --muted: #a7b0c0;
-      --primary: #6c8bff;
-      --primary-600: #5677ff;
-      --danger: #ff6b6b;
-      --success: #00d28f;
-      --input: #202648;
-      --ring: 0 0 0 3px rgba(108, 139, 255, .35);
-    }
-    @media (prefers-color-scheme: light) {
-      :root { --bg:#eef2ff; --bg-soft:#e7ecff; --card:#ffffff; --text:#111526; --muted:#5b6375; --input:#eef1ff; }
+      --bg: #f8fafc;
+      --bg-soft: #f1f5f9;
+      --card: #ffffff;
+      --text: #1e293b;
+      --muted: #64748b;
+      --primary: #8b5cf6;
+      --primary-hover: #7c3aed;
+      --primary-light: #f5f3ff;
+      --danger: #ef4444;
+      --success: #10b981;
+      --input: #f8fafc;
+      --border: #e2e8f0;
+      --ring: 0 0 0 3px rgba(139, 92, 246, .15);
     }
 
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { height: 100%; }
     body {
-      margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
-      background: radial-gradient(1200px 600px at 10% -10%, rgba(108,139,255,.25), transparent 55%),
-                  radial-gradient(800px 600px at 110% 10%, rgba(118,75,162,.22), transparent 55%),
-                  var(--bg);
-      color: var(--text); display: grid; place-items: center; padding: 24px;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background-attachment: fixed;
+      color: var(--text); 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      min-height: 100vh;
+      padding: 16px;
+      position: relative;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+      background-size: 50px 50px;
+      animation: drift 60s linear infinite;
+    }
+    @keyframes drift {
+      from { transform: translate(0, 0); }
+      to { transform: translate(50px, 50px); }
     }
 
     .card {
-      width: 100%; max-width: 430px; background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,0)) , var(--card);
-      border: 1px solid rgba(255,255,255,.08); border-radius: 16px; padding: 28px; position: relative;
-      box-shadow: 0 20px 60px rgba(0,0,0,.45);
+      width: 100%; 
+      max-width: 420px; 
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.3); 
+      border-radius: 20px; 
+      padding: 32px 36px; 
+      position: relative;
+      z-index: 1;
+      box-shadow: 0 20px 60px rgba(0,0,0,.2), 0 0 0 1px rgba(255,255,255,.5) inset;
+      transition: transform 0.3s ease;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 25px 70px rgba(0,0,0,.23), 0 0 0 1px rgba(255,255,255,.5) inset;
     }
 
-    .brand { display:flex; align-items:center; gap:12px; margin-bottom: 8px; }
-    .logo { display:grid; place-items:center; width:40px; height:40px; border-radius: 10px; background: linear-gradient(135deg, #667eea, #764ba2); box-shadow: 0 6px 18px rgba(118,75,162,.35); font-size: 20px; }
-    .title { font-weight: 700; font-size: 20px; letter-spacing: .2px; }
-    .subtitle { color: var(--muted); margin: 0 0 18px 52px; font-size: 13px; }
-    .chip { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 8px; border-radius:999px; background:#eef2ff; color:#4f46e5; border:1px solid #e0e7ff; }
+    .brand { text-align: center; margin-bottom: 24px; }
+    .logo { 
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 52px; 
+      height: 52px; 
+      border-radius: 16px; 
+      background: linear-gradient(135deg, #667eea, #764ba2); 
+      box-shadow: 0 8px 24px rgba(118,75,162,.35);
+      font-size: 26px;
+      margin-bottom: 12px;
+    }
+    .title { 
+      font-weight: 700; 
+      font-size: 24px; 
+      letter-spacing: -0.5px;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .subtitle { 
+      color: var(--muted); 
+      font-size: 14px;
+      line-height: 1.4;
+    }
 
-    .error { background: rgba(255,107,107,.12); color: #ffd7d7; border: 1px solid rgba(255,107,107,.35); padding: 10px 12px; border-radius: 10px; margin: 12px 0 18px; font-size: 13px; }
+    .error { 
+      background: #fee2e2; 
+      color: #991b1b; 
+      border: 1px solid #fca5a5; 
+      padding: 12px 16px; 
+      border-radius: 12px; 
+      margin: 0 0 24px;
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .error::before {
+      content: '⚠️';
+      font-size: 18px;
+    }
 
-    .field { margin-bottom: 14px; }
-    .label { display:flex; justify-content: space-between; align-items:center; color: var(--muted); font-size: 12px; margin: 0 0 6px; }
+    .field { margin-bottom: 16px; }
+    .label { 
+      display: block;
+      color: var(--text); 
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
     .input-wrap { position: relative; }
     .input {
-      width: 100%; padding: 12px 42px 12px 40px; background: var(--input); color: var(--text);
-      border: 1px solid rgba(255,255,255,.08); border-radius: 12px; font-size: 15px; outline: none; transition: box-shadow .15s ease, border-color .15s ease;
+      width: 100%; 
+      padding: 12px 14px;
+      background: var(--input); 
+      color: var(--text);
+      border: 2px solid var(--border);
+      border-radius: 10px; 
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.2s ease;
     }
-    .input:focus { box-shadow: var(--ring); border-color: var(--primary); }
-    .leading { position:absolute; left: 12px; top: 50%; transform: translateY(-50%); opacity: .65; font-size: 16px; }
-    .trailing { position:absolute; right: 10px; top: 50%; transform: translateY(-50%); opacity: .8; }
-    .icon-btn { background: transparent; border: 0; color: inherit; cursor: pointer; padding: 6px; border-radius: 8px; }
+    .input:hover { border-color: #cbd5e1; }
+    .input:focus { 
+      box-shadow: var(--ring); 
+      border-color: var(--primary);
+      background: #ffffff;
+    }
+    .icon-btn { 
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: transparent; 
+      border: 0; 
+      color: var(--muted);
+      cursor: pointer; 
+      padding: 8px;
+      border-radius: 8px;
+      transition: color 0.2s ease;
+    }
+    .icon-btn:hover { color: var(--text); }
     .icon-btn:focus-visible { outline: none; box-shadow: var(--ring); }
 
-    .row { display:flex; justify-content: space-between; align-items:center; gap: 12px; margin: 6px 0 4px; }
-    .helper { color: var(--muted); font-size: 12px; }
-    .caps { color: var(--danger); display: none; }
-
-    .actions { margin-top: 14px; display:flex; flex-direction: column; gap: 10px; }
-    .btn-primary {
-      appearance: none; border: 0; background: linear-gradient(135deg, var(--primary), #8ea2ff);
-      color: white; padding: 12px 14px; border-radius: 12px; font-weight: 600; letter-spacing:.2px; cursor:pointer; transition: transform .05s ease, filter .15s ease;
+    .row { 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center;
+      margin: -6px 0 18px;
     }
-    .btn-primary:hover { filter: brightness(1.04); }
-    .btn-primary:active { transform: translateY(1px); }
-    .btn-ghost { background: transparent; border: 1px solid rgba(255,255,255,.12); color: var(--text); padding: 10px 12px; border-radius: 10px; cursor: pointer; }
+    .remember-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .remember-label input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
 
-    .footer { margin-top: 14px; color: var(--muted); font-size: 12px; text-align: center; }
-    .topbar { position:absolute; inset: 10px 10px auto auto; display:flex; gap:8px; }
+    .actions { margin-top: 6px; }
+    .btn-primary {
+      width: 100%;
+      appearance: none; 
+      border: 0;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white; 
+      padding: 13px;
+      border-radius: 10px; 
+      font-size: 15px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    .btn-primary:hover { 
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+    }
+    .btn-primary:active { 
+      transform: translateY(0);
+      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+    }
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
 
-    .switch { display:flex; align-items:center; gap:8px; }
-    .switch input { display:none; }
-    .switch .knob { width: 42px; height: 24px; background: var(--bg-soft); border:1px solid rgba(255,255,255,.12); border-radius: 999px; position: relative; transition: background .2s ease; }
-    .switch .knob::after { content:''; position:absolute; width: 18px; height: 18px; background:#fff; border-radius: 999px; top: 2.5px; left: 3px; transition: transform .2s ease; }
-    .switch input:checked + .knob { background: #1b2144; }
-    .switch input:checked + .knob::after { transform: translateX(18px); }
+    .footer { 
+      margin-top: 24px; 
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      color: var(--muted); 
+      font-size: 12px;
+      text-align: center;
+    }
 
-    @media (max-width: 480px) { .card { padding: 22px; } .subtitle { margin-left: 0; } }
+
+
+    @media (max-width: 480px) { 
+      body { padding: 12px; }
+      .card { 
+        padding: 24px 20px;
+        border-radius: 16px;
+      }
+      .brand { margin-bottom: 18px; }
+      .title { font-size: 22px; }
+      .logo { width: 48px; height: 48px; font-size: 24px; margin-bottom: 10px; }
+      .field { margin-bottom: 14px; }
+      .footer { margin-top: 20px; padding-top: 16px; }
+    }
   </style>
 </head>
 <body>
   <main class="card" id="card">
-    <div class="topbar">
-      <label class="switch" title="Toggle theme">
-        <input type="checkbox" id="themeToggle" />
-        <div class="knob"></div>
-      </label>
-    </div>
-
     <div class="brand">
       <div class="logo">🤖</div>
-      <div class="title">AirTranslator Admin</div>
-      <span class="chip">Admin • Secure</span>
+      <h1 class="title">Welcome Back</h1>
+      <p class="subtitle">Sign in to access the AirTranslator admin dashboard</p>
     </div>
-    <p class="subtitle">Secure access for authorized administrators.</p>
 
     ${error ? `<div class="error">${error}</div>` : ''}
 
     <form method="POST" action="/admin/login" id="loginForm" novalidate>
       <div class="field">
-        <label class="label" for="username">
-          <span>Username</span>
-          <span class="helper" id="savedHint" style="display:none;">prefilled</span>
-        </label>
-        <div class="input-wrap">
-          <span class="leading">👤</span>
-          <input class="input" type="text" id="username" name="username" autocomplete="username" placeholder="e.g. admin" required />
-        </div>
+        <label class="label" for="username">Username</label>
+        <input class="input" type="text" id="username" name="username" autocomplete="username" placeholder="Enter your username" required />
       </div>
 
       <div class="field">
-        <label class="label" for="password">
-          <span>Password</span>
-          <span class="helper caps" id="capsHint">Caps Lock is ON</span>
-        </label>
+        <label class="label" for="password">Password</label>
         <div class="input-wrap">
-          <span class="leading">🔒</span>
-          <input class="input" type="password" id="password" name="password" autocomplete="current-password" placeholder="Your secure password" required />
-          <button class="trailing icon-btn" type="button" id="togglePwd" aria-label="Show password">👁️</button>
+          <input class="input" type="password" id="password" name="password" autocomplete="current-password" placeholder="Enter your password" required style="padding-right: 48px;" />
+          <button class="icon-btn" type="button" id="togglePwd" aria-label="Show password">👁️</button>
         </div>
       </div>
 
       <div class="row">
-        <label class="helper"><input type="checkbox" id="rememberMe" /> Remember username</label>
-        <span class="helper" id="statusText"></span>
+        <label class="remember-label">
+          <input type="checkbox" id="rememberMe" />
+          <span>Remember me</span>
+        </label>
       </div>
 
       <div class="actions">
-        <button type="submit" class="btn-primary" id="submitBtn">Sign in</button>
-        <button type="button" class="btn-ghost" id="clearBtn" style="display:none;">Clear saved username</button>
+        <button type="submit" class="btn-primary" id="submitBtn">Sign In</button>
       </div>
     </form>
 
-    <p class="footer">AirTranslator Admin Panel • Authorized Access Only</p>
+    <p class="footer">🔒 Secure Admin Access • AirTranslator</p>
   </main>
 
   <script>
+    // Check if already logged in
+    (async function checkAuth() {
+      try {
+        const response = await fetch('/admin', { method: 'GET', credentials: 'include' });
+        if (response.ok && response.headers.get('content-type')?.includes('text/html')) {
+          const html = await response.text();
+          if (!html.includes('loginForm')) {
+            window.location.href = '/admin';
+            return;
+          }
+        }
+      } catch (e) {
+        // Not logged in, continue with login page
+      }
+    })();
+    
     (function() {
       const form = document.getElementById('loginForm');
       const username = document.getElementById('username');
       const password = document.getElementById('password');
       const submitBtn = document.getElementById('submitBtn');
-      const capsHint = document.getElementById('capsHint');
       const togglePwd = document.getElementById('togglePwd');
       const remember = document.getElementById('rememberMe');
-      const savedHint = document.getElementById('savedHint');
-      const clearBtn = document.getElementById('clearBtn');
-      const statusText = document.getElementById('statusText');
-      const themeToggle = document.getElementById('themeToggle');
-
-      // Theme persistence
-      const savedTheme = localStorage.getItem('at_theme');
-      if (savedTheme === 'light') document.documentElement.style.setProperty('color-scheme','light');
-      if (savedTheme === 'dark') document.documentElement.style.setProperty('color-scheme','dark');
-      themeToggle.checked = savedTheme === 'dark';
-      themeToggle.addEventListener('change', () => {
-        const mode = themeToggle.checked ? 'dark' : 'light';
-        document.documentElement.style.setProperty('color-scheme', mode);
-        localStorage.setItem('at_theme', mode);
-      });
 
       // Prefill username if remembered
       const savedUser = localStorage.getItem('at_admin_user');
       if (savedUser) {
         username.value = savedUser;
         remember.checked = true;
-        savedHint.style.display = 'inline';
-        clearBtn.style.display = 'inline-block';
       }
-
-      clearBtn.addEventListener('click', () => {
-        localStorage.removeItem('at_admin_user');
-        username.value = '';
-        remember.checked = false;
-        savedHint.style.display = 'none';
-        clearBtn.style.display = 'none';
-      });
-
-      // Caps Lock detection
-      function handleCaps(e){
-        const caps = e.getModifierState && e.getModifierState('CapsLock');
-        capsHint.style.display = caps ? 'inline' : 'none';
-      }
-      password.addEventListener('keydown', handleCaps);
-      password.addEventListener('keyup', handleCaps);
 
       // Password visibility
       togglePwd.addEventListener('click', () => {
@@ -342,27 +455,11 @@ function generateLoginPage(error = '') {
         togglePwd.textContent = isPwd ? '🙈' : '👁️';
       });
 
-      // Enter-to-submit
-      function handleEnter(e) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          if (username.value.trim() && password.value) {
-            if (form.requestSubmit) form.requestSubmit(); else form.submit();
-          } else {
-            statusText.textContent = 'Please enter username and password.';
-            statusText.style.color = 'var(--danger)';
-          }
-        }
-      }
-      username.addEventListener('keydown', handleEnter);
-      password.addEventListener('keydown', handleEnter);
-
-      // Basic validation + submit state
+      // Form submission
       form.addEventListener('submit', (e) => {
         if (!username.value.trim() || !password.value) {
           e.preventDefault();
-          statusText.textContent = 'Please enter username and password.';
-          statusText.style.color = 'var(--danger)';
+          alert('Please enter both username and password.');
           return;
         }
         if (remember.checked) {
@@ -371,7 +468,7 @@ function generateLoginPage(error = '') {
           localStorage.removeItem('at_admin_user');
         }
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Signing in…';
+        submitBtn.textContent = 'Signing in...';
       });
     })();
   </script>
@@ -1423,6 +1520,54 @@ async function generateMonetizationContent(client) {
                     </div>
                 </div>
                 
+                <!-- Bulk Actions Section -->
+                <div class="bulk-actions-section">
+                    <h3>🔄 Bulk Server Actions</h3>
+                    <div class="actions-card bulk-card">
+                        <div class="bulk-description">
+                            <p style="margin:0 0 16px; color:#6b7280; font-size:14px;">Apply restrictions or exemptions to multiple servers at once. Use these actions carefully as they affect all servers.</p>
+                        </div>
+                        <div class="bulk-controls">
+                            <div class="bulk-row">
+                                <div class="bulk-info">
+                                    <span class="bulk-icon">🚫</span>
+                                    <div>
+                                        <div class="bulk-title">Restrict All Servers</div>
+                                        <div class="bulk-subtitle">Apply default restrictions to all servers (exempted servers won't be affected)</div>
+                                    </div>
+                                </div>
+                                <button class="action-btn restrict-btn" onclick="bulkRestrictAll()">
+                                    <span>🔒</span> Apply Restrictions to All
+                                </button>
+                            </div>
+                            <div class="bulk-row">
+                                <div class="bulk-info">
+                                    <span class="bulk-icon">✅</span>
+                                    <div>
+                                        <div class="bulk-title">Remove All Restrictions</div>
+                                        <div class="bulk-subtitle">Remove restrictions from all servers (won't affect exempted servers)</div>
+                                    </div>
+                                </div>
+                                <button class="action-btn reset-btn" onclick="bulkRemoveRestrictions()">
+                                    <span>🔓</span> Remove All Restrictions
+                                </button>
+                            </div>
+                            <div class="bulk-row">
+                                <div class="bulk-info">
+                                    <span class="bulk-icon">🔄</span>
+                                    <div>
+                                        <div class="bulk-title">Reset All Translation Counts</div>
+                                        <div class="bulk-subtitle">Reset translation counter to 0 for all servers</div>
+                                    </div>
+                                </div>
+                                <button class="action-btn limit-btn" onclick="bulkResetCounts()">
+                                    <span>↻</span> Reset All Counts
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Servers Status Section -->
                 <div class="servers-section">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -1433,6 +1578,18 @@ async function generateMonetizationContent(client) {
                             </span>
                         </div>
                     </div>
+                    
+                    <div style="margin-bottom: 16px;">
+                        <input 
+                            type="text" 
+                            id="monetizationSearchInput" 
+                            class="search-input" 
+                            placeholder="🔍 Search servers by name, ID, or any text..."
+                            onkeyup="searchMonetizationServers()"
+                            style="width: 100%; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 14px; outline: none; transition: border-color 0.2s;"
+                        />
+                    </div>
+                    
                     <div class="filters">
                         <button class="filter-btn active" onclick="filterServers('all')">All Servers</button>
                         <button class="filter-btn" onclick="filterServers('restricted')">Restricted</button>
@@ -1562,6 +1719,81 @@ async function generateMonetizationContent(client) {
                 /* Inputs */
                 .monetization-container input[type="number"], .monetization-container input[type="text"] { background:#f9fafb; border:1.5px solid #e5e7eb; }
                 .monetization-container input[type="number"]:focus, .monetization-container input[type="text"]:focus { border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.18); outline:none; }
+                
+                .stats-section, .settings-section, .quick-actions-section, .servers-section {
+                    margin-bottom: 30px;
+                }
+                
+                .bulk-actions-section {
+                    margin-bottom: 30px;
+                }
+                
+                .bulk-actions-section h3 {
+                    color: #333;
+                    margin-bottom: 15px;
+                    padding-bottom: 8px;
+                    border-bottom: 2px solid #667eea;
+                }
+                
+                .bulk-card {
+                    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05), rgba(118, 75, 162, 0.05));
+                    border-left: 4px solid #667eea;
+                }
+                
+                .bulk-description {
+                    padding: 14px 18px;
+                    background: rgba(255, 255, 255, 0.7);
+                    border-radius: 8px;
+                    margin-bottom: 16px;
+                }
+                
+                .bulk-controls {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 16px;
+                }
+                
+                .bulk-row {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 16px;
+                    background: white;
+                    border-radius: 10px;
+                    border: 1px solid #e5e7eb;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+                    transition: all 0.2s ease;
+                }
+                
+                .bulk-row:hover {
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+                    transform: translateY(-1px);
+                }
+                
+                .bulk-info {
+                    display: flex;
+                    align-items: center;
+                    gap: 14px;
+                    flex: 1;
+                }
+                
+                .bulk-icon {
+                    font-size: 32px;
+                    opacity: 0.8;
+                }
+                
+                .bulk-title {
+                    font-weight: 700;
+                    color: #111827;
+                    font-size: 15px;
+                    margin-bottom: 4px;
+                }
+                
+                .bulk-subtitle {
+                    font-size: 13px;
+                    color: #6b7280;
+                    line-height: 1.4;
+                }
                 
                 .stats-section, .settings-section, .quick-actions-section, .servers-section {
                     margin-bottom: 30px;
@@ -2017,6 +2249,809 @@ function generateServerActions(server) {
 }
 
 /**
+ * Generates the HTML content for the Server Management tab.
+ * @param {Object} client - The Discord client instance.
+ * @returns {Promise<string>} The HTML content for server management.
+ */
+async function generateServerManagementContent(client) {
+    try {
+        if (!client || !client.guilds) {
+            return `<div class="error-message">Discord client not available</div>`;
+        }
+
+        const servers = Array.from(client.guilds.cache.values())
+            .filter(guild => guild && guild.id) // Filter out invalid guilds
+            .map(guild => ({
+                id: guild.id,
+                name: guild.name || 'Unknown Server',
+                memberCount: guild.memberCount || 0,
+                joinedAt: guild.joinedAt || new Date(),
+                icon: guild.iconURL({ size: 64 }) || null,
+                owner: guild.ownerId || 'Unknown'
+            }));
+
+        // Sort by member count descending
+        servers.sort((a, b) => b.memberCount - a.memberCount);
+
+        const totalServers = servers.length;
+        const totalMembers = servers.reduce((sum, s) => sum + s.memberCount, 0);
+        const avgMembers = totalServers > 0 ? Math.round(totalMembers / totalServers) : 0;
+
+        return `
+            <div class="server-management-container">
+                <style>
+                    .server-management-container {
+                        padding: 20px;
+                        color: #1f2937;
+                        max-width: 1400px;
+                        margin: 0 auto;
+                    }
+                    
+                    .sm-header {
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        margin-bottom: 24px;
+                        padding-bottom: 16px;
+                        border-bottom: 2px solid #e5e7eb;
+                        flex-wrap: wrap;
+                        gap: 12px;
+                    }
+                    
+                    .sm-header-left {
+                        display: flex;
+                        align-items: center;
+                        gap: 12px;
+                        flex-wrap: wrap;
+                    }
+                    
+                    .sm-header h2 {
+                        margin: 0;
+                        font-size: 24px;
+                        font-weight: 800;
+                        color: #111827;
+                        display: flex;
+                        align-items: center;
+                        gap: 12px;
+                    }
+                    
+                    .sm-badge {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        font-size: 12px;
+                        padding: 6px 12px;
+                        border-radius: 999px;
+                        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+                        color: white;
+                        font-weight: 700;
+                    }
+                    
+                    .sm-view-toggle {
+                        display: flex;
+                        gap: 4px;
+                        background: #f3f4f6;
+                        padding: 4px;
+                        border-radius: 10px;
+                        border: 1px solid #e5e7eb;
+                    }
+                    
+                    .sm-view-btn {
+                        padding: 8px 12px;
+                        border: none;
+                        background: transparent;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        font-size: 18px;
+                        transition: all 0.2s ease;
+                        color: #6b7280;
+                    }
+                    
+                    .sm-view-btn.active {
+                        background: white;
+                        color: #6366f1;
+                        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+                    }
+                    
+                    .sm-view-btn:hover:not(.active) {
+                        color: #111827;
+                    }
+                    
+                    .sm-stats-grid {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                        gap: 16px;
+                        margin-bottom: 24px;
+                    }
+                    
+                    .sm-stat-card {
+                        background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
+                        border: 1px solid #e5e7eb;
+                        border-radius: 16px;
+                        padding: 20px;
+                        display: flex;
+                        align-items: center;
+                        gap: 16px;
+                        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+                        transition: all 0.2s ease;
+                    }
+                    
+                    .sm-stat-card:hover {
+                        transform: translateY(-2px);
+                        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+                    }
+                    
+                    .sm-stat-icon {
+                        font-size: 36px;
+                        opacity: 0.9;
+                    }
+                    
+                    .sm-stat-info {
+                        flex: 1;
+                    }
+                    
+                    .sm-stat-value {
+                        font-size: 28px;
+                        font-weight: 800;
+                        color: #111827;
+                        line-height: 1;
+                        margin-bottom: 4px;
+                    }
+                    
+                    .sm-stat-label {
+                        font-size: 13px;
+                        color: #6b7280;
+                        font-weight: 600;
+                    }
+                    
+                    .sm-search-bar {
+                        margin-bottom: 20px;
+                        display: flex;
+                        gap: 12px;
+                        align-items: center;
+                    }
+                    
+                    .sm-search-input {
+                        flex: 1;
+                        padding: 12px 16px;
+                        border: 2px solid #e5e7eb;
+                        border-radius: 12px;
+                        font-size: 15px;
+                        background: white;
+                        transition: all 0.2s ease;
+                    }
+                    
+                    .sm-search-input:focus {
+                        outline: none;
+                        border-color: #6366f1;
+                        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+                    }
+                    
+                    .sm-sort-select {
+                        padding: 12px 16px;
+                        border: 2px solid #e5e7eb;
+                        border-radius: 12px;
+                        font-size: 14px;
+                        background: white;
+                        cursor: pointer;
+                        font-weight: 600;
+                    }
+                    
+                    .sm-servers-grid {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+                        gap: 16px;
+                    }
+                    
+                    .sm-servers-grid.list-view {
+                        grid-template-columns: 1fr;
+                        gap: 12px;
+                    }
+                    
+                    .sm-servers-grid.list-view .sm-server-card {
+                        flex-direction: row;
+                        align-items: center;
+                        padding: 16px 20px;
+                    }
+                    
+                    .sm-servers-grid.list-view .sm-server-header {
+                        flex: 1;
+                        min-width: 0;
+                    }
+                    
+                    .sm-servers-grid.list-view .sm-server-icon {
+                        width: 48px;
+                        height: 48px;
+                        font-size: 20px;
+                    }
+                    
+                    .sm-servers-grid.list-view .sm-server-stats {
+                        flex: 0 0 auto;
+                        background: transparent;
+                        padding: 0;
+                        gap: 24px;
+                    }
+                    
+                    .sm-servers-grid.list-view .sm-stat-item {
+                        text-align: left;
+                    }
+                    
+                    .sm-servers-grid.list-view .sm-joined-date {
+                        display: none;
+                    }
+                    
+                    .sm-servers-grid.list-view .sm-server-actions {
+                        flex: 0 0 auto;
+                    }
+                    
+                    .sm-server-card {
+                        background: white;
+                        border: 1px solid #e5e7eb;
+                        border-radius: 16px;
+                        padding: 20px;
+                        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+                        transition: all 0.2s ease;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 14px;
+                        cursor: pointer;
+                    }
+                    
+                    .sm-server-card:hover {
+                        transform: translateY(-4px);
+                        box-shadow: 0 12px 32px rgba(102, 126, 234, 0.15);
+                        border-color: #8b5cf6;
+                    }
+                    
+                    .sm-server-header {
+                        display: flex;
+                        align-items: center;
+                        gap: 14px;
+                    }
+                    
+                    .sm-server-icon {
+                        width: 56px;
+                        height: 56px;
+                        border-radius: 16px;
+                        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 24px;
+                        font-weight: 700;
+                        color: white;
+                        flex-shrink: 0;
+                    }
+                    
+                    .sm-server-icon img {
+                        width: 100%;
+                        height: 100%;
+                        border-radius: 16px;
+                        object-fit: cover;
+                    }
+                    
+                    .sm-server-info {
+                        flex: 1;
+                        min-width: 0;
+                    }
+                    
+                    .sm-server-name {
+                        font-weight: 700;
+                        font-size: 16px;
+                        color: #111827;
+                        margin-bottom: 4px;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                    }
+                    
+                    .sm-server-id {
+                        font-family: 'Courier New', monospace;
+                        font-size: 11px;
+                        color: #6b7280;
+                    }
+                    
+                    .sm-server-stats {
+                        display: flex;
+                        gap: 12px;
+                        padding: 12px;
+                        background: #f9fafb;
+                        border-radius: 10px;
+                    }
+                    
+                    .sm-stat-item {
+                        flex: 1;
+                        text-align: center;
+                    }
+                    
+                    .sm-stat-item-value {
+                        font-weight: 800;
+                        font-size: 16px;
+                        color: #111827;
+                    }
+                    
+                    .sm-stat-item-label {
+                        font-size: 11px;
+                        color: #6b7280;
+                        text-transform: uppercase;
+                        font-weight: 600;
+                        margin-top: 2px;
+                    }
+                    
+                    .sm-server-actions {
+                        display: flex;
+                        gap: 8px;
+                    }
+                    
+                    .sm-btn {
+                        flex: 1;
+                        padding: 10px 14px;
+                        border: none;
+                        border-radius: 10px;
+                        font-weight: 700;
+                        font-size: 13px;
+                        cursor: pointer;
+                        transition: all 0.15s ease;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 6px;
+                    }
+                    
+                    .sm-btn:hover {
+                        transform: translateY(-1px);
+                        filter: brightness(1.05);
+                    }
+                    
+                    .sm-btn:active {
+                        transform: translateY(0);
+                    }
+                    
+                    .sm-btn-leave {
+                        background: linear-gradient(135deg, #ef4444, #dc2626);
+                        color: white;
+                    }
+                    
+                    .sm-btn-info {
+                        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+                        color: white;
+                    }
+                    
+                    .sm-joined-date {
+                        font-size: 12px;
+                        color: #6b7280;
+                        padding: 8px 12px;
+                        background: #f3f4f6;
+                        border-radius: 8px;
+                        text-align: center;
+                    }
+                    
+                    .sm-empty {
+                        text-align: center;
+                        padding: 60px 20px;
+                        color: #6b7280;
+                    }
+                    
+                    .sm-empty-icon {
+                        font-size: 64px;
+                        margin-bottom: 16px;
+                    }
+                    
+                    @media (max-width: 768px) {
+                        .sm-servers-grid {
+                            grid-template-columns: 1fr;
+                        }
+                        
+                        .sm-header {
+                            flex-direction: column;
+                            align-items: flex-start;
+                        }
+                        
+                        .sm-header-left {
+                            width: 100%;
+                        }
+                        
+                        .sm-view-toggle {
+                            width: 100%;
+                            justify-content: center;
+                        }
+                        
+                        .sm-servers-grid.list-view .sm-server-card {
+                            flex-direction: column;
+                            align-items: stretch;
+                        }
+                        
+                        .sm-servers-grid.list-view .sm-server-stats {
+                            background: #f9fafb;
+                            padding: 12px;
+                            border-radius: 10px;
+                        }
+                        
+                        .sm-servers-grid.list-view .sm-joined-date {
+                            display: block;
+                        }
+                    }
+                </style>
+                
+                <div class="sm-header">
+                    <div class="sm-header-left">
+                        <h2>
+                            <span>🏠</span>
+                            Server Management
+                        </h2>
+                        <span class="sm-badge">
+                            <span>🔒</span>
+                            Admin Panel
+                        </span>
+                    </div>
+                    <div class="sm-view-toggle">
+                        <button class="sm-view-btn active" onclick="toggleServerView(event, 'grid')" title="Grid View">
+                            ⊞
+                        </button>
+                        <button class="sm-view-btn" onclick="toggleServerView(event, 'list')" title="List View">
+                            ☰
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="sm-stats-grid">
+                    <div class="sm-stat-card">
+                        <div class="sm-stat-icon">🏢</div>
+                        <div class="sm-stat-info">
+                            <div class="sm-stat-value">${totalServers}</div>
+                            <div class="sm-stat-label">Total Servers</div>
+                        </div>
+                    </div>
+                    <div class="sm-stat-card">
+                        <div class="sm-stat-icon">👥</div>
+                        <div class="sm-stat-info">
+                            <div class="sm-stat-value">${totalMembers.toLocaleString()}</div>
+                            <div class="sm-stat-label">Total Members</div>
+                        </div>
+                    </div>
+                    <div class="sm-stat-card">
+                        <div class="sm-stat-icon">📊</div>
+                        <div class="sm-stat-info">
+                            <div class="sm-stat-value">${avgMembers}</div>
+                            <div class="sm-stat-label">Avg Members/Server</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sm-search-bar">
+                    <input 
+                        type="text" 
+                        class="sm-search-input" 
+                        id="serverSearchInput" 
+                        placeholder="🔍 Search servers by name or ID..."
+                        onkeyup="filterServerCards()"
+                    />
+                    <select class="sm-sort-select" id="serverSortSelect" onchange="sortServerCards()">
+                        <option value="members-desc">Members (High to Low)</option>
+                        <option value="members-asc">Members (Low to High)</option>
+                        <option value="name-asc">Name (A-Z)</option>
+                        <option value="name-desc">Name (Z-A)</option>
+                        <option value="joined-desc">Recently Joined</option>
+                        <option value="joined-asc">Oldest First</option>
+                    </select>
+                </div>
+                
+                <div class="sm-servers-grid" id="serversGrid">
+                    ${servers.length > 0 ? servers.map(server => {
+                        const serverName = server.name || 'Unknown Server';
+                        
+                        return `
+                        <div class="sm-server-card" data-server-id="${server.id}" data-server-name="${serverName.toLowerCase()}" data-member-count="${server.memberCount}" data-joined="${server.joinedAt.getTime()}" style="cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;" onclick="viewServerMembers('${server.id}', '${serverName.replace(/'/g, "\\'")}')">
+                            <div class="sm-server-header">
+                                <div class="sm-server-info" style="margin-left: 0;">
+                                    <div class="sm-server-name" title="${serverName}">${serverName}</div>
+                                    <div class="sm-server-id">ID: ${server.id}</div>
+                                </div>
+                            </div>
+                            
+                            <div class="sm-server-stats">
+                                <div class="sm-stat-item">
+                                    <div class="sm-stat-item-value">${server.memberCount.toLocaleString()}</div>
+                                    <div class="sm-stat-item-label">Members</div>
+                                </div>
+                                <div class="sm-stat-item">
+                                    <div class="sm-stat-item-value">${new Date(server.joinedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                                    <div class="sm-stat-item-label">Joined</div>
+                                </div>
+                            </div>
+                            
+                            <div class="sm-joined-date">
+                                📅 Joined: ${new Date(server.joinedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                            </div>
+                            
+                            <div class="sm-server-actions">
+                                <button class="sm-btn sm-btn-info" onclick="event.stopPropagation(); copyServerId('${server.id}')">
+                                    📋 Copy ID
+                                </button>
+                                <button class="sm-btn sm-btn-leave" onclick="event.stopPropagation(); leaveServer('${server.id}', '${serverName.replace(/'/g, "\\'")}')">
+
+                                    🚪 Leave Server
+                                </button>
+                            </div>
+                        </div>
+                        `;
+                    }).join('') : `
+                        <div class="sm-empty">
+                            <div class="sm-empty-icon">🏜️</div>
+                            <h3>No Servers Found</h3>
+                            <p>The bot hasn't joined any servers yet.</p>
+                        </div>
+                    `}
+                </div>
+                
+                <script>
+                    function filterServerCards() {
+                        const searchInput = document.getElementById('serverSearchInput');
+                        const filter = searchInput.value.toLowerCase();
+                        const cards = document.querySelectorAll('.sm-server-card');
+                        
+                        cards.forEach(card => {
+                            const serverName = card.dataset.serverName;
+                            const serverId = card.dataset.serverId;
+                            
+                            if (serverName.includes(filter) || serverId.includes(filter)) {
+                                card.style.display = 'flex';
+                            } else {
+                                card.style.display = 'none';
+                            }
+                        });
+                    }
+                    
+                    function sortServerCards() {
+                        const sortSelect = document.getElementById('serverSortSelect');
+                        const sortValue = sortSelect.value;
+                        const grid = document.getElementById('serversGrid');
+                        const cards = Array.from(document.querySelectorAll('.sm-server-card'));
+                        
+                        // Save selected sort option to localStorage
+                        localStorage.setItem('serverSortOption', sortValue);
+                        
+                        cards.sort((a, b) => {
+                            switch(sortValue) {
+                                case 'members-desc':
+                                    return parseInt(b.dataset.memberCount) - parseInt(a.dataset.memberCount);
+                                case 'members-asc':
+                                    return parseInt(a.dataset.memberCount) - parseInt(b.dataset.memberCount);
+                                case 'name-asc':
+                                    return a.dataset.serverName.localeCompare(b.dataset.serverName);
+                                case 'name-desc':
+                                    return b.dataset.serverName.localeCompare(a.dataset.serverName);
+                                case 'joined-desc':
+                                    return parseInt(b.dataset.joined) - parseInt(a.dataset.joined);
+                                case 'joined-asc':
+                                    return parseInt(a.dataset.joined) - parseInt(b.dataset.joined);
+                                default:
+                                    return 0;
+                            }
+                        });
+                        
+                        cards.forEach(card => grid.appendChild(card));
+                    }
+                    
+                    async function copyServerId(serverId) {
+                        try {
+                            await navigator.clipboard.writeText(serverId);
+                            if (typeof showNotification === 'function') {
+                                showNotification('Server ID copied to clipboard!', 'success');
+                            } else {
+                                alert('Server ID copied: ' + serverId);
+                            }
+                        } catch (err) {
+                            console.error('Failed to copy:', err);
+                            // Fallback for older browsers
+                            const textArea = document.createElement('textarea');
+                            textArea.value = serverId;
+                            document.body.appendChild(textArea);
+                            textArea.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(textArea);
+                            alert('Server ID copied: ' + serverId);
+                        }
+                    }
+                    
+                    function showMemberModal(serverName, serverId, members) {
+                        const modal = document.createElement('div');
+                        modal.id = 'memberModal';
+                        modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(4px);';
+                        
+                        const modalContent = document.createElement('div');
+                        modalContent.style.cssText = 'background: #fff; border-radius: 16px; width: 100%; max-width: 900px; max-height: 85vh; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3); display: flex; flex-direction: column;';
+                        
+                        const memberHTML = members.length === 0 ? '<div style="text-align: center; padding: 60px 20px; color: #64748b;"><div style="font-size: 48px; margin-bottom: 16px;">👥</div><h3 style="margin: 0 0 8px 0; color: #1e293b;">No Members Found</h3><p style="margin: 0;">Unable to fetch members for this server.</p></div>' : '<div style="display: grid; gap: 12px;">' + members.map((member, index) => '<div class="member-card" data-username="' + (member.username || '').toLowerCase() + '" data-displayname="' + (member.displayName || '').toLowerCase() + '" data-id="' + member.id + '" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; display: flex; align-items: center; gap: 16px; transition: all 0.2s;" onmouseover="this.style.background=\'#f1f5f9\'; this.style.borderColor=\'#cbd5e1\';" onmouseout="this.style.background=\'#f8fafc\'; this.style.borderColor=\'#e2e8f0\';"><div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, ' + ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a'][index % 5] + ', ' + ['#764ba2', '#f5576c', '#00f2fe', '#38f9d7', '#fee140'][index % 5] + '); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 18px; flex-shrink: 0;">' + (member.displayName || member.username || '?').charAt(0).toUpperCase() + '</div><div style="flex: 1; min-width: 0;"><div style="font-weight: 600; font-size: 15px; color: #1e293b; margin-bottom: 4px;">' + (member.displayName || member.username || 'Unknown User') + '</div><div style="font-size: 13px; color: #64748b;">@' + (member.username || 'unknown') + '</div><div style="font-size: 12px; color: #94a3b8; font-family: monospace; margin-top: 2px;">ID: ' + member.id + '</div></div><div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end;">' + (member.isBot ? '<span style="background: #dbeafe; color: #1e40af; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;">🤖 BOT</span>' : '') + (member.joinedAt ? '<span style="font-size: 12px; color: #64748b;">Joined: ' + new Date(member.joinedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + '</span>' : '') + '</div></div>').join('') + '</div>';
+                        
+                        modalContent.innerHTML = '<div style="padding: 24px; border-bottom: 1px solid #e2e8f0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div><h2 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 700;">' + serverName + '</h2><p style="margin: 0; opacity: 0.9; font-size: 14px;">Server ID: ' + serverId + ' • ' + members.length + ' members</p></div><button onclick="closeMemberModal()" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 20px; line-height: 1; transition: background 0.2s;" onmouseover="this.style.background=\'rgba(255,255,255,0.3)\'" onmouseout="this.style.background=\'rgba(255,255,255,0.2)\'">✕</button></div><div style="margin-top: 16px;"><input type="text" id="memberModalSearch" placeholder="🔍 Search members by name, display name, or ID..." onkeyup="filterModalMembers()" style="width: 100%; padding: 10px 14px; border: 2px solid rgba(255,255,255,0.3); border-radius: 8px; font-size: 14px; background: rgba(255,255,255,0.95); outline: none;" /></div></div><div id="memberListContainer" style="flex: 1; overflow-y: auto; padding: 20px;">' + memberHTML + '</div>';
+                        
+                        modal.appendChild(modalContent);
+                        document.body.appendChild(modal);
+                        
+                        modal.addEventListener('click', (e) => {
+                            if (e.target === modal) {
+                                closeMemberModal();
+                            }
+                        });
+                    }
+                    
+                    function filterModalMembers() {
+                        const searchInput = document.getElementById('memberModalSearch');
+                        if (!searchInput) return;
+                        
+                        const filter = searchInput.value.toLowerCase();
+                        const memberCards = document.querySelectorAll('.member-card');
+                        
+                        memberCards.forEach(card => {
+                            const username = card.dataset.username || '';
+                            const displayName = card.dataset.displayname || '';
+                            const id = card.dataset.id || '';
+                            
+                            if (username.includes(filter) || displayName.includes(filter) || id.includes(filter)) {
+                                card.style.display = 'flex';
+                            } else {
+                                card.style.display = 'none';
+                            }
+                        });
+                    }
+                    
+                    function closeMemberModal() {
+                        const modal = document.getElementById('memberModal');
+                        if (modal) {
+                            modal.remove();
+                        }
+                    }
+                    
+                    document.addEventListener('keydown', (e) => {
+                        if (e.key === 'Escape') {
+                            closeMemberModal();
+                        }
+                    });
+                    
+                    function toggleServerView(evt, viewType) {
+                        const grid = document.getElementById('serversGrid');
+                        const buttons = document.querySelectorAll('.sm-view-btn');
+                        
+                        buttons.forEach(btn => btn.classList.remove('active'));
+                        if (evt && evt.target) {
+                            evt.target.classList.add('active');
+                        }
+                        
+                        if (viewType === 'list') {
+                            grid.classList.add('list-view');
+                            localStorage.setItem('serverViewType', 'list');
+                        } else {
+                            grid.classList.remove('list-view');
+                            localStorage.setItem('serverViewType', 'grid');
+                        }
+                    }
+                    
+                    // Restore saved view preference and sort option
+                    window.addEventListener('DOMContentLoaded', function() {
+                        // Restore view type
+                        const savedView = localStorage.getItem('serverViewType');
+                        if (savedView === 'list') {
+                            const grid = document.getElementById('serversGrid');
+                            const listBtn = document.querySelector('.sm-view-btn:last-child');
+                            const gridBtn = document.querySelector('.sm-view-btn:first-child');
+                            if (grid && listBtn && gridBtn) {
+                                grid.classList.add('list-view');
+                                gridBtn.classList.remove('active');
+                                listBtn.classList.add('active');
+                            }
+                        }
+                        
+                        // Restore sort option
+                        const savedSort = localStorage.getItem('serverSortOption');
+                        if (savedSort) {
+                            const sortSelect = document.getElementById('serverSortSelect');
+                            if (sortSelect) {
+                                sortSelect.value = savedSort;
+                                sortServerCards();
+                            }
+                        }
+                    });
+                    
+                    async function viewServerMembers(serverId, serverName) {
+                        try {
+                            if (typeof showNotification === 'function') {
+                                showNotification('Loading server members...', 'info');
+                            }
+                            
+                            const response = await fetch('/admin/servers/' + serverId + '/members', {
+                                method: 'GET',
+                                headers: { 'Content-Type': 'application/json' }
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (data.success && data.members) {
+                                showMemberModal(serverName, serverId, data.members);
+                            } else {
+                                if (typeof showNotification === 'function') {
+                                    showNotification('Failed to load members: ' + (data.message || 'Unknown error'), 'error');
+                                } else {
+                                    alert('Failed to load members: ' + (data.message || 'Unknown error'));
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error fetching server members:', error);
+                            if (typeof showNotification === 'function') {
+                                showNotification('Error: ' + error.message, 'error');
+                            } else {
+                                alert('Error loading members: ' + error.message);
+                            }
+                        }
+                    }
+                    
+                    async function leaveServer(serverId, serverName) {
+                        const confirmed = confirm(
+                            'WARNING: Are you sure you want to leave "' + serverName + '"?\\n\\n' +
+                            'Server ID: ' + serverId + '\\n\\n' +
+                            'This action cannot be undone. The bot will immediately leave this server.'
+                        );
+                        
+                        if (!confirmed) return;
+                        
+                        try {
+                            const response = await fetch('/admin/servers/leave', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ serverId })
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (data.success) {
+                                if (typeof showNotification === 'function') {
+                                    showNotification('Successfully left "' + serverName + '"', 'success');
+                                } else {
+                                    alert('Successfully left "' + serverName + '"');
+                                }
+                                
+                                // Remove the card from the UI
+                                const card = document.querySelector('[data-server-id="' + serverId + '"]');
+                                if (card) {
+                                    card.style.opacity = '0';
+                                    card.style.transform = 'scale(0.9)';
+                                    setTimeout(() => card.remove(), 300);
+                                }
+                                
+                                // Update stats
+                                setTimeout(() => location.reload(), 1000);
+                            } else {
+                                if (typeof showNotification === 'function') {
+                                    showNotification('Failed to leave server: ' + (data.message || 'Unknown error'), 'error');
+                                } else {
+                                    alert('Failed to leave server: ' + (data.message || 'Unknown error'));
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error leaving server:', error);
+                            if (typeof showNotification === 'function') {
+                                showNotification('Error: ' + error.message, 'error');
+                            } else {
+                                alert('Error leaving server: ' + error.message);
+                            }
+                        }
+                    }
+                </script>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error generating server management content:', error);
+        return `
+            <div class="error-message">
+                <h3>❌ Error Loading Server Management</h3>
+                <p>There was an error loading the server management interface.</p>
+                <p style="color: #666; font-size: 14px;">Error: ${error.message}</p>
+            </div>
+        `;
+    }
+}
+
+/**
  * Generates the HTML for the admin dashboard with tab-based navigation.
  * @param {Object} analytics - The analytics data for the dashboard.
  * @param {Object} client - The Discord client instance.
@@ -2035,22 +3070,22 @@ async function generateDashboard(analytics, client) {
     <title>AirTranslator Admin Dashboard</title>
     <style>
         :root {
-            --bg: #050816;
-            --bg-alt: #020617;
-            --surface: #020617;
-            --surface-soft: #020617;
-            --surface-elevated: #020617;
-            --border-subtle: rgba(148, 163, 184, 0.25);
+            --bg: #f8fafc;
+            --bg-alt: #f1f5f9;
+            --surface: #ffffff;
+            --surface-soft: #f8fafc;
+            --surface-elevated: #ffffff;
+            --border-subtle: #e2e8f0;
             --primary: #6366f1;
-            --primary-soft: rgba(99, 102, 241, 0.15);
+            --primary-soft: rgba(99, 102, 241, 0.1);
             --accent: #22c55e;
             --warning: #f59e0b;
             --danger: #ef4444;
-            --text: #e5e7eb;
-            --text-muted: #9ca3af;
+            --text: #1e293b;
+            --text-muted: #64748b;
             --card-radius: 14px;
-            --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.60);
-            --shadow-subtle: 0 10px 30px rgba(15, 23, 42, 0.40);
+            --shadow-soft: 0 10px 40px rgba(15, 23, 42, 0.08);
+            --shadow-subtle: 0 4px 20px rgba(15, 23, 42, 0.05);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -2058,9 +3093,9 @@ async function generateDashboard(analytics, client) {
         body {
             font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             background:
-                radial-gradient(900px 500px at 5% 0%, rgba(56, 189, 248, 0.14), transparent 60%),
-                radial-gradient(900px 600px at 100% 0%, rgba(129, 140, 248, 0.22), transparent 60%),
-                radial-gradient(1200px 800px at 50% 110%, rgba(56, 189, 248, 0.12), transparent 60%),
+                radial-gradient(900px 500px at 5% 0%, rgba(99, 102, 241, 0.06), transparent 60%),
+                radial-gradient(900px 600px at 100% 0%, rgba(139, 92, 246, 0.08), transparent 60%),
+                radial-gradient(1200px 800px at 50% 110%, rgba(99, 102, 241, 0.04), transparent 60%),
                 var(--bg);
             color: var(--text);
             line-height: 1.6;
@@ -2072,21 +3107,20 @@ async function generateDashboard(analytics, client) {
             top: 0;
             z-index: 20;
             backdrop-filter: blur(18px);
-            background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(15,23,42,0.96)) border-box,
-                        linear-gradient(120deg, rgba(129,140,248,0.9), rgba(56,189,248,0.7)) border-box;
-            border-bottom: 1px solid rgba(148, 163, 184, 0.25);
-            box-shadow: 0 20px 40px rgba(15,23,42,0.65);
-            padding: 16px 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.98));
+            border-bottom: 1px solid var(--border-subtle);
+            box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
+            padding: 12px 0;
         }
 
         .header-inner {
             max-width: 1400px;
             margin: 0 auto;
-            padding: 0 20px;
+            padding: 0 24px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 16px;
+            gap: 20px;
         }
 
         .header-main {
@@ -2096,31 +3130,35 @@ async function generateDashboard(analytics, client) {
         }
 
         .header-logo {
-            width: 40px;
-            height: 40px;
-            border-radius: 12px;
-            background: radial-gradient(circle at 0% 0%, #a855f7, #6366f1 45%, #0ea5e9 100%);
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
             display: grid;
             place-items: center;
-            box-shadow: 0 12px 30px rgba(79, 70, 229, 0.70);
-            font-size: 20px;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+            font-size: 18px;
+            flex-shrink: 0;
         }
 
         .header-title-wrap {
             display: flex;
             flex-direction: column;
-            gap: 2px;
+            gap: 1px;
         }
 
         .header-title {
-            font-size: 20px;
+            font-size: 18px;
             font-weight: 700;
-            letter-spacing: 0.02em;
+            letter-spacing: 0.01em;
+            color: var(--text);
+            line-height: 1.2;
         }
 
         .header-subtitle {
-            font-size: 13px;
-            color: rgba(209, 213, 219, 0.85);
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.2;
         }
 
         .header-pill-row {
@@ -2133,9 +3171,10 @@ async function generateDashboard(analytics, client) {
             padding: 4px 10px;
             border-radius: 999px;
             font-size: 11px;
-            background: rgba(15,23,42,0.8);
-            border: 1px solid rgba(148, 163, 184, 0.45);
-            color: rgba(209, 213, 219, 0.9);
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-muted);
+            font-weight: 600;
         }
 
         .header-actions {
@@ -2145,26 +3184,27 @@ async function generateDashboard(analytics, client) {
         }
 
         .logout-btn {
-            background: radial-gradient(circle at 0% 0%, #f97316, #ef4444 60%);
+            background: linear-gradient(135deg, #ef4444, #dc2626);
             color: white;
             border: none;
-            padding: 9px 18px;
-            border-radius: 999px;
+            padding: 8px 16px;
+            border-radius: 8px;
             cursor: pointer;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            font-size: 12px;
-            font-weight: 600;
-            box-shadow: 0 10px 25px rgba(248,113,113,0.55);
+            font-size: 13px;
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.20);
             transition: transform 0.08s ease, box-shadow 0.12s ease, filter 0.12s ease;
+            white-space: nowrap;
         }
 
         .logout-btn:hover {
             filter: brightness(1.05);
-            transform: translateY(1px);
-            box-shadow: 0 6px 18px rgba(248,113,113,0.4);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.30);
         }
 
         .logout-btn span.icon {
@@ -2231,12 +3271,10 @@ async function generateDashboard(analytics, client) {
         }
 
         .stat-card {
-            background: radial-gradient(circle at 0% 0%, rgba(129,140,248,0.24), transparent 55%),
-                        radial-gradient(circle at 120% 0%, rgba(56,189,248,0.22), transparent 55%),
-                        rgba(15,23,42,0.95);
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.95));
             border-radius: var(--card-radius);
             padding: 16px 18px;
-            border: 1px solid rgba(148, 163, 184, 0.35);
+            border: 1px solid var(--border-subtle);
             box-shadow: var(--shadow-soft);
             position: relative;
             overflow: hidden;
@@ -2250,19 +3288,19 @@ async function generateDashboard(analytics, client) {
             width: 120px;
             height: 120px;
             border-radius: 999px;
-            background: radial-gradient(circle at 0% 0%, rgba(248,250,252,0.12), transparent 60%);
+            background: radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.05), transparent 60%);
             opacity: 0.8;
         }
 
         .stat-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 22px 60px rgba(15,23,42,0.80);
-            border-color: rgba(129, 140, 248, 0.8);
+            box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+            border-color: rgba(99, 102, 241, 0.5);
         }
 
-        .stat-card.premium { border-color: rgba(248, 113, 113, 0.75); }
-        .stat-card.success { border-color: rgba(34, 197, 94, 0.75); }
-        .stat-card.warning { border-color: rgba(245, 158, 11, 0.75); }
+        .stat-card.premium { border-color: rgba(239, 68, 68, 0.4); }
+        .stat-card.success { border-color: rgba(34, 197, 94, 0.4); }
+        .stat-card.warning { border-color: rgba(245, 158, 11, 0.4); }
 
         .stat-header {
             display: flex;
@@ -2275,9 +3313,10 @@ async function generateDashboard(analytics, client) {
             font-size: 11px;
             padding: 3px 8px;
             border-radius: 999px;
-            border: 1px solid rgba(148,163,184,0.35);
-            color: rgba(226,232,240,0.9);
-            background: rgba(15,23,42,0.85);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-muted);
+            background: var(--surface-soft);
+            font-weight: 600;
         }
 
         .stat-card h3 {
@@ -2285,13 +3324,14 @@ async function generateDashboard(analytics, client) {
             font-weight: 600;
             letter-spacing: 0.03em;
             text-transform: uppercase;
-            color: rgba(209,213,219,0.95);
+            color: var(--text-muted);
         }
 
         .stat-value {
             font-size: 24px;
             font-weight: 700;
             margin-bottom: 2px;
+            color: var(--text);
         }
 
         .stat-label {
@@ -2301,17 +3341,15 @@ async function generateDashboard(analytics, client) {
 
         .metric-small {
             font-size: 11px;
-            color: rgba(148,163,184,0.95);
+            color: var(--text-muted);
             margin-top: 6px;
         }
 
         .section {
-            background: radial-gradient(circle at 0% 0%, rgba(129,140,248,0.20), transparent 55%),
-                        radial-gradient(circle at 120% 0%, rgba(15,118,110,0.15), transparent 55%),
-                        rgba(15,23,42,0.97);
+            background: var(--surface);
             border-radius: var(--card-radius);
             padding: 18px 18px 20px;
-            border: 1px solid rgba(148, 163, 184, 0.35);
+            border: 1px solid var(--border-subtle);
             box-shadow: var(--shadow-subtle);
             margin-bottom: 20px;
         }
@@ -2321,7 +3359,8 @@ async function generateDashboard(analytics, client) {
             font-weight: 600;
             margin-bottom: 14px;
             padding-bottom: 10px;
-            border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--text);
         }
 
         .table {
@@ -2333,21 +3372,21 @@ async function generateDashboard(analytics, client) {
         .table th, .table td {
             padding: 9px 10px;
             text-align: left;
-            border-bottom: 1px solid rgba(15,23,42,0.85);
+            border-bottom: 1px solid var(--border-subtle);
         }
 
         .table th {
-            background: rgba(15,23,42,0.95);
+            background: var(--surface-soft);
             font-weight: 600;
-            color: rgba(226,232,240,0.96);
+            color: var(--text);
         }
 
         .table tbody tr:nth-child(even) {
-            background: rgba(15,23,42,0.85);
+            background: var(--surface-soft);
         }
 
         .table tbody tr:nth-child(odd) {
-            background: rgba(15,23,42,0.92);
+            background: var(--surface);
         }
 
         .grid-2 {
@@ -2360,11 +3399,11 @@ async function generateDashboard(analytics, client) {
         .progress-bar {
             width: 100%;
             height: 8px;
-            background: rgba(15,23,42,0.9);
+            background: var(--surface-soft);
             border-radius: 999px;
             overflow: hidden;
             margin-top: 5px;
-            border: 1px solid rgba(148, 163, 184, 0.45);
+            border: 1px solid var(--border-subtle);
         }
 
         .progress-fill {
@@ -2375,18 +3414,18 @@ async function generateDashboard(analytics, client) {
         }
 
         .tab-container {
-            background: rgba(15,23,42,0.96);
+            background: var(--surface);
             border-radius: var(--card-radius);
             box-shadow: var(--shadow-subtle);
             margin-bottom: 22px;
-            border: 1px solid rgba(148,163,184,0.45);
+            border: 1px solid var(--border-subtle);
             overflow: hidden;
         }
 
         .tab-nav {
             display: flex;
-            background: rgba(15,23,42,0.96);
-            border-bottom: 1px solid rgba(148,163,184,0.45);
+            background: var(--surface-soft);
+            border-bottom: 1px solid var(--border-subtle);
         }
 
         .tab-btn {
@@ -2395,20 +3434,20 @@ async function generateDashboard(analytics, client) {
             background: transparent;
             border: none;
             cursor: pointer;
-            font-weight: 500;
+            font-weight: 600;
             font-size: 13px;
-            color: rgba(148,163,184,0.95);
+            color: var(--text-muted);
             transition: background 0.18s ease, color 0.18s ease;
         }
 
         .tab-btn.active {
-            background: radial-gradient(circle at 0% 0%, rgba(99,102,241,0.80), rgba(37,99,235,0.90));
-            color: #f9fafb;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: #ffffff;
         }
 
         .tab-btn:hover:not(.active) {
-            background: rgba(30,64,175,0.45);
-            color: #e5e7eb;
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--text);
         }
 
         .tab-content {
@@ -2419,10 +3458,10 @@ async function generateDashboard(analytics, client) {
         .tab-pane.active { display: block; }
 
         .message-form {
-            background: rgba(15,23,42,0.96);
+            background: var(--surface);
             padding: 18px 18px 16px;
             border-radius: 12px;
-            border: 1px solid rgba(148,163,184,0.45);
+            border: 1px solid var(--border-subtle);
             margin-bottom: 18px;
         }
 
@@ -2447,7 +3486,7 @@ async function generateDashboard(analytics, client) {
             margin-bottom: 5px;
             font-weight: 500;
             font-size: 12px;
-            color: rgba(209,213,219,0.95);
+            color: var(--text);
         }
 
         .form-group input,
@@ -2456,8 +3495,8 @@ async function generateDashboard(analytics, client) {
             width: 100%;
             padding: 9px 10px;
             border-radius: 10px;
-            border: 1px solid rgba(51,65,85,0.9);
-            background: rgba(15,23,42,0.98);
+            border: 1px solid var(--border-subtle);
+            background: var(--surface);
             color: var(--text);
             font-size: 13px;
             transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
@@ -2472,9 +3511,9 @@ async function generateDashboard(analytics, client) {
         .form-group select:focus,
         .form-group textarea:focus {
             outline: none;
-            border-color: rgba(129,140,248,0.95);
-            box-shadow: 0 0 0 1px rgba(129,140,248,0.95);
-            background: rgba(15,23,42,1);
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+            background: var(--surface);
         }
 
         .char-counter {
@@ -2485,24 +3524,25 @@ async function generateDashboard(analytics, client) {
         }
 
         .message-preview {
-            background: rgba(15,23,42,0.98);
+            background: var(--surface);
             border-radius: 12px;
             padding: 14px;
             margin: 16px 0;
-            border: 1px solid rgba(30,64,175,0.75);
+            border: 1px solid var(--border-subtle);
         }
 
         .embed-preview {
             border-radius: 12px;
             padding: 12px 12px 10px;
-            background: rgba(15,23,42,0.98);
-            border: 1px solid rgba(129,140,248,0.8);
+            background: var(--surface-soft);
+            border: 1px solid #6366f1;
         }
 
         .embed-title {
             font-weight: 600;
             font-size: 14px;
             margin-bottom: 6px;
+            color: var(--text);
         }
 
         .embed-description {
@@ -2515,8 +3555,8 @@ async function generateDashboard(analytics, client) {
 
         .embed-footer {
             font-size: 11px;
-            color: rgba(148,163,184,0.95);
-            border-top: 1px dashed rgba(51,65,85,0.9);
+            color: var(--text-muted);
+            border-top: 1px dashed var(--border-subtle);
             padding-top: 6px;
         }
 
@@ -2530,7 +3570,7 @@ async function generateDashboard(analytics, client) {
         .btn-send,
         .btn-test {
             padding: 10px 16px;
-            border-radius: 999px;
+            border-radius: 10px;
             border: none;
             cursor: pointer;
             font-weight: 600;
@@ -2542,35 +3582,35 @@ async function generateDashboard(analytics, client) {
         }
 
         .btn-preview {
-            background: radial-gradient(circle at 0% 0%, #38bdf8, #0ea5e9 60%);
-            color: #f9fafb;
-            box-shadow: 0 12px 30px rgba(14,165,233,0.55);
+            background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.30);
         }
 
         .btn-send {
-            background: radial-gradient(circle at 0% 0%, #a855f7, #6366f1 65%);
-            color: #f9fafb;
-            box-shadow: 0 12px 30px rgba(79,70,229,0.55);
+            background: linear-gradient(135deg, #a855f7, #6366f1);
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.30);
         }
 
         .btn-test {
-            background: radial-gradient(circle at 0% 0%, #f97316, #f59e0b 65%);
-            color: #111827;
-            box-shadow: 0 12px 30px rgba(245,158,11,0.55);
+            background: linear-gradient(135deg, #f97316, #f59e0b);
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.30);
         }
 
         .btn-preview:hover,
         .btn-send:hover,
         .btn-test:hover {
             filter: brightness(1.05);
-            transform: translateY(1px);
+            transform: translateY(-1px);
         }
 
         .progress-section {
-            background: rgba(15,23,42,0.98);
+            background: var(--surface);
             padding: 16px 16px 14px;
             border-radius: 12px;
-            border: 1px solid rgba(51,65,85,0.9);
+            border: 1px solid var(--border-subtle);
         }
 
         .delivery-results {
@@ -2588,33 +3628,33 @@ async function generateDashboard(analytics, client) {
         }
 
         .delivery-success {
-            background: rgba(22,163,74,0.18);
-            border: 1px solid rgba(34,197,94,0.85);
-            color: #bbf7d0;
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            color: #22c55e;
         }
 
         .delivery-error {
-            background: rgba(248,113,113,0.16);
-            border: 1px solid rgba(248,113,113,0.9);
-            color: #fecaca;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #ef4444;
         }
 
         /* Message Feedback Styles */
         .message-item {
-            background: rgba(15,23,42,0.96);
+            background: var(--surface);
             border-radius: 12px;
             padding: 14px 14px 12px;
             margin-bottom: 12px;
             box-shadow: var(--shadow-subtle);
             cursor: pointer;
-            border: 1px solid rgba(51,65,85,0.9);
+            border: 1px solid var(--border-subtle);
             transition: border-color 0.16s ease, box-shadow 0.18s ease, transform 0.08s ease;
         }
 
         .message-item:hover {
             transform: translateY(-1px);
-            border-color: rgba(129,140,248,0.9);
-            box-shadow: 0 18px 40px rgba(15,23,42,0.80);
+            border-color: #6366f1;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
         }
 
         .message-header {
@@ -2659,16 +3699,17 @@ async function generateDashboard(analytics, client) {
             max-height: 1000px;
             margin-top: 10px;
             padding-top: 10px;
-            border-top: 1px dashed rgba(51,65,85,0.9);
+            border-top: 1px dashed var(--border-subtle);
         }
 
         .comment-item {
             padding: 9px 10px;
             margin: 8px 0;
-            background: rgba(15,23,42,0.98);
+            background: var(--surface-soft);
             border-radius: 8px;
-            border: 1px solid rgba(51,65,85,0.9);
+            border: 1px solid var(--border-subtle);
             font-size: 12px;
+            color: var(--text);
         }
 
         .comment-header {
@@ -2692,9 +3733,47 @@ async function generateDashboard(analytics, client) {
         }
 
         @media (max-width: 768px) {
-            .header-inner { flex-direction: column; align-items: flex-start; }
-            .header-actions { align-self: stretch; justify-content: space-between; }
-            .stats-grid { grid-template-columns: 1fr; }
+            .header-inner { 
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+            
+            .header-title {
+                font-size: 16px;
+            }
+            
+            .header-subtitle {
+                font-size: 11px;
+            }
+            
+            .logout-btn {
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            
+            .stats-grid { 
+                grid-template-columns: 1fr; 
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .header-inner {
+                padding: 0 16px;
+            }
+            
+            .header-logo {
+                width: 32px;
+                height: 32px;
+                font-size: 16px;
+            }
+            
+            .header-title {
+                font-size: 14px;
+            }
+            
+            .header-subtitle {
+                display: none;
+            }
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -3355,10 +4434,114 @@ async function generateDashboard(analytics, client) {
         }
     }
     
+    // Bulk Action Functions
+    async function bulkRestrictAll() {
+        if (!confirm('WARNING: This will apply restrictions to ALL servers that are not currently exempted. Are you sure you want to continue?')) {
+            return;
+        }
+        
+        try {
+            showNotification('Applying restrictions to all servers...', 'info');
+            const response = await fetch('/admin/monetization/bulk/restrict-all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                showNotification('Successfully restricted ' + (data.affectedCount || 0) + ' servers', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showNotification('Failed to apply bulk restrictions: ' + (data.message || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            showNotification('Error applying bulk restrictions: ' + error.message, 'error');
+        }
+    }
+    
+    async function bulkRemoveRestrictions() {
+        if (!confirm('This will remove restrictions from ALL servers (exempted servers will remain exempted). Continue?')) {
+            return;
+        }
+        
+        try {
+            showNotification('Removing all restrictions...', 'info');
+            const response = await fetch('/admin/monetization/bulk/remove-restrictions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                showNotification('Successfully removed restrictions from ' + (data.affectedCount || 0) + ' servers', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showNotification('Failed to remove bulk restrictions: ' + (data.message || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            showNotification('Error removing bulk restrictions: ' + error.message, 'error');
+        }
+    }
+    
+    async function bulkResetCounts() {
+        if (!confirm('WARNING: This will reset translation counts to 0 for ALL servers. This action cannot be undone. Continue?')) {
+            return;
+        }
+        
+        try {
+            showNotification('Resetting all translation counts...', 'info');
+            const response = await fetch('/admin/monetization/bulk/reset-counts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                showNotification('Successfully reset counts for ' + (data.affectedCount || 0) + ' servers', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showNotification('Failed to reset counts: ' + (data.message || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            showNotification('Error resetting counts: ' + error.message, 'error');
+        }
+    }
+    
+    function searchMonetizationServers() {
+        const searchInput = document.getElementById('monetizationSearchInput');
+        const filter = searchInput.value.toLowerCase();
+        const rows = document.querySelectorAll('.server-row');
+        
+        rows.forEach(row => {
+            const serverName = row.querySelector('.server-name')?.textContent.toLowerCase() || '';
+            const serverId = row.querySelector('.server-id')?.textContent.toLowerCase() || '';
+            const members = row.querySelector('.member-count')?.textContent.toLowerCase() || '';
+            const translations = row.querySelector('.translation-count')?.textContent.toLowerCase() || '';
+            
+            const matchesSearch = serverName.includes(filter) || 
+                                serverId.includes(filter) || 
+                                members.includes(filter) || 
+                                translations.includes(filter);
+            
+            if (matchesSearch) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+    
     function filterServers(type) {
         // Update active filter button
         document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
         event.target.classList.add('active');
+        
+        // Clear search input when filtering
+        const searchInput = document.getElementById('monetizationSearchInput');
+        if (searchInput) searchInput.value = '';
         
         const rows = document.querySelectorAll('.server-row');
         rows.forEach(row => {
@@ -3458,10 +4641,18 @@ async function generateDashboard(analytics, client) {
 </head>
 <body>
     <div class="header">
-        <div style="position: relative;">
-            <h1>AirTranslator Admin Dashboard</h1>
-            <p>Complete Analytics & Server Management</p>
-            <a href="/admin/logout" class="logout-btn">Logout</a>
+        <div class="header-inner">
+            <div class="header-main">
+                <div class="header-logo">🤖</div>
+                <div class="header-title-wrap">
+                    <div class="header-title">AirTranslator Admin Dashboard</div>
+                    <div class="header-subtitle">Complete Analytics & Server Management</div>
+                </div>
+            </div>
+            <a href="/admin/logout" class="logout-btn">
+                <span class="icon">🚪</span>
+                Logout
+            </a>
         </div>
     </div>
     
@@ -3476,6 +4667,7 @@ async function generateDashboard(analytics, client) {
                 <button class="tab-btn active" onclick="switchTab('analytics')">📊 Analytics</button>
                 <button class="tab-btn" onclick="switchTab('messaging')">📢 Server Messaging</button>
                 <button class="tab-btn" onclick="switchTab('monetization')">💰 Monetization</button>
+                <button class="tab-btn" onclick="switchTab('servers')">🏠 Server Management</button>
                 <button class="tab-btn" onclick="switchTab('feedback')">📊 Feedback</button>
             </div>
             
@@ -3492,6 +4684,10 @@ async function generateDashboard(analytics, client) {
                 
                 <div id="monetization" class="tab-pane">
                     ${await generateMonetizationContent(client)}
+                </div>
+                
+                <div id="servers" class="tab-pane">
+                    ${await generateServerManagementContent(client)}
                 </div>
                 
                 <div id="feedback" class="tab-pane">
@@ -4632,6 +5828,232 @@ const server = http.createServer(async (req, res) => {
                 res.end(JSON.stringify({ success: true }));
             } catch (error) {
                 console.error('Error setting custom limit:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+        
+        // Bulk Actions - Restrict All
+        } else if (pathname === '/admin/monetization/bulk/restrict-all' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            try {
+                const client = global.discordClient;
+                if (!client) {
+                    res.writeHead(503, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Bot not ready' }));
+                    return;
+                }
+                
+                const servers = Array.from(client.guilds.cache.values());
+                let affectedCount = 0;
+                
+                for (const guild of servers) {
+                    try {
+                        // Only restrict if not already exempted
+                        const status = await monetizationService.checkServerStatus(guild.id);
+                        if (!status.isExempt) {
+                            await monetizationService.addRestrictedServer(guild.id);
+                            affectedCount++;
+                        }
+                    } catch (err) {
+                        console.error(`Failed to restrict server ${guild.id}:`, err);
+                    }
+                }
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, affectedCount }));
+            } catch (error) {
+                console.error('Error in bulk restrict all:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+        
+        // Bulk Actions - Remove All Restrictions
+        } else if (pathname === '/admin/monetization/bulk/remove-restrictions' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            try {
+                const client = global.discordClient;
+                if (!client) {
+                    res.writeHead(503, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Bot not ready' }));
+                    return;
+                }
+                
+                const servers = Array.from(client.guilds.cache.values());
+                let affectedCount = 0;
+                
+                for (const guild of servers) {
+                    try {
+                        // Only remove restrictions, don't affect exempted servers
+                        const status = await monetizationService.checkServerStatus(guild.id);
+                        if (status.isRestricted && !status.isExempt) {
+                            await monetizationService.removeRestrictedServer(guild.id);
+                            affectedCount++;
+                        }
+                    } catch (err) {
+                        console.error(`Failed to remove restriction for server ${guild.id}:`, err);
+                    }
+                }
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, affectedCount }));
+            } catch (error) {
+                console.error('Error in bulk remove restrictions:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+        
+        // Bulk Actions - Reset All Counts
+        } else if (pathname === '/admin/monetization/bulk/reset-counts' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            try {
+                const client = global.discordClient;
+                if (!client) {
+                    res.writeHead(503, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Bot not ready' }));
+                    return;
+                }
+                
+                const servers = Array.from(client.guilds.cache.values());
+                let affectedCount = 0;
+                
+                for (const guild of servers) {
+                    try {
+                        await monetizationService.resetServerCount(guild.id);
+                        affectedCount++;
+                    } catch (err) {
+                        console.error(`Failed to reset count for server ${guild.id}:`, err);
+                    }
+                }
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, affectedCount }));
+            } catch (error) {
+                console.error('Error in bulk reset counts:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+        
+        // Get Server Members Endpoint
+        } else if (pathname.startsWith('/admin/servers/') && pathname.endsWith('/members') && req.method === 'GET') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            try {
+                const serverId = pathname.split('/')[3];
+                
+                if (!serverId) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Server ID is required' }));
+                    return;
+                }
+                
+                const client = global.discordClient;
+                if (!client) {
+                    res.writeHead(503, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Bot not ready' }));
+                    return;
+                }
+                
+                const guild = client.guilds.cache.get(serverId);
+                if (!guild) {
+                    res.writeHead(404, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Server not found' }));
+                    return;
+                }
+                
+                // Fetch all members
+                await guild.members.fetch();
+                
+                const members = guild.members.cache.map(member => ({
+                    id: member.id,
+                    username: member.user.username,
+                    displayName: member.displayName,
+                    isBot: member.user.bot,
+                    joinedAt: member.joinedAt ? member.joinedAt.toISOString() : null
+                }));
+                
+                // Sort by display name
+                members.sort((a, b) => (a.displayName || a.username).localeCompare(b.displayName || b.username));
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, members }));
+            } catch (error) {
+                console.error('Error fetching server members:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: error.message }));
+            }
+        
+        // Leave Server Endpoint
+        } else if (pathname === '/admin/servers/leave' && req.method === 'POST') {
+            const sessionToken = getSessionFromCookies(req.headers.cookie);
+            if (!isValidSession(sessionToken)) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+                return;
+            }
+            
+            try {
+                const postData = await parsePostData(req);
+                const data = JSON.parse(postData.body);
+                const { serverId } = data;
+                
+                if (!serverId) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Server ID is required' }));
+                    return;
+                }
+                
+                const client = global.discordClient;
+                if (!client) {
+                    res.writeHead(503, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Bot not ready' }));
+                    return;
+                }
+                
+                const guild = client.guilds.cache.get(serverId);
+                if (!guild) {
+                    res.writeHead(404, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, message: 'Server not found' }));
+                    return;
+                }
+                
+                const serverName = guild.name;
+                
+                // Leave the server
+                await guild.leave();
+                
+                console.log(`[Admin] Bot left server: ${serverName} (${serverId})`);
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ 
+                    success: true, 
+                    message: `Successfully left ${serverName}`,
+                    serverName 
+                }));
+            } catch (error) {
+                console.error('Error leaving server:', error);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: false, message: error.message }));
             }
