@@ -629,8 +629,6 @@ client.on(Events.InteractionCreate, async interaction => {
                                     .setFooter({ text: 'Air Translator • Vote rewards', iconURL: interaction.client.user.displayAvatarURL() })
                                     .setTimestamp(new Date());
 
-                                try { await interaction.followUp({ embeds: [successEmbed], flags: MessageFlags.Ephemeral }); } catch {}
-
                                 try {
                                     const guild = interaction.client.guilds.cache.get(serverId);
                                     if (guild) {
