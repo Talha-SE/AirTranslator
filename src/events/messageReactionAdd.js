@@ -612,12 +612,12 @@ async function messageReactionAdd(client, reaction, user) {
 
                     const dmRow = new ActionRowBuilder().addComponents(
                         new ButtonBuilder()
-                            .setLabel('💳 Open Payment Options')
+                            .setLabel('💳')
                             .setStyle(ButtonStyle.Link)
                             .setURL('https://www.patreon.com/cw/TSIO/membership'),
                         new ButtonBuilder()
                             .setCustomId(`premium_request:${message.guild.id}`)
-                            .setLabel('✅ I already paid')
+                            .setLabel('✅')
                             .setStyle(ButtonStyle.Primary)
                     );
                     await user.send({ embeds: [dmEmbed], components: [dmRow] });

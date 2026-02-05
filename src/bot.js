@@ -993,12 +993,12 @@ client.on(Events.InteractionCreate, async interaction => {
 
                     const buttons = new ActionRowBuilder().addComponents(
                         new ButtonBuilder()
-                            .setLabel('💳 Open Payment Options')
+                            .setLabel('💳')
                             .setStyle(ButtonStyle.Link)
                             .setURL('https://www.patreon.com/cw/TSIO/membership'),
                         new ButtonBuilder()
                             .setCustomId(`premium_request:${serverId}`)
-                            .setLabel('✅ I already paid')
+                            .setLabel('✅')
                             .setStyle(ButtonStyle.Primary)
                     );
 
