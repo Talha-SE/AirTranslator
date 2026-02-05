@@ -503,7 +503,7 @@ class MonetizationService {
             }
             
             // Save vote event to database
-            if (userInfo) {
+            if (userInfo && userInfo.id) {
                 const safeUsername = userInfo.username || `user_${userInfo.id || 'unknown'}`;
                 const safeDisplayName = userInfo.displayName || safeUsername;
                 const avatarUrl = typeof userInfo.displayAvatarURL === 'function' ? userInfo.displayAvatarURL() : (userInfo.avatar || null);
@@ -525,7 +525,8 @@ class MonetizationService {
             // Clean up expired cooldowns periodically
             await databaseService.cleanupExpiredVoteCooldowns(12);
         } catch (error) {
-            console.error('Error recording vote event:', error);
+            console.error('❌ Error recording vote event:', error);
+            console.error('Error stack:', error.stack);
         }
     }
 
@@ -556,7 +557,7 @@ class MonetizationService {
                 recentVotesCount: recentVotes.length
             };
         } catch (error) {
-            console.error('Error getting vote stats:', error);
+            console.error('❌ Error getting vote stats in monetizationService:', error);
             return {
                 totalVoteClicks: 0,
                 totalCreditsGranted: 0,
