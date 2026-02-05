@@ -600,7 +600,13 @@ const detectLanguage = async (text, apiKey = DETECT_API_KEY) => {
         detectionCache.set(normalizedText, langCode);
         return langCode;
     } catch (error) {
-        console.error('Error detecting language:', error);
+        console.error('Error detecting language:', {
+            error: error?.message || error,
+            stack: error?.stack,
+            statusCode: error?.response?.status,
+            apiKeyPresent: !!apiKey,
+            textLength: normalizedText?.length || 0
+        });
         return 'en'; // Default to English if detection fails
     }
 };
@@ -1074,7 +1080,17 @@ For Korean translations, you MUST add cute chatting elements:
         return translation;
 
     } catch (error) {
-        console.error('Error translating text:', error);
+        console.error('Error translating text:', {
+            error: error?.message || error,
+            stack: error?.stack,
+            statusCode: error?.response?.status,
+            statusText: error?.response?.statusText,
+            apiKeyPresent: !!apiKey,
+            model: modelOverride || TRANSLATION_MODEL,
+            targetLanguage,
+            sourceLanguage,
+            textLength: text?.length || 0
+        });
         throw new Error('Translation failed');
     }
 };
@@ -1102,7 +1118,15 @@ const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLan
                     modelOverride
                 );
             } catch (error) {
-                console.error(`❌ Error translating to ${targetLanguage}:`, error?.message || error);
+                console.error(`❌ Error translating to ${targetLanguage}:`, {
+                    error: error?.message || error,
+                    stack: error?.stack,
+                    model: modelOverride || TRANSLATION_MODEL,
+                    apiKeyPresent: !!apiKey,
+                    targetLanguage,
+                    sourceLanguage: detected,
+                    textLength: text?.length || 0
+                });
                 translations[targetLanguage] = null;
             }
         })

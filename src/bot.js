@@ -269,7 +269,14 @@ async function translatePremiumMessage(serverId) {
         
         return formattedParts.join('\n\n');
     } catch (error) {
-        console.error('Error translating premium message:', error);
+        logger.error('Error translating premium message', {
+            error: error?.message || error,
+            stack: error?.stack,
+            serverId,
+            hasServerSetup: !!serverSetup,
+            apiKeyPresent: !!process.env.MISTRAL_API_KEY,
+            languageCount: targetLanguages?.length || 0
+        });
         // Fallback to English on error
         return `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://airtranslator.brevios.com/pricing or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
     }
@@ -355,15 +362,24 @@ You'll be redirected to the Top.gg bot page 🚀`;
         
         return formattedParts.join('\n\n');
     } catch (error) {
-        console.error('Error translating vote message:', error);
+        logger.error('Error translating vote message', {
+            error: error?.message || error,
+            stack: error?.stack,
+            serverId,
+            hasServerSetup: !!serverSetup,
+            apiKeyPresent: !!process.env.MISTRAL_API_KEY,
+            languageCount: targetLanguages?.length || 0
+        });
         // Fallback to English on error
-        return `Select where you want to vote to support AirTranslator:
+        return `Select where you want to vote to support Air Translator:
 
-**Official Site**
-Get 50 free translations
+🟢 Vote on the Air Translator Official Site
+Get 50 free translations by clicking the 50 button.
+You'll be redirected to our official website 🌐
 
-**Top.gg**
-Get 25 free translations`;
+🔵 Vote on Top.gg
+Get 25 free translations by clicking the 25 button.
+You'll be redirected to the Top.gg bot page 🚀`;
     }
 }
 

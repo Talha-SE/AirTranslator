@@ -215,7 +215,12 @@ async function translatePremiumMessage(serverId) {
         
         return formattedParts.join('\n\n');
     } catch (error) {
-        console.error('Error translating premium message:', error);
+        console.error('Error translating premium message:', {
+            error: error?.message || error,
+            stack: error?.stack,
+            serverId,
+            apiKeyPresent: !!process.env.MISTRAL_API_KEY
+        });
         // Fallback to English on error
         return `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://airtranslator.brevios.com/pricing or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
     }
