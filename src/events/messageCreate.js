@@ -1,4 +1,4 @@
-const { getSetupsByChannelId, getToneSettings, updateServerConfig, shouldUseThreadTranslation } = require('../services/databaseService');
+const { getSetupsByChannelId, getToneSettings, updateServerConfig, shouldUseThreadTranslation, getServerSetups } = require('../services/databaseService');
 const { getPersonalTranslationSettings, recordPersonalTranslation } = require('../services/databaseService');
 const { translateText, detectLanguage, translateTextToMultipleLanguages } = require('../services/mistralService');
 const monetizationService = require('../services/monetizationService');
@@ -65,6 +65,252 @@ function getLanguageDisplayName(language) {
         'xhosa': 'Xhosa', 'yiddish': 'Yiddish', 'yoruba': 'Yoruba', 'zulu': 'Zulu'
     };
     return displayNames[language.toLowerCase()] || language.charAt(0).toUpperCase() + language.slice(1).toLowerCase();
+}
+
+// Helper function to get language flag emoji
+function getLanguageFlag(langCode) {
+    const lang = langCode.toLowerCase();
+    
+    // Map of language codes and full names to flags
+    const flags = {
+        'en': '🇬🇧', 'english': '🇬🇧',
+        'es': '🇪🇸', 'spanish': '🇪🇸',
+        'fr': '🇫🇷', 'french': '🇫🇷',
+        'de': '🇩🇪', 'german': '🇩🇪',
+        'it': '🇮🇹', 'italian': '🇮🇹',
+        'pt': '🇵🇹', 'portuguese': '🇵🇹',
+        'ja': '🇯🇵', 'japanese': '🇯🇵',
+        'ko': '🇰🇷', 'korean': '🇰🇷',
+        'zh': '🇨🇳', 'chinese': '🇨🇳', 'chinese (simplified)': '🇨🇳', 'chinese (traditional)': '🇹🇼',
+        'ru': '🇷🇺', 'russian': '🇷🇺',
+        'ar': '🇸🇦', 'arabic': '🇸🇦',
+        'hi': '🇮🇳', 'hindi': '🇮🇳',
+        'tr': '🇹🇷', 'turkish': '🇹🇷',
+        'nl': '🇳🇱', 'dutch': '🇳🇱',
+        'pl': '🇵🇱', 'polish': '🇵🇱',
+        'sv': '🇸🇪', 'swedish': '🇸🇪',
+        'fi': '🇫🇮', 'finnish': '🇫🇮',
+        'no': '🇳🇴', 'norwegian': '🇳🇴',
+        'da': '🇩🇰', 'danish': '🇩🇰',
+        'cs': '🇨🇿', 'czech': '🇨🇿',
+        'el': '🇬🇷', 'greek': '🇬🇷',
+        'he': '🇮🇱', 'hebrew': '🇮🇱',
+        'th': '🇹🇭', 'thai': '🇹🇭',
+        'vi': '🇻🇳', 'vietnamese': '🇻🇳',
+        'id': '🇮🇩', 'indonesian': '🇮🇩',
+        'ms': '🇲🇾', 'malay': '🇲🇾',
+        'fil': '🇵🇭', 'filipino': '🇵🇭', 'tagalog': '🇵🇭',
+        'uk': '🇺🇦', 'ukrainian': '🇺🇦',
+        'ro': '🇷🇴', 'romanian': '🇷🇴',
+        'hu': '🇭🇺', 'hungarian': '🇭🇺',
+        'bg': '🇧🇬', 'bulgarian': '🇧🇬',
+        'hr': '🇭🇷', 'croatian': '🇭🇷',
+        'sr': '🇷🇸', 'serbian': '🇷🇸',
+        'sk': '🇸🇰', 'slovak': '🇸🇰',
+        'sl': '🇸🇮', 'slovenian': '🇸🇮',
+        'et': '🇪🇪', 'estonian': '🇪🇪',
+        'lv': '🇱🇻', 'latvian': '🇱🇻',
+        'lt': '🇱🇹', 'lithuanian': '🇱🇹',
+        'ur': '🇵🇰', 'urdu': '🇵🇰',
+        'fa': '🇮🇷', 'persian': '🇮🇷',
+        'bn': '🇧🇩', 'bengali': '🇧🇩',
+        'ta': '🇮🇳', 'tamil': '🇮🇳',
+        'te': '🇮🇳', 'telugu': '🇮🇳',
+        'mr': '🇮🇳', 'marathi': '🇮🇳',
+        'gu': '🇮🇳', 'gujarati': '🇮🇳',
+        'kn': '🇮🇳', 'kannada': '🇮🇳',
+        'ml': '🇮🇳', 'malayalam': '🇮🇳',
+        'pa': '🇮🇳', 'punjabi': '🇮🇳',
+        'af': '🇿🇦', 'afrikaans': '🇿🇦',
+        'sq': '🇦🇱', 'albanian': '🇦🇱',
+        'am': '🇪🇹', 'amharic': '🇪🇹',
+        'hy': '🇦🇲', 'armenian': '🇦🇲',
+        'az': '🇦🇿', 'azerbaijani': '🇦🇿',
+        'eu': '🇪🇸', 'basque': '🇪🇸',
+        'be': '🇧🇾', 'belarusian': '🇧🇾',
+        'bs': '🇧🇦', 'bosnian': '🇧🇦',
+        'ca': '🇪🇸', 'catalan': '🇪🇸',
+        'ga': '🇮🇪', 'irish': '🇮🇪',
+        'cy': '🏴󠁧󠁢󠁷󠁬󠁳󠁿', 'welsh': '🏴󠁧󠁢󠁷󠁬󠁳󠁿',
+        'ka': '🇬🇪', 'georgian': '🇬🇪',
+        'is': '🇮🇸', 'icelandic': '🇮🇸',
+        'mk': '🇲🇰', 'macedonian': '🇲🇰',
+        'mn': '🇲🇳', 'mongolian': '🇲🇳',
+        'ne': '🇳🇵', 'nepali': '🇳🇵',
+        'ps': '🇦🇫', 'pashto': '🇦🇫',
+        'sw': '🇰🇪', 'swahili': '🇰🇪'
+    };
+    return flags[lang] || '🌐';
+}
+
+// Helper function to translate premium payment message into server languages
+async function translatePremiumMessage(serverId) {
+    try {
+        const originalText = `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://airtranslator.brevios.com/pricing or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
+        
+        // Get server setup to find configured languages
+        const serverSetup = await getServerSetups(serverId);
+        if (!serverSetup) {
+            return originalText; // No setup, return English only
+        }
+        
+        // Collect all unique languages from server setups and server-wide translation
+        const allLanguages = new Set();
+        
+        // Add server-wide languages if enabled
+        if (serverSetup.serverWideTranslation && serverSetup.serverWideLanguages) {
+            serverSetup.serverWideLanguages.forEach(lang => {
+                if (lang && lang !== AUTO_DETECT_LANGUAGE) {
+                    allLanguages.add(lang.toLowerCase());
+                }
+            });
+        }
+        
+        // Add languages from all channel setups
+        if (serverSetup.setups && serverSetup.setups.length > 0) {
+            serverSetup.setups.forEach(setup => {
+                if (setup.languages && Array.isArray(setup.languages)) {
+                    setup.languages.forEach(lang => {
+                        if (lang && lang !== AUTO_DETECT_LANGUAGE) {
+                            allLanguages.add(lang.toLowerCase());
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Collect non-English languages for translation (filter out both 'en' code and 'english' full name)
+        const targetLanguages = Array.from(allLanguages).filter(lang => lang !== 'en' && lang !== 'english');
+        
+        // If no other languages configured, return original English only
+        if (targetLanguages.length === 0) {
+            return originalText;
+        }
+        
+        // Translate to all non-English configured languages using medium model
+        const translations = await translateTextToMultipleLanguages(
+            originalText,
+            targetLanguages,
+            'en',
+            false,
+            undefined,
+            'mistral-medium-2508'
+        );
+        
+        // Format with language labels
+        const formattedParts = [];
+        
+        // Add English first
+        formattedParts.push(`🇬🇧 **English:**\n${originalText}`);
+        
+        // Add other languages
+        for (const lang of targetLanguages) {
+            const translation = translations[lang];
+            if (translation && translation.trim()) {
+                const langFlag = getLanguageFlag(lang);
+                const langName = getLanguageDisplayName(lang);
+                formattedParts.push(`${langFlag} **${langName}:**\n${translation}`);
+            }
+        }
+        
+        return formattedParts.join('\n\n');
+    } catch (error) {
+        console.error('Error translating premium message:', error);
+        // Fallback to English on error
+        return `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://airtranslator.brevios.com/pricing or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
+    }
+}
+
+// Helper function to translate vote message into server languages
+async function translateVoteMessage(serverId) {
+    try {
+        const originalText = `Select where you want to vote to support Air Translator:
+
+🟢 Vote on the Air Translator Official Site
+Get 50 free translations by clicking the 50 button.
+You'll be redirected to our official website 🌐
+
+🔵 Vote on Top.gg
+Get 25 free translations by clicking the 25 button.
+You'll be redirected to the Top.gg bot page 🚀`;
+        
+        // Get server setup to find configured languages
+        const serverSetup = await getServerSetups(serverId);
+        if (!serverSetup) {
+            return originalText; // No setup, return English only
+        }
+        
+        // Collect all unique languages from server setups and server-wide translation
+        const allLanguages = new Set();
+        
+        // Add server-wide languages if enabled
+        if (serverSetup.serverWideTranslation && serverSetup.serverWideLanguages) {
+            serverSetup.serverWideLanguages.forEach(lang => {
+                if (lang && lang !== AUTO_DETECT_LANGUAGE) {
+                    allLanguages.add(lang.toLowerCase());
+                }
+            });
+        }
+        
+        // Add languages from individual channel setups
+        if (serverSetup.setups && serverSetup.setups.length > 0) {
+            serverSetup.setups.forEach(setup => {
+                if (setup.languages && Array.isArray(setup.languages)) {
+                    setup.languages.forEach(lang => {
+                        if (lang && lang !== AUTO_DETECT_LANGUAGE) {
+                            allLanguages.add(lang.toLowerCase());
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Collect non-English languages for translation (filter out both 'en' code and 'english' full name)
+        const targetLanguages = Array.from(allLanguages).filter(lang => lang !== 'en' && lang !== 'english');
+        
+        // If no other languages configured, return original English only
+        if (targetLanguages.length === 0) {
+            return originalText;
+        }
+        
+        // Translate to all non-English configured languages using medium model
+        const translations = await translateTextToMultipleLanguages(
+            originalText,
+            targetLanguages,
+            'en',
+            false,
+            undefined,
+            'mistral-medium-2508'
+        );
+        
+        // Format with language labels
+        const formattedParts = [];
+        
+        // Add English first
+        formattedParts.push(`🇬🇧 **English:**\n${originalText}`);
+        
+        // Add other languages
+        for (const lang of targetLanguages) {
+            const translation = translations[lang];
+            if (translation && translation.trim()) {
+                const langFlag = getLanguageFlag(lang);
+                const langName = getLanguageDisplayName(lang);
+                formattedParts.push(`${langFlag} **${langName}:**\n${translation}`);
+            }
+        }
+        
+        return formattedParts.join('\n\n');
+    } catch (error) {
+        console.error('Error translating vote message:', error);
+        // Fallback to English on error
+        return `Select where you want to vote to support AirTranslator:
+
+**Official Site**
+Get 50 free translations
+
+**Top.gg**
+Get 25 free translations`;
+    }
 }
 
 // Store recent limit messages to avoid spam (serverId -> timestamp)
@@ -296,9 +542,12 @@ async function sendLimitReachedMessage(message) {
 
         // Try to DM the user with a private approval button
         try {
+            // Get translated description based on server languages
+            const translatedDescription = await translatePremiumMessage(message.guild.id);
+            
             const dmEmbed = new EmbedBuilder()
                 .setTitle('💎 Premium Payment Review')
-                .setDescription('**Pricing Details:**\n• $5 USD per month for everything in bot\n\nClick the below button to open the price page.\n\nIf you have completed the premium payment, press the button below to request approval. Our team will review and exempt your server shortly.')
+                .setDescription(translatedDescription)
                 .setColor('#5865F2')
                 .addFields(
                     { name: 'Server', value: message.guild.name, inline: true },

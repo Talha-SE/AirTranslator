@@ -722,6 +722,14 @@ FORMATTING & CONTENT RULES:
 - Do not reorder sentences, list items, or segments; maintain original sequence and segmentation.
 - Return the complete sentence in the desired translation language with correct terminal punctuation appropriate to that language (., !, ?, etc.).
 
+CRITICAL SPACING & LINK RULES:
+- Preserve ALL spacing around links: if a link is on a new line in source, keep it on a new line in translation
+- Keep exact number of blank lines between sections (\n\n stays \n\n)
+- Links must appear in EXACTLY the same position with same surrounding spacing
+- Do NOT move emojis from end of line to middle or vice versa
+- Maintain bullet points (•) or list markers in exact same positions
+- Example: "text (link)" stays "translated text (link)" with same spacing
+
 SENTENCE CORRECTION (prior to translation):
 - Before translating, minimally correct obvious typos, spacing, and basic punctuation/grammar without changing meaning; do not rewrite or paraphrase.
 - Translate the corrected version; if no correction is needed, translate the original verbatim.
@@ -1071,7 +1079,7 @@ For Korean translations, you MUST add cute chatting elements:
     }
 };
 
-const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLanguage = null, useToneUnderstanding = false, apiKey = MISTRAL_API_KEY) => {
+const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLanguage = null, useToneUnderstanding = false, apiKey = MISTRAL_API_KEY, modelOverride = null) => {
     const translations = {};
     let detected = sourceLanguage;
     try {
@@ -1090,7 +1098,8 @@ const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLan
                     targetLanguage,
                     detected,
                     useToneUnderstanding,
-                    apiKey
+                    apiKey,
+                    modelOverride
                 );
             } catch (error) {
                 console.error(`❌ Error translating to ${targetLanguage}:`, error?.message || error);
@@ -1102,7 +1111,7 @@ const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLan
     // If all results are null/empty, try a quick fallback model once
     const hasAny = Object.values(translations).some(v => typeof v === 'string' && v.length > 0);
     if (!hasAny) {
-        const fallbackModel = 'mistral-small-latest';
+        const fallbackModel = modelOverride || 'mistral-small-latest';
         await Promise.all(
             targetLanguages.map(async (targetLanguage) => {
                 try {
