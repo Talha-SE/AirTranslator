@@ -2,7 +2,6 @@ const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events, ActionRowBu
 const { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus } = require('@discordjs/voice');
 const axios = require('axios');
 
-const TTSSettings = require('./models/TTSSettings');
 const databaseService = require('./services/databaseService');
 const analyticsService = require('./services/analyticsService');
 const monetizationService = require('./services/monetizationService');
@@ -418,15 +417,13 @@ const removeChannelCommand = require('./commands/removeChannel');
 const listSetupsCommand = require('./commands/listSetups');
 const deleteSetupCommand = require('./commands/deleteSetup');
 const toggleToneCommand = require('./commands/toggleTone');
-const toggleServerTranslationCommand = require('./commands/toggleServerTranslation');
+const globalModeCommand = require('./commands/globalmode');
 const helpCommand = require('./commands/help');
 const voteStatusCommand = require('./commands/votestatus');
 const flagsCommand = require('./commands/flags');
 const autoCleanupCommand = require('./commands/autoCleanup');
 const personalBuddyCommand = require('./commands/personalBuddy');
 const styleCommand = require('./commands/style');
-const ttsSetupCommand = require('./commands/ttsSetup');
-const ttsDeleteCommand = require('./commands/ttsDelete');
 const translateToMyDMsCommand = require('./commands/translateToMyDMs');
 const pbEnableCommand = require('./commands/pbEnable');
 const pbDisableCommand = require('./commands/pbDisable');
@@ -440,15 +437,13 @@ client.commands.set('removechannel', removeChannelCommand);
 client.commands.set('listsetups', listSetupsCommand);
 client.commands.set('deletesetup', deleteSetupCommand);
 client.commands.set('toggletone', toggleToneCommand);
-client.commands.set('toggleservertranslation', toggleServerTranslationCommand);
+client.commands.set('globalmode', globalModeCommand);
 client.commands.set('help', helpCommand);
 client.commands.set('votestatus', voteStatusCommand);
 client.commands.set('flags', flagsCommand);
 client.commands.set('autocleanup', autoCleanupCommand);
 client.commands.set('personalbuddy', personalBuddyCommand);
 client.commands.set('style', styleCommand);
-client.commands.set('ttssetup', ttsSetupCommand);
-client.commands.set('ttsdelete', ttsDeleteCommand);
 // Register message context menu command by its exact name
 client.commands.set(translateToMyDMsCommand.data.name, translateToMyDMsCommand);
 // Register user context menu commands for Personal Buddy
@@ -488,55 +483,7 @@ client.on('guildDelete', (guild) => {
     analyticsService.updateServerList(client);
 });
 
-// Keep bot in configured TTS voice channel when users are present; leave when empty
-client.on('voiceStateUpdate', async (oldState, newState) => {
-    try {
-        const guild = newState?.guild || oldState?.guild;
-        if (!guild) return;
-        const settings = await TTSSettings.findOne({ guildId: guild.id, enabled: true }).lean();
-        if (!settings || !settings.voiceChannelId) return;
-
-        // Only react if the update involves the configured channel
-        const affectedIds = [oldState?.channelId, newState?.channelId].filter(Boolean);
-        if (!affectedIds.includes(settings.voiceChannelId)) return;
-
-        const voiceChannel = guild.channels.cache.get(settings.voiceChannelId);
-        if (!voiceChannel) return;
-
-        const nonBotCount = voiceChannel.members.filter(m => !m.user.bot).size;
-        const connection = getVoiceConnection(guild.id);
-
-        if (nonBotCount > 0) {
-            // Ensure joined
-            if (!connection || connection.state.status === VoiceConnectionStatus.Destroyed) {
-                joinVoiceChannel({
-                    channelId: voiceChannel.id,
-                    guildId: guild.id,
-                    adapterCreator: guild.voiceAdapterCreator,
-                    selfDeaf: true,
-                });
-                logger.info('[VoicePresence] Joined configured TTS channel due to user presence', {
-                    guildId: guild.id,
-                    channelId: voiceChannel.id,
-                    nonBotCount,
-                });
-            }
-        } else {
-            // Leave if empty
-            if (connection) {
-                try { connection.destroy(); } catch {}
-                logger.info('[VoicePresence] Left configured TTS channel because it is empty', {
-                    guildId: guild.id,
-                    channelId: voiceChannel.id,
-                });
-            }
-        }
-    } catch (err) {
-        logger.error('[VoicePresence] voiceStateUpdate error', err);
-    }
-});
-
-// Also reactively check for STT auto-resume when voice states change
+// Reactively check for STT auto-resume when voice states change
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
         // Use the dedicated voice state handler if available
@@ -559,41 +506,14 @@ setInterval(async () => {
     try {
         const guilds = client.guilds.cache;
         for (const guild of guilds.values()) {
-            const ttsSettings = await TTSSettings.findOne({ guildId: guild.id, enabled: true }).lean();
             const sttSettings = await require('./models/STTSettings').findOne({ guildId: guild.id, enabled: true }).lean();
             const connection = getVoiceConnection(guild.id);
             
-            // If no TTS or STT setup exists but bot is connected
-            if (!ttsSettings && !sttSettings && connection) {
+            // If no STT setup exists but bot is connected
+            if (!sttSettings && connection) {
                 connection.destroy();
-                logger.info('[PeriodicCheck] Left voice channel - no TTS/STT setup found', { guildId: guild.id });
+                logger.info('[PeriodicCheck] Left voice channel - no STT setup found', { guildId: guild.id });
                 continue;
-            }
-            
-            // Handle TTS feature
-            if (ttsSettings?.voiceChannelId) {
-                const voiceChannel = guild.channels.cache.get(ttsSettings.voiceChannelId);
-                if (!voiceChannel) {
-                    if (connection) connection.destroy();
-                    continue;
-                }
-                
-                const nonBotCount = voiceChannel.members.filter(m => !m.user.bot).size;
-                
-                if (nonBotCount > 0 && !connection) {
-                    joinVoiceChannel({
-                        channelId: voiceChannel.id,
-                        guildId: guild.id,
-                        adapterCreator: guild.voiceAdapterCreator,
-                        selfDeaf: true,
-                    });
-                    continue;
-                }
-                
-                if (nonBotCount === 0 && connection) {
-                    connection.destroy();
-                    continue;
-                }
             }
             
             // Handle STT feature - just keep connection alive if STT is enabled
@@ -1167,64 +1087,12 @@ client.on(Events.InteractionCreate, async interaction => {
         try {
             const customId = interaction.customId || '';
             
-            // Handle TTS voice selection
-            if (customId.startsWith('tts_voice_')) {
-                const TTSSettings = require('./models/TTSSettings');
-                
-                const parts = customId.split('_');
-                const gender = parts[2]; // male or female
-                const language = parts.slice(3).join('_'); // rejoin in case language has underscores
-                const selectedVoice = interaction.values[0];
-                
-                const guildId = interaction.guild.id;
-                
-                // Update the voice setting for this language
-                const ttsSettings = await TTSSettings.findOne({ guildId });
-                if (!ttsSettings || !ttsSettings.enabled) {
-                    await interaction.reply({
-                        content: '❌ TTS is not configured for this server.',
-                        ephemeral: true
-                    });
-                    return;
-                }
-                
-                // Determine if this is the primary or secondary language
-                const isPrimary = ttsSettings.languages[0] === language;
-                const updateField = isPrimary ? 'voices.primary' : 'voices.secondary';
-                
-                await TTSSettings.findOneAndUpdate(
-                    { guildId },
-                    { $set: { [updateField]: selectedVoice } },
-                    { upsert: true, new: true }
-                );
-                
-                // Find the voice name for confirmation
-                const { getVoiceOptions } = require('./services/ttsLanguageHelper');
-                const voiceOptions = getVoiceOptions(language);
-                const allVoices = [...(voiceOptions?.male || []), ...(voiceOptions?.female || [])];
-                const selectedVoiceInfo = allVoices.find(v => v.voice === selectedVoice);
-                
-                const embed = new EmbedBuilder()
-                    .setColor('#00FF00')
-                    .setTitle('✅ Voice Updated')
-                    .setDescription(`Voice for **${language}** has been updated to **${selectedVoiceInfo?.name || selectedVoice}**`)
-                    .addFields(
-                        { name: 'Language', value: language, inline: true },
-                        { name: 'Voice', value: selectedVoiceInfo?.name || selectedVoice, inline: true },
-                        { name: 'Gender', value: gender === 'male' ? '👨 Male' : '👩 Female', inline: true }
-                    )
-                    .setFooter({ text: 'This voice will be used for new TTS messages.' })
-                    .setTimestamp();
-                
-                await interaction.reply({ embeds: [embed], ephemeral: true });
-                
-                console.log(`[TTS Voice] ${interaction.user.tag} updated ${language} voice to ${selectedVoice} in ${interaction.guild.name}`);
-            }
+            // No string select menu handlers currently active
         } catch (error) {
             console.error('String select menu error:', error);
             try {
                 await interaction.reply({
-                    content: '❌ Failed to process voice selection. Please try again.',
+                    content: '❌ Failed to process selection. Please try again.',
                     ephemeral: true
                 });
             } catch {}

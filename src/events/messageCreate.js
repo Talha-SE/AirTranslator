@@ -8,10 +8,6 @@ const analyticsService = require('../services/analyticsService');
 const translationQueueService = require('../services/translationQueueService');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const Server = require('../models/Server');
-const TTSSettings = require('../models/TTSSettings');
-const { synthesizeMultispeaker } = require('../services/ttsService');
-const { validateLanguages } = require('../services/ttsLanguageHelper');
-const { playBufferInChannel } = require('../services/voicePlaybackServiceSimple');
 
 // Split text into Discord-safe chunks (<= 2000 chars),
 // preferring to break on newlines or spaces near the limit
@@ -894,79 +890,6 @@ async function translateAndReply(message, languages, options = {}) {
             // Increment translation count after successful translation
             await monetizationService.incrementTranslationCount(message.guild.id);
             console.log(`✅ Translation count incremented for server: ${message.guild.id}`);
-
-            // TTS playback: only for quick-setup path and when configured
-            if (forQuickSetup) {
-                try {
-                    const ttsSettings = await TTSSettings.findOne({ guildId: message.guild.id }).lean();
-                    console.log('[DEBUG] TTS Attempt', {
-                        voiceChannel: ttsSettings?.voiceChannelId,
-                        textChannel: message.channel.id,
-                        matching: message.channel.id === ttsSettings?.textChannelId
-                    });
-                    if (ttsSettings?.enabled && message.channel.id === ttsSettings.textChannelId) {
-                        // Respect max 2 languages and intersect with produced translations
-                        const desired = Array.from(new Set((ttsSettings.languages || []).map(l => String(l).toLowerCase()))).slice(0, 2);
-                        const availablePairs = desired
-                            .map(l => [l, translations[l]])
-                            .filter(([l, t]) => typeof t === 'string' && t.trim().length > 0);
-
-                        if (availablePairs.length > 0) {
-                            // Build multi-speaker script
-                            const [first, second] = availablePairs;
-                            const primaryVoice = ttsSettings?.voices?.primary || null;
-                            console.log('[TTS] Settings:', {
-                                guildId: message.guild.id,
-                                textChannelId: ttsSettings.textChannelId,
-                                voiceChannelId: ttsSettings.voiceChannelId,
-                                desiredLanguages: desired,
-                                availableLanguages: availablePairs.map(([l]) => l),
-                                primaryVoice,
-                            });
-                            
-                            // Debug: Log the actual translation pairs
-                            console.log('[TTS] Translation pairs:', {
-                                first: { language: first[0], text: first[1] },
-                                second: second ? { language: second[0], text: second[1] } : undefined
-                            });
-                            
-                            // For Mimic3, speak only the translated content without labels
-                            let script = first[1];
-                            if (second) {
-                                script += `\n\n${second[1]}`;
-                            }
-
-                            console.log('[TTS] Script to synthesize:', script);
-                            if (!primaryVoice) {
-                                console.warn('[TTS] No user-selected voice configured. Skipping synthesis.');
-                                return;
-                            }
-                            console.log('[TTS] Synthesizing audio...');
-                            const audioBuffer = await synthesizeMultispeaker(script, {
-                                voice1: primaryVoice,
-                            });
-                            console.log('[TTS] Synthesis result bytes:', audioBuffer ? audioBuffer.length : 0);
-                            if (audioBuffer && audioBuffer.length > 0) {
-                                const voiceChannel = message.guild.channels.cache.get(ttsSettings.voiceChannelId);
-                                if (voiceChannel && voiceChannel.joinable) {
-                                    console.log('[TTS] Playing in voice channel', { channelId: voiceChannel.id, name: voiceChannel.name });
-                                    await playBufferInChannel(voiceChannel, audioBuffer);
-                                }
-                                else {
-                                    console.warn('[TTS] Voice channel not joinable or not found', { voiceChannelId: ttsSettings.voiceChannelId });
-                                }
-                            } else {
-                                console.warn('[TTS] No audio buffer returned from synthesis');
-                            }
-                        }
-                        else {
-                            console.warn('[TTS] No available translations match desired languages', { desired, translationsAvailable: Object.keys(translations) });
-                        }
-                    }
-                } catch (ttsErr) {
-                    console.error('TTS process error:', ttsErr);
-                }
-            }
         }
     } catch (error) {
         console.error('Error in translateAndReply:', error);

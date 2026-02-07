@@ -40,8 +40,8 @@ module.exports = {
                 {
                     name: '🌐 **\n\n━━━ POWER FEATURES ━━━**',
                     value: '```css\n━━━ Smart AI-Powered Translation ━━━\n/* Global translation mode */\n/* Emotion & context preservation */\n/* Choose your display style */\n```\n' +
-                        '▫️ **`/toggleservertranslation`** ➤ *Global translation mode*\n' +
-                        '   💡 Example: `/toggleservertranslation enabled:true`\n' +
+                        '▫️ **`/globalmode`** ➤ *Global translation mode*\n' +
+                        '   💡 Example: `/globalmode enabled:true`\n' +
                         '   🌍 *Works across ALL channels*\n\n' +
                         '▫️ **`/toggletone`** ➤ *Emotion & context preservation*\n' +
                         '   💡 Example: `/toggletone enabled:true`\n' +

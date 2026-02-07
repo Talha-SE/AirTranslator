@@ -3,11 +3,11 @@ const { updateServerConfig } = require('../services/databaseService');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('toggleservertranslation')
-        .setDescription('Enable/disable server-wide translation based on existing channel setups')
+        .setName('globalmode')
+        .setDescription('Enable/disable global translation mode across all server channels')
         .addBooleanOption(option =>
             option.setName('enabled')
-                .setDescription('Enable or disable server-wide translation')
+                .setDescription('Enable or disable global translation mode')
                 .setRequired(true)),
 
     async execute(interaction) {
@@ -24,15 +24,15 @@ module.exports = {
 
             const embed = new EmbedBuilder()
                 .setColor(enabled ? 0x00FF00 : 0xFF0000)
-                .setTitle(`Server-wide translation ${enabled ? 'enabled' : 'disabled'}`)
+                .setTitle(`🌍 Global Translation Mode ${enabled ? 'Enabled' : 'Disabled'}`)
                 .setDescription(enabled 
-                    ? 'The bot will now automatically translate messages across all channels based on existing translation setups.'
-                    : 'Server-wide translation has been disabled. Only configured channel setups will be used.');
+                    ? 'The bot will now automatically translate messages across **all channels** based on your existing translation setups.'
+                    : 'Global translation mode has been disabled. Only configured channel setups will be used.');
 
             return interaction.reply({ embeds: [embed] });
         } catch (error) {
-            console.error('Error toggling server-wide translation:', error);
-            const responseMessage = 'There was an error updating the server-wide translation setting. Please try again later.';
+            console.error('Error toggling global translation mode:', error);
+            const responseMessage = 'There was an error updating the global translation mode. Please try again later.';
             await interaction.editReply({
                 content: responseMessage,
                 flags: 64 // MessageFlags.Ephemeral

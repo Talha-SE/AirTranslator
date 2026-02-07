@@ -11,27 +11,20 @@ module.exports = {
             await interaction.deferReply();
             
             const serverId = interaction.guild.id;
-            const serverName = interaction.guild.name;
-            const userId = interaction.user.id;
-            const settings = monetizationService.getSettings();
             const serverStats = await monetizationService.getServerStats(serverId);
             
             // Determine server status
             let statusEmoji = '';
-            let statusText = '';
             let statusColor = '';
             
             if (serverStats.isExempt) {
                 statusEmoji = '💎';
-                statusText = 'Premium (Unlimited)';
                 statusColor = '#f39c12';
             } else if (!serverStats.canTranslate) {
                 statusEmoji = '🚫';
-                statusText = 'Limit Reached';
                 statusColor = '#e74c3c';
             } else {
                 statusEmoji = '✅';
-                statusText = 'Active';
                 statusColor = '#28a745';
             }
             
@@ -40,46 +33,27 @@ module.exports = {
             const remaining = Math.max(0, serverStats.freeTranslationLimit - serverStats.translationCount);
             
             const embed = new EmbedBuilder()
-                .setTitle(`🗳️ Vote Status - ${serverName}`)
+                .setTitle(`🗳️ Vote Status`)
                 .setColor(statusColor)
-                .setDescription(`Get **10 bonus translations** every 12 hours by voting!`)
+                .setDescription(serverStats.isExempt ? '💎 **Premium Server** - Unlimited translations!' : `Vote every 12 hours to get **+10 bonus translations**!`)
                 .addFields(
                     {
-                        name: `${statusEmoji} Current Translation Status`,
-                        value: `**Translations Used:** ${serverStats.translationCount}/${serverStats.isExempt ? '∞' : serverStats.freeTranslationLimit}\n**Status:** ${statusText}\n**Progress:** ${progressBar} ${percentage}%`,
+                        name: `${statusEmoji} Translation Status`,
+                        value: `**Used:** ${serverStats.translationCount}/${serverStats.isExempt ? '∞' : serverStats.freeTranslationLimit}\n**Remaining:** ${serverStats.isExempt ? '∞' : remaining}\n${!serverStats.isExempt ? `${progressBar} ${percentage}%` : ''}`,
                         inline: false
                     }
                 );
             
             if (!serverStats.isExempt) {
-                embed.addFields(
-                    {
-                        name: '� Vote Rewards',
-                        value: `**Remaining Translations:** ${remaining}\n**Vote Reward:** 10 bonus translations\n**Vote Cooldown:** Every 12 hours\n**Automatic:** Rewards credited instantly!`,
-                        inline: false
-                    },
-                    {
-                        name: '📋 How to Vote',
-                        value: '1️⃣ Click the **Vote on Top.gg** button below 👇\n2️⃣ Complete the voting process on Top.gg\n3️⃣ Get 10 bonus translations within 5 minutes!\n4️⃣ No manual claiming needed - it\'s automatic!',
-                        inline: false
-                    }
-                );
-            } else {
                 embed.addFields({
-                    name: '💎 Premium Status',
-                    value: 'You have unlimited translations! Voting helps support the bot and keeps it running for everyone.',
+                    name: '🎁 Vote Reward',
+                    value: '**+10 translations** every 12 hours\nRewards are automatic & instant!',
                     inline: false
                 });
             }
             
-            embed.addFields({
-                name: '📋 Available Commands',
-                value: '• `/quicksetup` - Quick translation setup\n• `/votestatus` - Check vote status (this command)\n• `/help` - Get help and command list',
-                inline: false
-            });
-            
             embed.setFooter({
-                text: 'AirTranslator - Thank you for your support!',
+                text: 'Click the button below to vote on Top.gg',
                 iconURL: interaction.client.user.displayAvatarURL()
             }).setTimestamp();
             
