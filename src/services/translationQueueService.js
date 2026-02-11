@@ -62,38 +62,41 @@ class TranslationQueueService {
                     message.lastAttemptAt = new Date();
                     await message.save();
 
-                    // Process translations for each target language in parallel
-                    const translationPromises = [];
-
                     const activeApiKeys = this.apiKeys && this.apiKeys.length > 0
                         ? this.apiKeys
                         : [process.env.MISTRAL_API_KEY];
 
-                    const apiCount = activeApiKeys.length;
-                    const languagesPerApi = Array.from({ length: apiCount }, () => []);
-
-                    message.targetLanguages.forEach((lang, index) => {
-                        const apiIndex = index % apiCount;
-                        languagesPerApi[apiIndex].push(lang);
-                    });
-
-                    languagesPerApi.forEach((langs, index) => {
-                        if (langs.length === 0) return;
-                        console.log(`Processing ${langs.join(', ')} with API ${index + 1}`);
-                        translationPromises.push(
-                            translateTextToMultipleLanguages(
+                    // Try each API key until one succeeds (single batch call for all languages)
+                    let translations = {};
+                    let lastError = null;
+                    
+                    for (let i = 0; i < activeApiKeys.length; i++) {
+                        try {
+                            console.log(`🔄 [Queue] Batch translating ${message.targetLanguages.length} languages using API ${i + 1}/${activeApiKeys.length}`);
+                            
+                            translations = await translateTextToMultipleLanguages(
                                 message.content,
-                                langs,
+                                message.targetLanguages,
                                 null, // auto-detect
                                 null, // tone settings
-                                activeApiKeys[index]
-                            )
-                        );
-                    });
-                    
-                    // Wait for all translations to complete
-                    const results = await Promise.all(translationPromises);
-                    const translations = Object.assign({}, ...results);
+                                activeApiKeys[i]
+                            );
+                            
+                            console.log(`✅ [Queue] Success with API ${i + 1}: ${Object.keys(translations).length} translations`);
+                            break; // Success, exit retry loop
+                            
+                        } catch (error) {
+                            lastError = error;
+                            const isLastKey = i === activeApiKeys.length - 1;
+                            
+                            if (!isLastKey) {
+                                console.warn(`⚠️ [Queue] API ${i + 1} failed (${error?.message}), trying next...`);
+                            } else {
+                                console.error(`❌ [Queue] All API keys failed. Last error:`, error?.message);
+                                throw error; // Re-throw on last attempt
+                            }
+                        }
+                    }
                     
                     // Process translations
                     for (const [language, translation] of Object.entries(translations)) {

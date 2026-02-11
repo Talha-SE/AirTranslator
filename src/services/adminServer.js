@@ -1633,7 +1633,7 @@ async function generateMonetizationContent(client) {
                                                             const daysLeft = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
                                                             return `<span title="Exemption expires ${until.toLocaleString()}" class="status-badge exempt">Until ${until.toLocaleDateString()} (${daysLeft}d left)</span>`;
                                                         } else {
-                                                            return `<span class="status-badge">Expired</span>`;
+                                                            return `<span class="status-badge restricted" title="Exemption expired, server is now restricted">Expired (Restricted)</span>`;
                                                         }
                                                     }
                                                     return `<span class="status-badge exempt">Unlimited</span>`;
@@ -2213,6 +2213,15 @@ async function generateMonetizationContent(client) {
 }
 
 function getServerStatusClass(server) {
+    // Check if exemption has expired
+    if (server.isExempt && server.exemptUntil) {
+        const until = new Date(server.exemptUntil);
+        if (until.getTime() < Date.now()) {
+            // Exemption has expired, treat as restricted
+            return 'restricted';
+        }
+    }
+    
     if (server.isExempt) return 'exempt';
     if (!server.canTranslate) return 'over-limit';
     if (server.isRestricted) return 'restricted';
@@ -2220,6 +2229,15 @@ function getServerStatusClass(server) {
 }
 
 function getServerStatusText(server) {
+    // Check if exemption has expired
+    if (server.isExempt && server.exemptUntil) {
+        const until = new Date(server.exemptUntil);
+        if (until.getTime() < Date.now()) {
+            // Exemption has expired, treat as restricted
+            return 'Restricted (Exemption Expired)';
+        }
+    }
+    
     if (server.isExempt) return 'Exempt';
     if (!server.canTranslate) return 'Over Limit';
     if (server.isRestricted) return 'Restricted';
@@ -2229,12 +2247,19 @@ function getServerStatusText(server) {
 function generateServerActions(server) {
     let actions = [];
     
-    if (server.isExempt) {
+    // Check if exemption has expired
+    const hasExpiredExemption = server.isExempt && server.exemptUntil && 
+                                 new Date(server.exemptUntil).getTime() < Date.now();
+    
+    if (server.isExempt && !hasExpiredExemption) {
+        // Active exemption - show remove exempt button
         actions.push(`<button class="btn-remove" onclick="removeExemptServer('${server.id}')">Remove Exempt</button>`);
-    } else if (server.isRestricted) {
+    } else if (server.isRestricted || hasExpiredExemption) {
+        // Restricted or expired exemption - show add exempt and remove restriction buttons
         actions.push(`<button class="btn-exempt" onclick="addExemptServer('${server.id}')">Add Exempt</button>`);
         actions.push(`<button class="btn-remove" onclick="removeRestrictedServer('${server.id}')">Remove Restriction</button>`);
     } else {
+        // Normal server - show add exempt and add restriction buttons
         actions.push(`<button class="btn-exempt" onclick="addExemptServer('${server.id}')">Add Exempt</button>`);
         actions.push(`<button class="btn-restrict" onclick="addRestrictedServer('${server.id}')">Add Restriction</button>`);
     }
@@ -6383,8 +6408,21 @@ server.listen(PORT, '0.0.0.0', () => {
     }
 });
 
+// Periodic exemption expiry checker - runs every 5 minutes
+const exemptionExpiryJob = nodeCron.schedule('*/5 * * * *', async () => {
+    try {
+        console.log('⏰ Running periodic exemption expiry check...');
+        await monetizationService.checkAndExpireExemptions();
+    } catch (error) {
+        console.error('❌ Error in exemption expiry job:', error);
+    }
+});
+
+console.log('✅ Exemption expiry checker scheduled (every 5 minutes)');
+
 process.on('SIGTERM', () => {
     console.log('🛑 Received SIGTERM, shutting down health server gracefully');
+    exemptionExpiryJob.stop();
     server.close(() => {
         console.log('✅ Health server closed');
     });

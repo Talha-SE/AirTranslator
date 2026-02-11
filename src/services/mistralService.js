@@ -1097,45 +1097,257 @@ For Korean translations, you MUST add cute chatting elements:
 
 const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLanguage = null, useToneUnderstanding = false, apiKey = MISTRAL_API_KEY, modelOverride = null) => {
     const translations = {};
-    let detected = sourceLanguage;
-    try {
-        if (!detected) {
-            detected = await detectLanguage(text);
-        }
-    } catch (_) {
-        // Fallback to null if detection fails; translateText will handle auto-detect
-        detected = sourceLanguage;
-    }
-    await Promise.all(
-        targetLanguages.map(async (targetLanguage) => {
-            try {
-                translations[targetLanguage] = await translateText(
-                    text,
-                    targetLanguage,
-                    detected,
-                    useToneUnderstanding,
-                    apiKey,
-                    modelOverride
-                );
-            } catch (error) {
-                console.error(`❌ Error translating to ${targetLanguage}:`, {
-                    error: error?.message || error,
-                    stack: error?.stack,
-                    model: modelOverride || TRANSLATION_MODEL,
-                    apiKeyPresent: !!apiKey,
-                    targetLanguage,
-                    sourceLanguage: detected,
-                    textLength: text?.length || 0
-                });
-                translations[targetLanguage] = null;
+    
+    // If only one language, use the regular single translation
+    if (targetLanguages.length === 1) {
+        let detected = sourceLanguage;
+        try {
+            if (!detected) {
+                detected = await detectLanguage(text);
             }
-        })
-    );
+        } catch (_) {
+            detected = sourceLanguage;
+        }
+        
+        try {
+            translations[targetLanguages[0]] = await translateText(
+                text,
+                targetLanguages[0],
+                detected,
+                useToneUnderstanding,
+                apiKey,
+                modelOverride
+            );
+        } catch (error) {
+            console.error(`❌ Error translating to ${targetLanguages[0]}:`, error?.message || error);
+            translations[targetLanguages[0]] = null;
+        }
+        return translations;
+    }
+    
+    // BATCH TRANSLATION: Single API call for multiple languages
+    try {
+        console.log(`🚀 [Translation] Starting batch translation for ${targetLanguages.length} languages`);
+        
+        // Normalize elongated text before translation
+        const normalizedText = normalizeElongatedText(text);
+        
+        // Fast no-op checks
+        const noEmojiText = stripEmojis(normalizedText).trim();
+        if (noEmojiText.length === 0 || /^[\d\s\p{P}]+$/u.test(noEmojiText)) {
+            // Return original text for all languages
+            targetLanguages.forEach(lang => {
+                translations[lang] = text;
+            });
+            return translations;
+        }
+        
+        // Detect source language if not provided
+        let detected = sourceLanguage;
+        if (!detected) {
+            detected = await detectLanguage(normalizedText);
+        }
+        
+        // Check if any target language matches source - skip those
+        const languagesToTranslate = targetLanguages.filter(lang => lang !== detected);
+        if (languagesToTranslate.length === 0) {
+            // All target languages = source language, return original
+            targetLanguages.forEach(lang => {
+                translations[lang] = text;
+            });
+            return translations;
+        }
+        
+        // Get language names for better prompt context
+        const getLanguageName = (code) => {
+            const languages = {
+                'en': 'English', 'es': 'Spanish', 'fr': 'French', 'de': 'German', 'it': 'Italian',
+                'pt': 'Portuguese', 'pt-BR': 'Portuguese (Brazil)', 'ko': 'Korean', 'ja': 'Japanese',
+                'zh': 'Chinese (Simplified)', 'zh-TW': 'Chinese (Traditional)', 'taiwanese': 'Chinese (Traditional)',
+                'tawaiese': 'Chinese (Traditional)', 'tawainese hoekin': 'Chinese (Traditional)',
+                'hi': 'Hindi', 'bn': 'Bengali', 'pa': 'Punjabi', 'ta': 'Tamil', 'te': 'Telugu',
+                'mr': 'Marathi', 'ur': 'Urdu', 'ar': 'Arabic', 'fa': 'Persian', 'tr': 'Turkish',
+                'ru': 'Russian', 'uk': 'Ukrainian', 'pl': 'Polish', 'nl': 'Dutch', 'sv': 'Swedish',
+                'fi': 'Finnish', 'da': 'Danish', 'no': 'Norwegian', 'th': 'Thai', 'vi': 'Vietnamese',
+                'id': 'Indonesian', 'ms': 'Malay', 'fil': 'Filipino', 'he': 'Hebrew', 'el': 'Greek'
+            };
+            return languages[code] || code;
+        };
+        
+        const targetLanguageNames = languagesToTranslate.map(code => `${getLanguageName(code)} (${code})`).join(', ');
+        
+        // Preserve technical items (URLs, mentions, etc.)
+        const { processedText, nameMap } = markNamesForTransliteration(normalizedText);
+        
+        // Build comprehensive system prompt for batch translation
+        let systemContent = `You are a professional native translator. Translate text accurately while preserving meaning and style.
 
-    // If all results are null/empty, try a quick fallback model once
-    const hasAny = Object.values(translations).some(v => typeof v === 'string' && v.length > 0);
-    if (!hasAny) {
-        const fallbackModel = modelOverride || 'mistral-small-latest';
+CRITICAL BATCH TRANSLATION INSTRUCTIONS:
+1. You will translate ONE message into MULTIPLE languages: ${targetLanguageNames}
+2. Return ONLY a raw JSON object where keys are language codes and values are translations
+3. NO markdown code blocks (no \`\`\`json), NO explanations, NO prefixes - ONLY the JSON object
+4. Each translation must follow ALL grammatical and formatting rules below
+
+GRAMMATICAL RULES:
+- Preserve subject-object relationships exactly as in source
+- Never swap subjects and objects or change who is doing the action
+- Pay strict attention to grammatical particles (가/이, を, etc.)
+- Maintain original perspective and point of view
+- If source has a proper name as subject, keep it as subject in translation
+
+FORMATTING & CONTENT RULES:
+- Preserve original formatting: line breaks, spacing, punctuation, symbols, emojis
+- Do not add/remove/translate emojis or emoticons; keep positions unchanged
+- Keep digits as digits (5 → 5); translate only linguistic parts
+- Treat Roman Urdu as Urdu and translate naturally
+- Detect names (people/places/brands); transliterate to target script
+- Preserve tone and formality; make result natural in target language
+- Mirror playful elongation where natural
+- Keep URLs, emails, @mentions, #hashtags, inline code exactly as-is
+- Preserve markup and placeholders (Markdown/HTML tags, variables like {name}, {{var}})
+- Preserve capitalization patterns (ALL CAPS, Title Case, camelCase)
+- Do not reorder sentences or list items; maintain original sequence
+- Return complete sentences with correct terminal punctuation`;
+
+        if (useToneUnderstanding) {
+            systemContent += `\n\nADVANCED TONE PRESERVATION:
+- Preserve emotional state: excitement, frustration, joy, sarcasm, worry, affection
+- Match formality level: casual chat, professional, intimate, respectful, playful
+- Adapt cultural context while preserving original meaning and impact
+- Maintain conversational flow and natural rhythm
+- ELONGATED EXPRESSIONS: For "babyyy", "heyyyy", "loveeee" - preserve playful elongation:
+  * Korean: "babyyy" → "베이비이이~~♡" or "자기야야야~~~ㅎㅎ"
+  * Japanese: "babyyy" → "ベイビーー", add ー or 〜
+  * Spanish: "bebééé" or "amorrrr", repeat vowels
+- Match LENGTH of elongation from original text!`;
+        }
+        
+        if (nameMap.size > 0) {
+            systemContent += '\n\nCRITICAL: Keep placeholder text like "__PRESERVE_0_1__" EXACTLY as they appear in ALL translations.';
+        } else {
+            systemContent += '\n\nDo not create any placeholder text or markers.';
+        }
+        
+        systemContent += `\n\nOUTPUT FORMAT EXAMPLE:
+{"en": "Hello world", "es": "Hola mundo", "ko": "안녕하세요"}
+
+Return ONLY the JSON object. Nothing else.`;
+        
+        // Make single API call for all languages
+        const languageCodesStr = languagesToTranslate.join(', ');
+        const response = await postMistralWithRetry({
+            model: modelOverride || TRANSLATION_MODEL,
+            messages: [
+                {
+                    role: 'system',
+                    content: systemContent
+                },
+                {
+                    role: 'user',
+                    content: `Translate to language codes [${languageCodesStr}]:
+
+"${processedText}"`
+                }
+            ],
+            temperature: 0.3,
+            top_p: 0.95,
+            random_seed: stableRandomSeed(processedText + ':batch:' + languageCodesStr),
+            max_tokens: Math.min(4096, Math.max(500, Math.ceil(normalizedText.length * languagesToTranslate.length * 1.5)))
+        }, 3, apiKey);
+        
+        let resultText = response.data.choices[0].message.content.trim();
+        
+        // Clean markdown code blocks if present
+        if (resultText.includes('```')) {
+            resultText = resultText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        }
+        
+        // Remove any leading/trailing text before/after JSON
+        const jsonMatch = resultText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            resultText = jsonMatch[0];
+        }
+        
+        // Parse JSON response
+        const parsed = JSON.parse(resultText);
+        
+        // Get emoji constraints from source
+        const sourceHasEmoji = hasEmoji(normalizedText);
+        const sourceEmojis = extractEmojis(normalizedText);
+        const sourceHasNonEmojiText = stripEmojis(normalizedText).trim().length > 0;
+        
+        // Process each translation
+        for (const langCode of languagesToTranslate) {
+            let translation = parsed[langCode] || parsed[getLanguageName(langCode)] || null;
+            
+            if (translation && typeof translation === 'string') {
+                // Remove quotes if wrapped
+                if ((translation.startsWith('"') && translation.endsWith('"')) || 
+                    (translation.startsWith("'") && translation.endsWith("'"))) {
+                    translation = translation.slice(1, -1);
+                }
+                
+                // Restore preserved items
+                translation = restorePreservedItems(translation, nameMap);
+                
+                // Remove unwanted notes
+                translation = removeUnwantedNotes(translation);
+                
+                // Clean rogue placeholders if no original placeholders
+                if (nameMap.size === 0) {
+                    translation = translation.replace(/__PRESERVE_\d+_\d+__/g, '');
+                    translation = translation.replace(/PRESERVE_\d+_\d+/g, '');
+                    translation = translation.replace(/PRESERVE_X_X/g, '');
+                }
+                
+                // Enforce emoji policy
+                if (sourceHasEmoji) {
+                    translation = filterEmojisToAllowed(translation, sourceEmojis);
+                } else {
+                    translation = stripEmojis(translation);
+                }
+                
+                // Check for emoji-only response when source has text
+                if (sourceHasNonEmojiText && stripEmojis(translation).trim().length === 0) {
+                    console.warn(`⚠️ Emoji-only translation for ${langCode}, marking as null`);
+                    translation = null;
+                }
+                
+                // Anti-repetition check
+                const repCheck = hasDegenerateRepetition(translation, normalizedText.length);
+                if (repCheck.isDegenerate) {
+                    translation = clampRepetitions(translation);
+                }
+                
+                translations[langCode] = translation;
+            } else {
+                translations[langCode] = null;
+            }
+        }
+        
+        // Add back languages that matched source
+        targetLanguages.forEach(lang => {
+            if (lang === detected) {
+                translations[lang] = text;
+            }
+        });
+        
+        console.log(`✅ [Translation] Batch success: 1 API call for ${languagesToTranslate.length} languages (saved ${languagesToTranslate.length - 1} calls, ${Math.round(((languagesToTranslate.length - 1) / languagesToTranslate.length) * 100)}% cost reduction)`);
+        return translations;
+        
+    } catch (error) {
+        console.warn(`⚠️ [Translation] Batch failed, falling back to individual calls:`, error?.message || error);
+        
+        // FALLBACK: Individual translations if batch fails
+        let detected = sourceLanguage;
+        try {
+            if (!detected) {
+                detected = await detectLanguage(text);
+            }
+        } catch (_) {
+            detected = sourceLanguage;
+        }
+        
         await Promise.all(
             targetLanguages.map(async (targetLanguage) => {
                 try {
@@ -1145,16 +1357,47 @@ const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLan
                         detected,
                         useToneUnderstanding,
                         apiKey,
-                        fallbackModel
+                        modelOverride
                     );
                 } catch (error) {
-                    console.error(`❌ Fallback error translating to ${targetLanguage}:`, error?.message || error);
+                    console.error(`❌ Error translating to ${targetLanguage}:`, {
+                        error: error?.message || error,
+                        model: modelOverride || TRANSLATION_MODEL,
+                        apiKeyPresent: !!apiKey,
+                        targetLanguage,
+                        sourceLanguage: detected,
+                        textLength: text?.length || 0
+                    });
                     translations[targetLanguage] = null;
                 }
             })
         );
+        
+        // If all results still null/empty, try fallback model once
+        const hasAny = Object.values(translations).some(v => typeof v === 'string' && v.length > 0);
+        if (!hasAny) {
+            const fallbackModel = 'mistral-small-latest';
+            console.log(`⚠️ [Translation] Trying fallback model: ${fallbackModel}`);
+            await Promise.all(
+                targetLanguages.map(async (targetLanguage) => {
+                    try {
+                        translations[targetLanguage] = await translateText(
+                            text,
+                            targetLanguage,
+                            detected,
+                            useToneUnderstanding,
+                            apiKey,
+                            fallbackModel
+                        );
+                    } catch (error) {
+                        console.error(`❌ Fallback error translating to ${targetLanguage}:`, error?.message || error);
+                        translations[targetLanguage] = null;
+                    }
+                })
+            );
+        }
     }
-
+    
     return translations;
 };
 

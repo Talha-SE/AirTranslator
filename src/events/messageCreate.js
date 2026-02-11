@@ -612,42 +612,51 @@ async function translateAndReply(message, languages, options = {}) {
         
         if (targetLanguagesArray.length === 0) return;
         
-        // Use dual-API translation for real-time processing
+        // Single API call for all languages with automatic failover
         const translations = await translationQueue.push(async () => {
             const toneSettings = await getToneSettings(message.guild.id, message.channel.id);
             
-            // Split languages between APIs for parallel processing
+            // Get available API keys
             const activeApiKeys = translationQueueService.apiKeys && translationQueueService.apiKeys.length > 0
                 ? translationQueueService.apiKeys
                 : [undefined];
 
-            const apiCount = activeApiKeys.length;
-            const languagesPerApi = Array.from({ length: apiCount }, () => []);
-
-            targetLanguagesArray.forEach((lang, index) => {
-                const apiIndex = index % apiCount;
-                languagesPerApi[apiIndex].push(lang);
-            });
-
-            const translationPromises = [];
-
-            languagesPerApi.forEach((langs, index) => {
-                if (langs.length === 0) return;
-                console.log(`🔄 API ${index + 1} processing: ${langs.join(', ')}`);
-                translationPromises.push(
-                    translateTextToMultipleLanguages(
+            // Try each API key until one succeeds
+            let lastError = null;
+            for (let i = 0; i < activeApiKeys.length; i++) {
+                const apiKey = activeApiKeys[i];
+                try {
+                    console.log(`🔄 [Translation] Batch translating ${targetLanguagesArray.length} languages using API key ${i + 1}/${activeApiKeys.length}`);
+                    
+                    const result = await translateTextToMultipleLanguages(
                         message.content,
-                        langs,
+                        targetLanguagesArray,
                         detectedLanguage,
                         toneSettings,
-                        activeApiKeys[index]
-                    )
-                );
-            });
+                        apiKey
+                    );
+                    
+                    console.log(`✅ [Translation] Success with API key ${i + 1}: ${Object.keys(result).length} translations`);
+                    return result;
+                    
+                } catch (error) {
+                    lastError = error;
+                    const isLastKey = i === activeApiKeys.length - 1;
+                    
+                    if (!isLastKey) {
+                        console.warn(`⚠️ [Translation] API key ${i + 1} failed (${error?.message}), trying next key...`);
+                    } else {
+                        console.error(`❌ [Translation] All API keys exhausted. Last error:`, error?.message);
+                    }
+                }
+            }
             
-            // Wait for all translations and combine results
-            const results = await Promise.all(translationPromises);
-            return Object.assign({}, ...results);
+            // If all API keys failed, throw the last error
+            if (lastError) {
+                throw lastError;
+            }
+            
+            return {}; // Return empty object if no translations succeeded
         });
         
         // Record analytics for successful translations
@@ -729,16 +738,11 @@ async function translateAndReply(message, languages, options = {}) {
                     .setFields(fields);
                 
                 if (i === 0) {
-                    // First embed gets the header with original message preview
-                    const originalText = message.content.length > 150 
-                        ? message.content.substring(0, 147) + '...' 
-                        : message.content;
-                        
+                    // First embed gets the author info
                     embed.setAuthor({
                         name: `${message.author.displayName}`,
                         iconURL: message.author.displayAvatarURL({ dynamic: true, size: 128 })
-                    })
-                    .setDescription(`> ${originalText}`);
+                    });
                 }
                 
                 const replyOptions = {

@@ -116,10 +116,12 @@ class MonetizationService {
 
             // Check if server is exempt with optional expiry
             if (serverSettings.isExempt) {
-                // If there's an expiry and it has passed, clear exemption lazily
+                // If there's an expiry and it has passed, clear exemption and revert to restricted
                 if (serverSettings.exemptUntil && new Date(serverSettings.exemptUntil).getTime() < Date.now()) {
+                    console.log(`⏰ Exemption expired for server ${serverId}, reverting to restricted status`);
                     serverSettings.isExempt = false;
                     serverSettings.exemptUntil = null;
+                    serverSettings.isRestricted = true;
                     await this.updateServerSettings(serverId, serverSettings);
                 } else {
                     return true;
@@ -207,11 +209,13 @@ class MonetizationService {
     }
 
     /**
-     * Remove server from exempt list
+     * Remove server from exempt list and revert to restricted status
      */
     async removeExemptServer(serverId) {
         const serverSettings = await this.getServerSettings(serverId);
         serverSettings.isExempt = false;
+        serverSettings.exemptUntil = null; // Clear any expiry date
+        serverSettings.isRestricted = true; // Revert to restricted status
         await this.updateServerSettings(serverId, serverSettings);
     }
 
@@ -579,6 +583,46 @@ class MonetizationService {
         } catch (error) {
             console.error('Error checking recent vote:', error);
             return false;
+        }
+    }
+
+    /**
+     * Check all servers for expired exemptions and revert them to restricted status
+     * This method should be called periodically by a cron job
+     */
+    async checkAndExpireExemptions() {
+        try {
+            const now = Date.now();
+            const allServers = await databaseService.getAllServers();
+            let expiredCount = 0;
+
+            for (const server of allServers) {
+                if (!server.monetization) continue;
+                
+                const { isExempt, exemptUntil } = server.monetization;
+                
+                // Check if server is exempt with an expiry date that has passed
+                if (isExempt && exemptUntil && new Date(exemptUntil).getTime() < now) {
+                    console.log(`⏰ Auto-expiring exemption for server ${server.server_id}, reverting to restricted`);
+                    
+                    // Update server to remove exemption and revert to restricted
+                    server.monetization.isExempt = false;
+                    server.monetization.exemptUntil = null;
+                    server.monetization.isRestricted = true;
+                    
+                    await this.updateServerSettings(server.server_id, server.monetization);
+                    expiredCount++;
+                }
+            }
+
+            if (expiredCount > 0) {
+                console.log(`✅ Expired ${expiredCount} server exemption(s) and reverted to restricted status`);
+            }
+
+            return expiredCount;
+        } catch (error) {
+            console.error('❌ Error checking and expiring exemptions:', error);
+            return 0;
         }
     }
 }
