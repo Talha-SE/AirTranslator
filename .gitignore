@@ -45,7 +45,6 @@ temp/
 
 # Project sub-sites
 payment-site/
-website/
 
 # Local test scripts (do not commit)
 test_mimic3_tts.js

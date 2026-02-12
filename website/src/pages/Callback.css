@@ -1,0 +1,65 @@
+.callback-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 20px;
+}
+
+.callback-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    max-width: 450px;
+    width: 100%;
+    padding: 60px 40px;
+    text-align: center;
+}
+
+.callback-icon {
+    font-size: 4em;
+    margin-bottom: 20px;
+}
+
+.callback-icon.error {
+    animation: shake 0.5s;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-10px); }
+    75% { transform: translateX(10px); }
+}
+
+.spinner-large {
+    width: 60px;
+    height: 60px;
+    border: 6px solid #eee;
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.callback-card h2 {
+    margin: 0 0 15px 0;
+    font-size: 1.8em;
+    color: #333;
+}
+
+.callback-card p {
+    color: #666;
+    margin: 0;
+    line-height: 1.6;
+}
+
+.redirect-message {
+    margin-top: 15px;
+    font-size: 0.9em;
+    color: #999;
+}
