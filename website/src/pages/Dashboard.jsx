@@ -15,54 +15,54 @@ function Dashboard() {
     const navigate = useNavigate();
 
     useEffect(() => {
+        const loadUserData = async () => {
+            try {
+                setLoading(true);
+                const userData = await auth.getCurrentUser();
+                setCurrentUser(userData.user);
+
+                const guildsData = await user.getGuilds();
+                setGuilds(guildsData.guilds || []);
+            } catch (err) {
+                console.error('Error loading user data:', err);
+                if (err.response?.status === 401) {
+                    navigate('/');
+                } else {
+                    setError('Failed to load user data');
+                }
+            } finally {
+                setLoading(false);
+            }
+        };
+
         loadUserData();
-    }, []);
+    }, [navigate]);
 
     useEffect(() => {
         if (selectedGuild) {
+            const loadGuildData = async (guildId) => {
+                try {
+                    setLoadingChannels(true);
+                    setError('');
+
+                    const [channelsData, configData] = await Promise.all([
+                        guild.getChannels(guildId),
+                        guild.getConfig(guildId).catch(() => ({ config: null }))
+                    ]);
+
+                    setChannels(channelsData.channels || []);
+                    setConfig(configData.config);
+                } catch (err) {
+                    console.error('Error loading guild data:', err);
+                    setError('Failed to load server data: ' + (err.response?.data?.error || err.message));
+                } finally {
+                    setLoadingChannels(false);
+                }
+            };
+
             loadGuildData(selectedGuild.id);
         }
     }, [selectedGuild]);
-
-    const loadUserData = async () => {
-        try {
-            setLoading(true);
-            const userData = await auth.getCurrentUser();
-            setCurrentUser(userData.user);
-
-            const guildsData = await user.getGuilds();
-            setGuilds(guildsData.guilds || []);
-        } catch (err) {
-            console.error('Error loading user data:', err);
-            if (err.response?.status === 401) {
-                navigate('/');
-            } else {
-                setError('Failed to load user data');
-            }
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const loadGuildData = async (guildId) => {
-        try {
-            setLoadingChannels(true);
-            setError('');
-
-            const [channelsData, configData] = await Promise.all([
-                guild.getChannels(guildId),
-                guild.getConfig(guildId).catch(() => ({ config: null }))
-            ]);
-
-            setChannels(channelsData.channels || []);
-            setConfig(configData.config);
-        } catch (err) {
-            console.error('Error loading guild data:', err);
-            setError('Failed to load server data: ' + (err.response?.data?.error || err.message));
-        } finally {
-            setLoadingChannels(false);
-        }
-    };
 
     const handleLogout = async () => {
         try {

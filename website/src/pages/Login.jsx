@@ -14,7 +14,7 @@ function Login() {
             try {
                 await auth.getCurrentUser();
                 navigate('/dashboard');
-            } catch (err) {
+            } catch {
                 // Not logged in, stay on login page
             }
         };
@@ -27,7 +27,7 @@ function Login() {
             setError('');
             const { authUrl } = await auth.getDiscordAuthUrl();
             window.location.href = authUrl;
-        } catch (err) {
+        } catch {
             setError('Failed to initiate Discord login. Please try again.');
             setLoading(false);
         }
