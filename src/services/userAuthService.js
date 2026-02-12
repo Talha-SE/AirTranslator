@@ -10,6 +10,7 @@ const DISCORD_API_BASE = 'https://discord.com/api/v10';
 // User sessions storage
 const userSessions = new Map();
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const SESSION_CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 /**
  * Generate a random session token
@@ -175,7 +176,7 @@ function cleanupSessions() {
 }
 
 // Run cleanup every 10 minutes
-setInterval(cleanupSessions, 10 * 60 * 1000).unref();
+setInterval(cleanupSessions, SESSION_CLEANUP_INTERVAL_MS).unref();
 
 module.exports = {
     getAuthUrl,

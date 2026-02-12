@@ -137,7 +137,7 @@ function Dashboard() {
                                     The bot needs to be invited to your servers first.
                                 </p>
                                 <a 
-                                    href="https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=8&scope=bot%20applications.commands"
+                                    href={`https://discord.com/api/oauth2/authorize?client_id=${import.meta.env.VITE_DISCORD_CLIENT_ID || ''}&permissions=8&scope=bot%20applications.commands`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="invite-bot-btn"
