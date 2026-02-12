@@ -16,23 +16,53 @@ A powerful Discord bot that provides real-time translation between multiple chan
 
 An animated marketing and documentation site for Air Translator lives in `website/`. It is built with **Vite + React + Tailwind CSS** and is optimized for static or serverless deployments.
 
+### Frontend Dashboard Setup
+
+The website folder contains a user dashboard for managing translation setups through a web interface.
+
 - **Install dependencies**
   ```bash
   cd website
   npm install
   ```
+
+- **Configure environment**
+  Create a `.env` file in the `website` folder:
+  ```env
+  VITE_API_URL=http://localhost:3000
+  ```
+
 - **Run locally**
   ```bash
   npm run dev
   ```
+  The dashboard will be available at `http://localhost:5173`
+
 - **Create production build**
   ```bash
   npm run build
   ```
+
 - **Preview production bundle**
   ```bash
   npm run preview
   ```
+
+### Backend OAuth Configuration
+
+To enable Discord OAuth for the user dashboard, add these environment variables to your `.env` file in the root directory:
+
+```env
+DISCORD_CLIENT_SECRET=your_discord_client_secret_here
+DISCORD_REDIRECT_URI=http://localhost:5173/auth/callback
+FRONTEND_URL=http://localhost:5173
+```
+
+For production, update these URLs to match your deployment:
+```env
+DISCORD_REDIRECT_URI=https://your-domain.com/auth/callback
+FRONTEND_URL=https://your-domain.com
+```
 
 Deploy the contents of `website/dist` to any static host or serverless platform (e.g., Vercel, Netlify, Render static site).
 

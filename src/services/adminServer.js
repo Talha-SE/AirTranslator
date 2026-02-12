@@ -6374,8 +6374,15 @@ const server = http.createServer(async (req, res) => {
                 res.end(JSON.stringify({ error: 'Internal server error' }));
             }
         } else {
-            res.writeHead(404, { 'Content-Type': 'text/plain' });
-            res.end('Not Found');
+            // Try user API routes
+            const userApiServer = require('./userApiServer');
+            const userApiHandler = userApiServer.createUserApiRoutes(global.discordClient);
+            const handled = await userApiHandler(req, res, parsedUrl);
+            
+            if (!handled) {
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('Not Found');
+            }
         }
     } catch (error) {
         console.error('Server error:', error);
