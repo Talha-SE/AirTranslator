@@ -1260,7 +1260,8 @@ async function startBot() {
             const app = express();
             app.use(cors({
                 origin: process.env.DASHBOARD_URL || 'http://localhost:5173',
-                credentials: true
+                credentials: true,
+                allowedHeaders: ['Content-Type', 'X-Session-ID', 'Authorization']
             }));
             app.use(express.json());
             app.use('/api', dashboardApi);
