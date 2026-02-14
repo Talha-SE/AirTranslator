@@ -1159,20 +1159,33 @@ const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLan
         }
         
         // Get language names for better prompt context
-        const getLanguageName = (code) => {
-            const languages = {
-                'en': 'English', 'es': 'Spanish', 'fr': 'French', 'de': 'German', 'it': 'Italian',
-                'pt': 'Portuguese', 'pt-BR': 'Portuguese (Brazil)', 'ko': 'Korean', 'ja': 'Japanese',
-                'zh': 'Chinese (Simplified)', 'zh-TW': 'Chinese (Traditional)', 'taiwanese': 'Chinese (Traditional)',
-                'tawaiese': 'Chinese (Traditional)', 'tawainese hoekin': 'Chinese (Traditional)',
-                'hi': 'Hindi', 'bn': 'Bengali', 'pa': 'Punjabi', 'ta': 'Tamil', 'te': 'Telugu',
-                'mr': 'Marathi', 'ur': 'Urdu', 'ar': 'Arabic', 'fa': 'Persian', 'tr': 'Turkish',
-                'ru': 'Russian', 'uk': 'Ukrainian', 'pl': 'Polish', 'nl': 'Dutch', 'sv': 'Swedish',
-                'fi': 'Finnish', 'da': 'Danish', 'no': 'Norwegian', 'th': 'Thai', 'vi': 'Vietnamese',
-                'id': 'Indonesian', 'ms': 'Malay', 'fil': 'Filipino', 'he': 'Hebrew', 'el': 'Greek'
-            };
-            return languages[code] || code;
+        const languageMap = {
+            'en': 'English', 'es': 'Spanish', 'fr': 'French', 'de': 'German', 'it': 'Italian',
+            'pt': 'Portuguese', 'pt-BR': 'Portuguese (Brazil)', 'ko': 'Korean', 'ja': 'Japanese',
+            'zh': 'Chinese (Simplified)', 'zh-TW': 'Chinese (Traditional)', 'taiwanese': 'Chinese (Traditional)',
+            'tawaiese': 'Chinese (Traditional)', 'tawainese hoekin': 'Chinese (Traditional)',
+            'hi': 'Hindi', 'bn': 'Bengali', 'pa': 'Punjabi', 'ta': 'Tamil', 'te': 'Telugu',
+            'mr': 'Marathi', 'ur': 'Urdu', 'ar': 'Arabic', 'fa': 'Persian', 'tr': 'Turkish',
+            'ru': 'Russian', 'uk': 'Ukrainian', 'pl': 'Polish', 'nl': 'Dutch', 'sv': 'Swedish',
+            'fi': 'Finnish', 'da': 'Danish', 'no': 'Norwegian', 'th': 'Thai', 'vi': 'Vietnamese',
+            'id': 'Indonesian', 'ms': 'Malay', 'fil': 'Filipino', 'he': 'Hebrew', 'el': 'Greek',
+            'hu': 'Hungarian', 'cs': 'Czech', 'ro': 'Romanian', 'bg': 'Bulgarian', 'sr': 'Serbian',
+            'hr': 'Croatian', 'sk': 'Slovak', 'sl': 'Slovenian', 'lt': 'Lithuanian', 'lv': 'Latvian',
+            'et': 'Estonian', 'sw': 'Swahili', 'af': 'Afrikaans', 'zu': 'Zulu', 'xh': 'Xhosa',
+            'ne': 'Nepali', 'si': 'Sinhala', 'my': 'Burmese', 'km': 'Khmer', 'lo': 'Lao',
+            'am': 'Amharic', 'ti': 'Tigrinya', 'or': 'Odia', 'as': 'Assamese', 'gu': 'Gujarati',
+            'kn': 'Kannada', 'ml': 'Malayalam', 'sd': 'Sindhi', 'ps': 'Pashto', 'ku': 'Kurdish',
+            'tk': 'Turkmen', 'uz': 'Uzbek', 'kk': 'Kazakh', 'ky': 'Kyrgyz', 'tg': 'Tajik',
+            'mn': 'Mongolian', 'bo': 'Tibetan'
         };
+
+        const nameToCodeMap = {};
+        Object.entries(languageMap).forEach(([code, name]) => {
+            nameToCodeMap[name.toLowerCase()] = code;
+        });
+
+        const getLanguageName = (code) => languageMap[code] || code;
+        const getLanguageCode = (name) => nameToCodeMap[name ? name.toLowerCase() : ''] || name;
         
         const targetLanguageNames = languagesToTranslate.map(code => `${getLanguageName(code)} (${code})`).join(', ');
         
@@ -1278,7 +1291,19 @@ Return ONLY the JSON object. Nothing else.`;
         
         // Process each translation
         for (const langCode of languagesToTranslate) {
-            let translation = parsed[langCode] || parsed[getLanguageName(langCode)] || null;
+            const name = getLanguageName(langCode);
+            const code = getLanguageCode(langCode);
+            
+            // Try various key formats to catch what the model returned
+            // It might return code (es), name (Spanish), lower name (spanish), or original input (english)
+            let translation = 
+                parsed[langCode] || 
+                parsed[name] || 
+                parsed[code] ||
+                parsed[langCode.toLowerCase()] ||
+                parsed[name.toLowerCase()] ||
+                (code ? parsed[code.toLowerCase()] : null) ||
+                null;
             
             if (translation && typeof translation === 'string') {
                 // Remove quotes if wrapped

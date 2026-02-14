@@ -351,10 +351,12 @@ function startVoteTracking(serverId, userInfo = null, client = null) {
                         const guild = client.guilds.cache.get(serverId);
                         if (guild) {
                             // Find a suitable channel to send confirmation
+                            const me = guild.members.me;
                             const channel = guild.systemChannel || 
                                           guild.channels.cache.find(ch => 
                                               ch.type === 0 && 
-                                              ch.permissionsFor(guild.members.me)?.has(['SendMessages', 'EmbedLinks'])
+                                              me &&
+                                              ch.permissionsFor(me)?.has(['SendMessages', 'EmbedLinks'])
                                           );
                             
                             if (channel) {
@@ -403,7 +405,11 @@ function startVoteTracking(serverId, userInfo = null, client = null) {
 async function scheduleAutoCleanupForBotMessages(messages, serverId, channelId) {
     try {
         if (!Array.isArray(messages) || messages.length === 0) return;
-        console.log(`🔧 DEBUG: Checking auto-cleanup for server ${serverId}, channel ${channelId}`);
+        
+        const guildName = messages[0].guild?.name || 'Unknown Server';
+        const channelName = messages[0].channel?.name || 'Unknown Channel';
+        
+        console.log(`🔧 DEBUG: Checking auto-cleanup for server: "${guildName}" (${serverId}), channel: #${channelName} (${channelId})`);
         const { getServerConfig } = require('../services/databaseService');
         const serverConfig = await getServerConfig(serverId);
         
@@ -420,13 +426,13 @@ async function scheduleAutoCleanupForBotMessages(messages, serverId, channelId) 
             if (channelId && serverConfig.autoCleanup.channels && serverConfig.autoCleanup.channels[channelId]?.enabled) {
                 cleanupDelay = serverConfig.autoCleanup.channels[channelId].delay;
                 const delayText = cleanupDelay === 0 ? 'immediate' : `${Math.round(cleanupDelay / (60 * 1000))} minute(s)`;
-                console.log(`🗑️ Using channel-specific cleanup (${delayText}) for channel ${channelId}`);
+                console.log(`🗑️ Using channel-specific cleanup (${delayText}) for channel: #${channelName} (${channelId})`);
             }
             // Server-wide setting
             else if (serverConfig.autoCleanup.serverWide?.enabled) {
                 cleanupDelay = serverConfig.autoCleanup.serverWide.delay;
                 const delayText = cleanupDelay === 0 ? 'immediate' : `${Math.round(cleanupDelay / (60 * 1000))} minute(s)`;
-                console.log(`🗑️ Using server-wide cleanup (${delayText}) for server ${serverId}`);
+                console.log(`🗑️ Using server-wide cleanup (${delayText}) for server: "${guildName}" (${serverId})`);
             }
         }
 
@@ -526,11 +532,13 @@ async function sendLimitReachedMessage(message) {
         let targetChannel = message.channel;
         
         // If we can't send to current channel, try to find an appropriate channel
-        if (!targetChannel.permissionsFor(message.guild.members.me)?.has(['SendMessages', 'EmbedLinks'])) {
+        const me = message.guild.members.me;
+        if (!me || !targetChannel.permissionsFor(me)?.has(['SendMessages', 'EmbedLinks'])) {
             targetChannel = message.guild.systemChannel || 
                           message.guild.channels.cache.find(ch => 
                               ch.type === 0 && 
-                              ch.permissionsFor(message.guild.members.me)?.has(['SendMessages', 'EmbedLinks'])
+                              me &&
+                              ch.permissionsFor(me)?.has(['SendMessages', 'EmbedLinks'])
                           );
         }
 
@@ -585,7 +593,7 @@ async function worker(task) {
 }
 
 async function translateAndReply(message, languages, options = {}) {
-    console.log('[DEBUG] Translation started', { 
+    console.log(`[DEBUG] Translation started for server: "${message.guild.name}" (${message.guild.id})`, { 
         languages,
         forQuickSetup: options.forQuickSetup,
         channel: message.channel.name 
@@ -893,7 +901,7 @@ async function translateAndReply(message, languages, options = {}) {
             
             // Increment translation count after successful translation
             await monetizationService.incrementTranslationCount(message.guild.id);
-            console.log(`✅ Translation count incremented for server: ${message.guild.id}`);
+            console.log(`✅ Translation count incremented for server: "${message.guild.name}" (${message.guild.id})`);
         }
     } catch (error) {
         console.error('Error in translateAndReply:', error);

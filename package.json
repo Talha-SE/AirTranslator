@@ -24,6 +24,7 @@
     "@google/genai": "^0.10.0",
     "@snazzah/davey": "^0.1.6",
     "axios": "^1.11.0",
+    "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "discord.js": "^14.14.1",
     "dotenv": "^16.6.1",

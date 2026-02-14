@@ -382,23 +382,36 @@ const getServerSetups = async (serverId) => {
 };
 
 const deleteServerSetup = async (serverId, setupName) => {
+    console.log('[DB SERVICE] deleteServerSetup called');
+    console.log('[DB SERVICE] Server ID:', serverId);
+    console.log('[DB SERVICE] Setup Name:', setupName);
+    console.log('[DB SERVICE] Setup Name type:', typeof setupName);
+    
     try {
         // First, find the server document
         const server = await Server.findOne({ serverId });
         
         if (!server) {
+            console.error('[DB SERVICE] ❌ Server not found');
             throw new Error('SERVER_NOT_FOUND');
+        }
+        
+        console.log('[DB SERVICE] Current setups count:', server.setups?.length || 0);
+        if (server.setups && server.setups.length > 0) {
+            console.log('[DB SERVICE] Existing setup names:', server.setups.map(s => s.name));
         }
 
         // Find the setup by name
         const setupIndex = server.setups.findIndex(setup => setup.name === setupName);
         
         if (setupIndex === -1) {
+            console.error('[DB SERVICE] ❌ Setup not found with name:', setupName);
             throw new Error('SETUP_NOT_FOUND');
         }
 
         // Store setup info for logging/response
         const deletedSetup = server.setups[setupIndex];
+        console.log('[DB SERVICE] Found setup to delete:', deletedSetup);
         
         // Remove the setup from the array using MongoDB's $pull operator
         const result = await Server.updateOne(
@@ -407,17 +420,20 @@ const deleteServerSetup = async (serverId, setupName) => {
         );
         
         // Log the result for debugging
-        console.log(`MongoDB deletion result: ${JSON.stringify(result)}`);
+        console.log('[DB SERVICE] Update result:', result);
+        console.log('[DB SERVICE] Successfully deleted setup "' + setupName + '" from server ' + serverId + '. Modified count: ' + result.modifiedCount);
         
         // Check if the operation was successful
         if (result.modifiedCount === 0) {
+            console.error('[DB SERVICE] ❌ DELETE_OPERATION_FAILED - no documents modified');
             throw new Error('DELETE_OPERATION_FAILED');
         }
         
+        console.log('[DB SERVICE] ✅ Deletion successful');
         // Return the updated server document
         return await Server.findOne({ serverId });
     } catch (error) {
-        console.error(`MongoDB deletion error for server ${serverId}, setup ${setupName}:`, error);
+        console.error('[DB SERVICE] ❌ MongoDB deletion error for server ' + serverId + ', setup ' + setupName + ':', error);
         throw error;
     }
 };
@@ -906,6 +922,139 @@ async function getRecentPremiumRequestsByStatus(status = 'approved', limit = 20)
     }
 }
 
+/**
+ * Dashboard Helper Functions
+ * These functions support the web dashboard API
+ */
+
+/**
+ * Get server settings for dashboard
+ */
+async function getServerSettings(serverId) {
+    try {
+        let server = await Server.findOne({ serverId });
+        
+        if (server && server.setups) {
+            let modified = false;
+            // Backfill missing setupIds for legacy setups
+            server.setups.forEach(setup => {
+                if (!setup.setupId) {
+                    setup.setupId = uuidv4();
+                    modified = true;
+                }
+            });
+            
+            if (modified) {
+                server = await server.save();
+                console.log(`Auto-fixed missing setup IDs for server ${serverId}`);
+            }
+        }
+
+        // Return lean object for dashboard consumption
+        return server ? server.toObject() : null;
+    } catch (error) {
+        console.error('Error getting server settings:', error);
+        throw error;
+    }
+}
+
+/**
+ * Update server settings for dashboard
+ */
+async function updateServerSettings(serverId, updates) {
+    try {
+        const server = await Server.findOneAndUpdate(
+            { serverId },
+            { $set: updates },
+            { new: true, upsert: true }
+        );
+        return server;
+    } catch (error) {
+        console.error('Error updating server settings:', error);
+        throw error;
+    }
+}
+
+/**
+ * Create a translation setup
+ */
+async function createSetup(serverId, name, channels, languages) {
+    try {
+        const setupId = `setup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        const server = await Server.findOneAndUpdate(
+            { serverId },
+            {
+                $push: {
+                    setups: {
+                        setupId,
+                        name,
+                        channels,
+                        languages
+                    }
+                }
+            },
+            { new: true, upsert: true }
+        );
+
+        return server.setups.find(s => s.setupId === setupId);
+    } catch (error) {
+        console.error('Error creating setup:', error);
+        throw error;
+    }
+}
+
+/**
+ * Delete a translation setup
+ */
+async function deleteSetup(serverId, setupId) {
+    console.log('[DB SERVICE] deleteSetup called');
+    console.log('[DB SERVICE] Server ID:', serverId);
+    console.log('[DB SERVICE] Setup ID:', setupId);
+    console.log('[DB SERVICE] Setup ID type:', typeof setupId);
+    
+    try {
+        // First, let's check what setups exist
+        const server = await Server.findOne({ serverId });
+        if (!server) {
+            console.error('[DB SERVICE] ❌ Server not found');
+            return false;
+        }
+        
+        console.log('[DB SERVICE] Current setups count:', server.setups?.length || 0);
+        if (server.setups && server.setups.length > 0) {
+            console.log('[DB SERVICE] Existing setup IDs:', server.setups.map(s => s.setupId));
+            const matchingSetup = server.setups.find(s => s.setupId === setupId);
+            if (matchingSetup) {
+                console.log('[DB SERVICE] ✅ Found matching setup:', matchingSetup.name);
+            } else {
+                console.log('[DB SERVICE] ❌ No matching setup found with ID:', setupId);
+            }
+        }
+        
+        const result = await Server.updateOne(
+            { serverId },
+            {
+                $pull: {
+                    setups: { setupId }
+                }
+            }
+        );
+
+        console.log('[DB SERVICE] Update result:', result);
+        console.log('[DB SERVICE] Modified count:', result.modifiedCount);
+        console.log('[DB SERVICE] Matched count:', result.matchedCount);
+        
+        const success = result.modifiedCount > 0;
+        console.log('[DB SERVICE]', success ? '✅ Deletion successful' : '❌ No documents modified');
+        
+        return success;
+    } catch (error) {
+        console.error('[DB SERVICE] ❌ Error deleting setup:', error);
+        throw error;
+    }
+}
+
 module.exports = {
     connectDB,
     saveServerConfig,
@@ -947,5 +1096,10 @@ module.exports = {
     approvePremiumRequest,
     rejectPremiumRequest,
     getLatestPremiumRequestByServer,
-    getRecentPremiumRequestsByStatus
+    getRecentPremiumRequestsByStatus,
+    // Dashboard helpers
+    getServerSettings,
+    updateServerSettings,
+    createSetup,
+    deleteSetup
 };

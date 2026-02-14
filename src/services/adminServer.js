@@ -5656,7 +5656,7 @@ const server = http.createServer(async (req, res) => {
                 try {
                     const client = global.discordClient;
                     const reasonText = reason && String(reason).trim() ? String(reason).trim() : null;
-                    const SUBSCRIPTION_URL = 'https://airtranslator.vercel.app/';
+                    const OFFICIAL_PRICE_URL = 'https://airtranslator.brevios.com/pricing';
                     const SUPPORT_SERVER_URL = 'https://discord.gg/WeynxzR9nq';
                     const dmLines = [
                         `❌ Your premium request for "${rejected.serverName || rejected.serverId}" has been rejected.`
@@ -5665,8 +5665,8 @@ const server = http.createServer(async (req, res) => {
                         dmLines.push(`Reason: ${reasonText}`);
                     }
                     dmLines.push(
-                        `Visit ${SUBSCRIPTION_URL} to buy the monthly subscription.`,
-                        `Need help? Join our support server: ${SUPPORT_SERVER_URL}`,
+                        `Visit [official price page](${OFFICIAL_PRICE_URL})`,
+                        `Need help? Join our [support server](${SUPPORT_SERVER_URL})`,
                         'If you believe this is a mistake, please contact support.'
                     );
                     const dmText = dmLines.join('\n');
@@ -5680,8 +5680,8 @@ const server = http.createServer(async (req, res) => {
                         }
                         lines.push(
                             '',
-                            `Visit ${SUBSCRIPTION_URL} to buy the monthly subscription.`,
-                            `Need help? Join our support server: ${SUPPORT_SERVER_URL}`,
+                            `Visit [official price page](${OFFICIAL_PRICE_URL})`,
+                            `Need help? Join our [support server](${SUPPORT_SERVER_URL})`,
                             '',
                             'If you believe this is a mistake, please contact support.'
                         );

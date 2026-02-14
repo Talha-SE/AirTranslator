@@ -810,9 +810,13 @@ client.on(Events.InteractionCreate, async interaction => {
                     
                     console.log(`✅ User ${interaction.user.id} can vote on server ${serverId} (${source})`);
 
+                    // Use env var or default to production, but checking if we are in dev mode
+                    const isDev = process.env.NODE_ENV !== 'production';
+                    const websiteBaseUrl = isDev ? 'http://localhost:5173' : 'https://airtranslator.brevios.com';
+
                     const linkUrl = isTopgg 
                         ? `https://top.gg/bot/1380177061032759416/vote?guild=${serverId}`
-                        : `https://airtranslator.brevios.com`;
+                        : `${websiteBaseUrl}/vote?server=${serverId}&user=${interaction.user.id}`;
 
                     const voteLinkRow = new ActionRowBuilder().addComponents(
                         new ButtonBuilder()
@@ -824,70 +828,48 @@ client.on(Events.InteractionCreate, async interaction => {
 
                     const pendingEmbed = new EmbedBuilder()
                         .setColor('#129af5')
-                        .setTitle('🗳️ Thanks for supporting!')
-                        .setDescription(`We'll add **${BONUS} free translations** to this server in about **${Math.floor(DELAY_MS/1000)} seconds**.\nPlease complete the vote on ${SITE_NAME} in the meantime by clicking the button below 👇.`);
+                        .setTitle('🗳️ Vote Instructions')
+                        .setDescription(isTopgg 
+                            ? `We'll add **${BONUS} free translations** to this server in about **${Math.floor(DELAY_MS/1000)} seconds**.\nPlease complete the vote on ${SITE_NAME} in the meantime by clicking the button below 👇.`
+                            : `Click the button below to solve the captcha on our official site.\n**${BONUS} free translations** will be instantly added to your server upon completion! 🚀`
+                        );
 
                     await interaction.reply({ embeds: [pendingEmbed], components: [voteLinkRow], flags: MessageFlags.Ephemeral });
 
-                    const requester = {
-                        id: interaction.user.id,
-                        username: interaction.user.username,
-                        displayName: interaction.user.displayName || interaction.user.username,
-                        displayAvatarURL: (...args) => interaction.user.displayAvatarURL(...args)
-                    };
+                    if (isTopgg) {
+                        const requester = {
+                            id: interaction.user.id,
+                            username: interaction.user.username,
+                            displayName: interaction.user.displayName || interaction.user.username,
+                            displayAvatarURL: (...args) => interaction.user.displayAvatarURL(...args)
+                        };
 
-                    setTimeout(async () => {
-                        try {
-                            const result = await monetizationService.handleVoteReward(interaction.user.id, serverId, BONUS, requester, source);
-                            if (result?.success) {
-                                const successEmbed = new EmbedBuilder()
-                                    .setColor('#00ff88')
-                                    .setTitle('🎉 Free Credits Added!')
-                                    .setDescription(`**${BONUS} free translations** have been added to this server.\n\nThanks to **${requester?.displayName || 'a user'}** for supporting AirTranslator!`)
-                                    .setFooter({ text: 'Air Translator • Vote rewards', iconURL: interaction.client.user.displayAvatarURL() })
-                                    .setTimestamp(new Date());
-
-                                try {
-                                    const guild = interaction.client.guilds.cache.get(serverId);
-                                    if (guild) {
-                                        const channel = guild.systemChannel || guild.channels.cache.find(ch => ch.type === 0 && ch.permissionsFor(guild.members.me)?.has(['SendMessages','EmbedLinks']));
-                                        if (channel) await channel.send({ embeds: [successEmbed] });
-                                    }
-                                } catch (postErr) {
-                                    logger.debug('Failed to post public confirmation for vote reward', { error: postErr?.message || postErr });
-                                }
-                            } else if (result?.onCooldown) {
-                                const hrs = result.hoursRemaining ?? 12;
-                                try {
-                                    await interaction.followUp({
-                                        embeds: [new EmbedBuilder()
-                                            .setColor('#f59e0b')
-                                            .setTitle('⏳ Vote Cooldown Active')
-                                            .setDescription(`You have already voted within the last 12 hours. You can claim vote rewards again in about **${hrs} hour(s)**.`)
-                                            .setFooter({ text: 'Air Translator • Vote rewards' })
-                                            .setTimestamp(new Date())
-                                        ],
-                                        flags: MessageFlags.Ephemeral
-                                    });
-                                } catch {}
-                            } else {
-                                try {
-                                    await interaction.followUp({
-                                        content: '⚠️ We could not grant the vote reward right now. Please try again shortly.',
-                                        flags: MessageFlags.Ephemeral
-                                    });
-                                } catch {}
-                            }
-                        } catch (grantErr) {
-                            logger.warn('vote delayed grant error', { error: grantErr?.message || grantErr });
+                        setTimeout(async () => {
                             try {
-                                await interaction.followUp({
-                                    content: '❌ Something went wrong while adding your vote reward. Please try again later.',
-                                    flags: MessageFlags.Ephemeral
-                                });
-                            } catch {}
-                        }
-                    }, DELAY_MS);
+                                const result = await monetizationService.handleVoteReward(interaction.user.id, serverId, BONUS, requester, source);
+                                if (result?.success) {
+                                    const successEmbed = new EmbedBuilder()
+                                        .setColor('#00ff88')
+                                        .setTitle('🎉 Free Credits Added!')
+                                        .setDescription(`**${BONUS} free translations** have been added to this server.\n\nThanks to **${requester?.displayName || 'a user'}** for supporting AirTranslator!`)
+                                        .setFooter({ text: 'Air Translator • Vote rewards', iconURL: interaction.client.user.displayAvatarURL() })
+                                        .setTimestamp(new Date());
+
+                                    try {
+                                        // Try to send to the channel where interaction happened, or DM
+                                        if (interaction.channel) {
+                                            await interaction.channel.send({ embeds: [successEmbed] });
+                                        }
+                                    } catch (e) {
+                                        console.error('Could not send vote success message:', e);
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Error in delayed vote reward:', e);
+                            }
+                        }, DELAY_MS);
+                    }
+
                 } catch (err) {
                     logger.warn('vote choice handler error', { error: err?.message || err });
                     try {
@@ -1263,11 +1245,36 @@ async function startBot() {
             }
         }
 
-        // Start admin server
-        require('./services/adminServer');
+        // Start admin server (new modular version)
+        require('./admin/server');
+        
+        // Start dashboard API server
+        try {
+            const express = require('express');
+            const cors = require('cors');
+            const dashboardApi = require('./services/dashboardApi');
+            
+            // Inject bot client into router for guild access
+            dashboardApi.botClient = client;
+            
+            const app = express();
+            app.use(cors({
+                origin: process.env.DASHBOARD_URL || 'http://localhost:5173',
+                credentials: true
+            }));
+            app.use(express.json());
+            app.use('/api', dashboardApi);
+            
+            const PORT = process.env.BOT_API_PORT || 3001;
+            app.listen(PORT, () => {
+                logger.success(`Dashboard API listening on port ${PORT}`);
+            });
+        } catch (error) {
+            logger.warn('Failed to start dashboard API', error);
+        }
         
         logger.success('Bot started successfully!');
-        logger.info('Admin panel will be available once the server starts');
+        logger.info('Modern admin panel available at /admin');
         // Start processing queued translations
         translationQueueService.startQueueProcessor((content, targetLanguage) => {
             // Determine which API to use based on targetLanguage

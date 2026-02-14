@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, EmbedBuilder, MessageFlags, ComponentType } = require('discord.js');
 const { getServerSetups, deleteServerSetup } = require('../services/databaseService');
 
 module.exports = {
@@ -26,7 +26,7 @@ module.exports = {
             if (!server || !server.setups || server.setups.length === 0) {
                 return interaction.reply({ 
                     content: '❌ **No Setups Found:** This server doesn\'t have any translation setups. Create one using the `/setup` command first.',
-                    ephemeral: true
+                    flags: MessageFlags.Ephemeral
                 });
             }
 
@@ -54,7 +54,7 @@ module.exports = {
                 return interaction.reply({
                     content: `No setup named "${setupName}" was found. See available setups below.`,
                     embeds: [embed],
-                    ephemeral: true
+                    flags: MessageFlags.Ephemeral
                 });
             }
 
@@ -67,7 +67,7 @@ module.exports = {
                 
                 return interaction.reply({
                     content: `✅ **Setup Deleted:** "${setupName}" has been permanently deleted.\n\n**Channels affected:** ${channelsList}`,
-                    ephemeral: true
+                    flags: MessageFlags.Ephemeral
                 });
             }
 
@@ -98,45 +98,129 @@ module.exports = {
             const response = await interaction.reply({
                 embeds: [embed],
                 components: [row],
-                ephemeral: true
+                flags: MessageFlags.Ephemeral
             });
 
-            // Button interaction collector
-            const collectorFilter = i => i.user.id === interaction.user.id;
-            
-            try {
-                const confirmation = await response.awaitMessageComponent({ 
-                    filter: collectorFilter,
-                    time: 60_000 
-                });
+            // Use a collector instead of awaitMessageComponent to handle multiple clicks/race conditions
+            const collector = response.createMessageComponentCollector({ 
+                componentType: ComponentType.Button, 
+                time: 120_000 
+            });
+
+            let isProcessing = false;
+
+            collector.on('collect', async (confirmation) => {
+                if (confirmation.user.id !== interaction.user.id) {
+                    await confirmation.reply({ content: 'Only the person who ran the command can use these buttons.', flags: MessageFlags.Ephemeral });
+                    return;
+                }
+
+                // If already processing, just defer update to prevent "Interaction failed" errors
+                if (isProcessing) {
+                    try { await confirmation.deferUpdate(); } catch (e) {}
+                    return;
+                }
+
+                isProcessing = true;
+                collector.stop('processed'); // Stop collecting more interactions
 
                 if (confirmation.customId === 'confirm_delete') {
-                    await deleteServerSetup(serverId, setupName);
-                    await confirmation.update({
-                        content: `✅ **Setup Deleted:** "${setupName}" has been permanently deleted.\n\n**Channels affected:** ${channelsList}`,
-                        embeds: [],
-                        components: []
-                    });
+                    try {
+                        // Immediately acknowledge the button press to prevent timeout
+                        // We use deferUpdate because it's more robust against race conditions than update
+                        await confirmation.deferUpdate();
+                        
+                        // Then update the UI to show loading state
+                        await interaction.editReply({
+                            content: `⏳ **Deleting setup "${setupName}"...**`,
+                            embeds: [],
+                            components: []
+                        });
+                        
+                        try {
+                            // Perform the deletion
+                            await deleteServerSetup(serverId, setupName);
+                            
+                            // Final success message
+                            await interaction.editReply({
+                                content: `✅ **Setup Deleted:** "${setupName}" has been permanently deleted.\n\n**Channels affected:** ${channelsList}`,
+                                embeds: [],
+                                components: []
+                            });
+                        } catch (deleteError) {
+                            console.error('Database deletion failed:', deleteError);
+                            await interaction.editReply({
+                                content: '❌ **Error:** Failed to delete setup from database. Please try again.',
+                                embeds: [],
+                                components: []
+                            });
+                        }
+                    } catch (err) {
+                        // If deferUpdate fails (e.g. unknown interaction), try to editReply directly as fallback
+                        console.error('Error acknowledging deletion:', err);
+                        try {
+                            // Only try to show loading if we haven't already
+                            await interaction.editReply({
+                                content: `⏳ **Deleting setup "${setupName}"...**`,
+                                embeds: [],
+                                components: []
+                            });
+                            
+                            // Continue with deletion even if acknowledgement failed (the user clicked it!)
+                            await deleteServerSetup(serverId, setupName);
+                            
+                            await interaction.editReply({
+                                content: `✅ **Setup Deleted:** "${setupName}" has been permanently deleted.\n\n**Channels affected:** ${channelsList}`,
+                                embeds: [],
+                                components: []
+                            });
+                        } catch (fallbackError) {
+                            console.error('Fallback deletion handling failed:', fallbackError);
+                        }
+                    }
                 } else if (confirmation.customId === 'cancel_delete') {
-                    await confirmation.update({
-                        content: '❌ **Deletion Cancelled:** The setup was not deleted.',
-                        embeds: [],
-                        components: []
-                    });
+                    try {
+                        await confirmation.deferUpdate();
+                        await interaction.editReply({
+                            content: '❌ **Deletion Cancelled:** The setup was not deleted.',
+                            embeds: [],
+                            components: []
+                        });
+                    } catch (err) {
+                        console.error('Error cancelling:', err);
+                    }
                 }
-            } catch (err) {
-                await interaction.editReply({
-                    content: '⚠️ **Confirmation Not Received:** The deletion was cancelled because no response was received within 1 minute.',
-                    embeds: [],
-                    components: []
-                });
-            }
+            });
+
+            collector.on('end', async (collected, reason) => {
+                if (reason === 'time' && !isProcessing) {
+                    try {
+                        await interaction.editReply({
+                            content: '⚠️ **Confirmation Not Received:** The deletion was cancelled because no response was received within 2 minutes.',
+                            embeds: [],
+                            components: []
+                        });
+                    } catch (e) {}
+                }
+            });
+
         } catch (error) {
             console.error('Error in deleteSetup command:', error);
-            await interaction.reply({
-                content: '❌ **Error:** An error occurred while trying to delete the setup. Please try again later.',
-                ephemeral: true
-            });
+            if (interaction.replied || interaction.deferred) {
+                try {
+                    await interaction.followUp({
+                        content: '❌ **Error:** An error occurred while trying to delete the setup.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                } catch (e) {}
+            } else {
+                try {
+                    await interaction.reply({
+                        content: '❌ **Error:** An error occurred while trying to delete the setup.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                } catch (e) {}
+            }
         }
     }
 };
