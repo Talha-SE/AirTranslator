@@ -142,7 +142,7 @@ class VoteCheckService {
                     const canReward = now - lastRewarded >= twelveHoursMs;
 
                     if (targetServerId && canReward) {
-                        console.log(`⏳ Scheduling 25 free translations for user ${userId} in server ${targetServerId} after 1 minute`);
+                        console.log(`⏳ Scheduling 10 free translations for user ${userId} in server ${targetServerId} after 1 minute`);
 
                         // Persist cooldown immediately to avoid duplicate scheduling
                         try {
@@ -154,10 +154,10 @@ class VoteCheckService {
 
                         setTimeout(async () => {
                             try {
-                                const result = await monetizationService.handleVoteReward(userId, targetServerId, 25, null, 'topgg');
+                                const result = await monetizationService.handleVoteReward(userId, targetServerId, 10, null, 'topgg');
                                 if (result && result.success) {
-                                    console.log(`✅ Vote reward (25 translations) granted to server ${targetServerId} by user ${userId}`);
-                                    await this.sendVoteConfirmation(userId, targetServerId, 25);
+                                    console.log(`✅ Vote reward (10 translations) granted to server ${targetServerId} by user ${userId}`);
+                                    await this.sendVoteConfirmation(userId, targetServerId, 10);
                                     // Refresh cooldown to actual grant time for this server
                                     try { await databaseService.upsertUserVoteCooldown(userId, targetServerId, new Date(), 'topgg'); } catch (_) {}
                                 } else {

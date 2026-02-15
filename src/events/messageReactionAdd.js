@@ -10,7 +10,7 @@ const analyticsService = require('../services/analyticsService');
 
 // Local vote tracking (mirrors messageCreate.js behavior) for flag-reaction path
 const VOTE_CREDIT_DELAY = 15 * 1000; // 15 seconds
-const VOTE_BONUS_AMOUNT = 50; // Free translations to grant
+const VOTE_BONUS_AMOUNT = 20; // Free translations to grant
 
 // Helper function to get language flag emoji
 function getLanguageFlag(langCode) {
@@ -220,11 +220,11 @@ async function translateVoteMessage(serverId) {
         const originalText = `Select where you want to vote to support Air Translator:
 
 🟢 Vote on the Air Translator Official Site
-Get 50 free translations by clicking the 50 button.
+Get 20 free translations by clicking the 20 button.
 You'll be redirected to our official website 🌐
 
 🔵 Vote on Top.gg
-Get 25 free translations by clicking the 25 button.
+Get 10 free translations by clicking the 10 button.
 You'll be redirected to the Top.gg bot page 🚀`;
         
         // Get server setup to find configured languages
@@ -299,10 +299,10 @@ You'll be redirected to the Top.gg bot page 🚀`;
         return `Select where you want to vote to support AirTranslator:
 
 **Official Site**
-Get 50 free translations
+Get 20 free translations
 
 **Top.gg**
-Get 25 free translations`;
+Get 10 free translations`;
     }
 }
 

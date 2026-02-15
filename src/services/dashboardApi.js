@@ -682,7 +682,7 @@ router.post('/vote/confirm', async (req, res) => {
       }
     }
 
-    const result = await monetizationService.handleVoteReward(userId, serverId, 50, requester, 'official');
+    const result = await monetizationService.handleVoteReward(userId, serverId, 20, requester, 'official');
 
     if (result.success) {
       // Send notification to the server if possible
@@ -693,7 +693,7 @@ router.post('/vote/confirm', async (req, res) => {
             const successEmbed = new EmbedBuilder()
                 .setColor('#00ff88')
                 .setTitle('🎉 Free Credits Added!')
-                .setDescription(`**50 free translations** have been added to this server.\n\nThanks to **${userDisplay}** for supporting AirTranslator!`)
+                .setDescription(`**20 free translations** have been added to this server.\n\nThanks to **${userDisplay}** for supporting AirTranslator!`)
                 .setFooter({ text: 'Air Translator • Vote rewards', iconURL: router.botClient.user.displayAvatarURL() })
                 .setTimestamp(new Date());
 

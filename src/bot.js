@@ -287,11 +287,11 @@ async function translateVoteMessage(serverId) {
         const originalText = `Select where you want to vote to support Air Translator:
 
 🟢 Vote on the Air Translator Official Site
-Get 50 free translations by clicking the 50 button.
+Get 20 free translations by clicking the 20 button.
 You'll be redirected to our official website 🌐
 
 🔵 Vote on Top.gg
-Get 25 free translations by clicking the 25 button.
+Get 10 free translations by clicking the 10 button.
 You'll be redirected to the Top.gg bot page 🚀`;
         
         // Get server setup to find configured languages
@@ -373,11 +373,11 @@ You'll be redirected to the Top.gg bot page 🚀`;
         return `Select where you want to vote to support Air Translator:
 
 🟢 Vote on the Air Translator Official Site
-Get 50 free translations by clicking the 50 button.
+Get 20 free translations by clicking the 20 button.
 You'll be redirected to our official website 🌐
 
 🔵 Vote on Top.gg
-Get 25 free translations by clicking the 25 button.
+Get 10 free translations by clicking the 10 button.
 You'll be redirected to the Top.gg bot page 🚀`;
     }
 }
@@ -749,12 +749,12 @@ client.on(Events.InteractionCreate, async interaction => {
                     const choiceRow = new ActionRowBuilder().addComponents(
                         new ButtonBuilder()
                             .setCustomId(`vote_choice_official:${serverId}`)
-                            .setLabel('Vote on Official Site (50)')
+                            .setLabel('Vote on Official Site (20)')
                             .setEmoji('🌐')
                             .setStyle(ButtonStyle.Success),
                         new ButtonBuilder()
                             .setCustomId(`vote_choice_topgg:${serverId}`)
-                            .setLabel('Vote on Top.gg (25)')
+                            .setLabel('Vote on Top.gg (10)')
                             .setEmoji('🗳️')
                             .setStyle(ButtonStyle.Primary)
                     );
@@ -774,7 +774,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 try {
                     const isTopgg = customId.startsWith('vote_choice_topgg');
                     const source = isTopgg ? 'topgg' : 'official';
-                    const BONUS = isTopgg ? 25 : 50;
+                    const BONUS = isTopgg ? 10 : 20;
                     const SITE_NAME = isTopgg ? 'Top.gg' : 'Official Site';
                     const DELAY_MS = 60 * 1000;
                     
