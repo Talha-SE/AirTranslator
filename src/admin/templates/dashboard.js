@@ -12,216 +12,212 @@ async function generateAnalyticsTab(analytics, client) {
 
     return `
     <div class="tab-content" id="analytics-tab">
+        <!-- Dashboard Welcome Section -->
+        <div class="welcome-section">
+            <div class="welcome-text">
+                <h2>Analytics Overview</h2>
+                <p>Track your bot's performance and growth across the Discord ecosystem.</p>
+            </div>
+            <div class="welcome-actions">
+                <button class="btn btn-outline btn-sm" onclick="window.location.reload()">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M17 10a7 7 0 11-1.5-4.3M17 5v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Refresh Data
+                </button>
+                <button class="btn btn-primary btn-sm">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M3 15v4m6-8v8m6-12v12" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
+                    Export Report
+                </button>
+            </div>
+        </div>
+
         <!-- Stats Cards -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                    <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
-                        <path d="M9 2H4a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V9" stroke="white" stroke-width="2"/>
-                        <path d="M15 2h4v4M9 11l6-6" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
+                <div class="stat-icon" style="background: var(--primary-light); color: var(--primary);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
                 </div>
                 <div class="stat-content">
                     <div class="stat-label">Total Translations</div>
                     <div class="stat-value">${analytics.totalTranslations.toLocaleString()}</div>
-                    <div class="stat-change positive">+12% from last month</div>
+                    <div class="stat-footer">
+                        <span class="trend positive">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                            12.5%
+                        </span>
+                        <span class="trend-label">vs last month</span>
+                    </div>
                 </div>
             </div>
 
             <div class="stat-card">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
-                    <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
-                        <rect x="2" y="2" width="16" height="5" rx="1" stroke="white" stroke-width="2"/>
-                        <rect x="2" y="9" width="16" height="5" rx="1" stroke="white" stroke-width="2"/>
-                        <circle cx="5" cy="4.5" r="0.5" fill="white"/>
-                        <circle cx="5" cy="11.5" r="0.5" fill="white"/>
-                    </svg>
+                <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: var(--success);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
                 </div>
                 <div class="stat-content">
                     <div class="stat-label">Active Servers</div>
                     <div class="stat-value">${serverCount.toLocaleString()}</div>
-                    <div class="stat-change positive">+${Math.floor(serverCount * 0.05)} this week</div>
+                    <div class="stat-footer">
+                        <span class="trend positive">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                            5.2%
+                        </span>
+                        <span class="trend-label">this week</span>
+                    </div>
                 </div>
             </div>
 
             <div class="stat-card">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
-                    <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
-                        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                <div class="stat-icon" style="background: rgba(59, 130, 246, 0.1); color: var(--info);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                 </div>
                 <div class="stat-content">
                     <div class="stat-label">Total Users</div>
                     <div class="stat-value">${userCount.toLocaleString()}</div>
-                    <div class="stat-change neutral">Across all servers</div>
+                    <div class="stat-footer">
+                        <span class="trend neutral">Global Reach</span>
+                    </div>
                 </div>
             </div>
 
             <div class="stat-card">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
-                    <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
-                        <path d="M12 8V4H8v4M4 8h12M4 12h12M6 16h8" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
+                <div class="stat-icon" style="background: rgba(245, 158, 11, 0.1); color: var(--warning);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                 </div>
                 <div class="stat-content">
-                    <div class="stat-label">Uptime</div>
-                    <div class="stat-value">99.9%</div>
-                    <div class="stat-change positive">System stable</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Charts Section -->
-        <div class="charts-grid">
-            <div class="chart-card">
-                <div class="chart-header">
-                    <h3 class="chart-title">Translation Activity</h3>
-                    <select class="chart-select">
-                        <option>Last 7 days</option>
-                        <option>Last 30 days</option>
-                        <option>Last 90 days</option>
-                    </select>
-                </div>
-                <div class="chart-body">
-                    <div class="chart-placeholder">
-                        <svg width="100%" height="200" viewBox="0 0 400 200" preserveAspectRatio="none">
-                            <defs>
-                                <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                                    <stop offset="0%" style="stop-color:#667eea;stop-opacity:0.3" />
-                                    <stop offset="100%" style="stop-color:#667eea;stop-opacity:0" />
-                                </linearGradient>
-                            </defs>
-                            <polyline
-                                fill="none"
-                                stroke="#667eea"
-                                stroke-width="2"
-                                points="0,150 50,120 100,140 150,90 200,110 250,70 300,90 350,60 400,80"
-                            />
-                            <polygon
-                                fill="url(#areaGradient)"
-                                points="0,150 50,120 100,140 150,90 200,110 250,70 300,90 350,60 400,80 400,200 0,200"
-                            />
-                        </svg>
-                    </div>
-                </div>
-            </div>
-
-            <div class="chart-card">
-                <div class="chart-header">
-                    <h3 class="chart-title">Top Languages</h3>
-                    <button class="chart-button">View All</button>
-                </div>
-                <div class="chart-body">
-                    <div class="language-list">
-                        <div class="language-item">
-                            <div class="language-info">
-                                <span class="language-flag">🇪🇸</span>
-                                <span class="language-name">Spanish</span>
-                            </div>
-                            <div class="language-stats">
-                                <span class="language-count">12,345</span>
-                                <div class="language-bar">
-                                    <div class="language-bar-fill" style="width: 85%"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="language-item">
-                            <div class="language-info">
-                                <span class="language-flag">🇫🇷</span>
-                                <span class="language-name">French</span>
-                            </div>
-                            <div class="language-stats">
-                                <span class="language-count">9,876</span>
-                                <div class="language-bar">
-                                    <div class="language-bar-fill" style="width: 68%"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="language-item">
-                            <div class="language-info">
-                                <span class="language-flag">🇩🇪</span>
-                                <span class="language-name">German</span>
-                            </div>
-                            <div class="language-stats">
-                                <span class="language-count">7,654</span>
-                                <div class="language-bar">
-                                    <div class="language-bar-fill" style="width: 53%"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="language-item">
-                            <div class="language-info">
-                                <span class="language-flag">🇯🇵</span>
-                                <span class="language-name">Japanese</span>
-                            </div>
-                            <div class="language-stats">
-                                <span class="language-count">6,543</span>
-                                <div class="language-bar">
-                                    <div class="language-bar-fill" style="width: 45%"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="language-item">
-                            <div class="language-info">
-                                <span class="language-flag">🇨🇳</span>
-                                <span class="language-name">Chinese</span>
-                            </div>
-                            <div class="language-stats">
-                                <span class="language-count">5,432</span>
-                                <div class="language-bar">
-                                    <div class="language-bar-fill" style="width: 38%"></div>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="stat-label">System Uptime</div>
+                    <div class="stat-value">99.98%</div>
+                    <div class="stat-footer">
+                        <span class="trend-status online"></span>
+                        <span class="trend-label">All systems operational</span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Recent Activity -->
-        <div class="content-card">
-            <div class="card-header">
-                <h3 class="card-title">Recent Activity</h3>
-                <button class="card-button">Refresh</button>
+        <div class="analytics-grid">
+            <!-- Main Chart Card -->
+            <div class="content-card main-chart-card">
+                <div class="card-header">
+                    <div class="card-title-group">
+                        <h3 class="card-title">Translation Volume</h3>
+                        <p class="card-subtitle">Daily translation requests across all servers</p>
+                    </div>
+                    <div class="card-actions">
+                        <div class="segmented-control">
+                            <button class="active">7D</button>
+                            <button>30D</button>
+                            <button>90D</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <div class="chart-placeholder-modern">
+                            <svg width="100%" height="240" viewBox="0 0 800 240" preserveAspectRatio="none">
+                                <defs>
+                                    <linearGradient id="chartGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                        <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.2" />
+                                        <stop offset="100%" stop-color="var(--primary)" stop-opacity="0" />
+                                    </linearGradient>
+                                </defs>
+                                <path d="M0,200 Q100,180 200,120 T400,140 T600,80 T800,100 V240 H0 Z" fill="url(#chartGradient)" />
+                                <path d="M0,200 Q100,180 200,120 T400,140 T600,80 T800,100" fill="none" stroke="var(--primary)" stroke-width="3" />
+                                <circle cx="200" cy="120" r="4" fill="white" stroke="var(--primary)" stroke-width="2" />
+                                <circle cx="400" cy="140" r="4" fill="white" stroke="var(--primary)" stroke-width="2" />
+                                <circle cx="600" cy="80" r="4" fill="white" stroke="var(--primary)" stroke-width="2" />
+                            </svg>
+                        </div>
+                        <div class="chart-labels">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="activity-list">
-                    <div class="activity-item">
-                        <div class="activity-icon" style="background: #e0e7ff; color: #6366f1;">
-                            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                                <path d="M12 8V4H8v4M4 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            </svg>
-                        </div>
-                        <div class="activity-content">
-                            <div class="activity-title">New server joined</div>
-                            <div class="activity-meta">Server "Gaming Hub" • 2 minutes ago</div>
+
+            <!-- Side Cards -->
+            <div class="side-cards">
+                <div class="content-card language-card">
+                    <div class="card-header">
+                        <h3 class="card-title">Top Languages</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="language-ranking">
+                            <div class="lang-item">
+                                <div class="lang-meta">
+                                    <span class="lang-flag">🇪🇸</span>
+                                    <span class="lang-name">Spanish</span>
+                                    <span class="lang-percent">34%</span>
+                                </div>
+                                <div class="lang-progress">
+                                    <div class="lang-bar" style="width: 34%"></div>
+                                </div>
+                            </div>
+                            <div class="lang-item">
+                                <div class="lang-meta">
+                                    <span class="lang-flag">🇫🇷</span>
+                                    <span class="lang-name">French</span>
+                                    <span class="lang-percent">21%</span>
+                                </div>
+                                <div class="lang-progress">
+                                    <div class="lang-bar" style="width: 21%"></div>
+                                </div>
+                            </div>
+                            <div class="lang-item">
+                                <div class="lang-meta">
+                                    <span class="lang-flag">🇩🇪</span>
+                                    <span class="lang-name">German</span>
+                                    <span class="lang-percent">18%</span>
+                                </div>
+                                <div class="lang-progress">
+                                    <div class="lang-bar" style="width: 18%"></div>
+                                </div>
+                            </div>
+                            <div class="lang-item">
+                                <div class="lang-meta">
+                                    <span class="lang-flag">🇯🇵</span>
+                                    <span class="lang-name">Japanese</span>
+                                    <span class="lang-percent">15%</span>
+                                </div>
+                                <div class="lang-progress">
+                                    <div class="lang-bar" style="width: 15%"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="activity-item">
-                        <div class="activity-icon" style="background: #dcfce7; color: #16a34a;">
-                            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                                <path d="M5 10l3 3L18 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </div>
-                        <div class="activity-content">
-                            <div class="activity-title">Translation completed</div>
-                            <div class="activity-meta">English to Spanish • 5 minutes ago</div>
+                </div>
+
+                <div class="content-card activity-card">
+                    <div class="card-header">
+                        <h3 class="card-title">Recent Events</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="modern-activity-list">
+                            <div class="m-activity-item">
+                                <div class="m-activity-dot online"></div>
+                                <div class="m-activity-info">
+                                    <div class="m-activity-title">New Premium Server</div>
+                                    <div class="m-activity-time">2m ago</div>
+                                </div>
+                            </div>
+                            <div class="m-activity-item">
+                                <div class="m-activity-dot"></div>
+                                <div class="m-activity-info">
+                                    <div class="m-activity-title">Large Broadcast Sent</div>
+                                    <div class="m-activity-time">15m ago</div>
+                                </div>
+                            </div>
+                            <div class="m-activity-item">
+                                <div class="m-activity-dot warning"></div>
+                                <div class="m-activity-info">
+                                    <div class="m-activity-title">API Rate Limit Hit</div>
+                                    <div class="m-activity-time">1h ago</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="activity-item">
-                        <div class="activity-icon" style="background: #fef3c7; color: #d97706;">
-                            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </div>
-                        <div class="activity-content">
-                            <div class="activity-title">Rate limit warning</div>
-                            <div class="activity-meta">Server "Test Guild" • 12 minutes ago</div>
-                        </div>
-                    </div>
+                </div>
             </div>
         </div>
-    </div>
     </div>
     `;
 }
@@ -232,12 +228,28 @@ async function generateAnalyticsTab(analytics, client) {
 function generateMessagingTab() {
     return `
     <div class="tab-content" id="messaging-tab">
+        <div class="welcome-section">
+            <div class="welcome-text">
+                <h2>Broadcast Center</h2>
+                <p>Compose and send global announcements to all servers using the bot.</p>
+            </div>
+            <div class="welcome-actions">
+                <button class="btn btn-outline btn-sm" onclick="clearMessageForm()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                    Clear Draft
+                </button>
+            </div>
+        </div>
+
         <div class="messaging-grid">
             <!-- Compose Section -->
             <div class="content-card">
                 <div class="card-header">
-                    <h3 class="card-title">✍️ Compose Message</h3>
-                    <span class="badge badge-info">Draft</span>
+                    <div class="card-title-group">
+                        <h3 class="card-title">✍️ Compose Message</h3>
+                        <p class="card-subtitle">Design your announcement embed</p>
+                    </div>
+                    <span class="badge badge-info">Draft Mode</span>
                 </div>
                 <div class="card-body">
                     <div class="form-grid">
@@ -292,7 +304,7 @@ function generateMessagingTab() {
                         </div>
                     </div>
                     
-                    <div class="form-group">
+                    <div class="form-group" style="display: flex; gap: 24px;">
                         <label class="checkbox-label">
                             <input type="checkbox" id="includeFooter" checked />
                             <span>Include footer & timestamp</span>
@@ -306,10 +318,13 @@ function generateMessagingTab() {
             </div>
 
             <!-- Preview & Actions -->
-            <div class="content-card-group">
+            <div class="side-cards">
                 <div class="content-card">
                     <div class="card-header">
-                        <h3 class="card-title">📝 Preview</h3>
+                        <div class="card-title-group">
+                            <h3 class="card-title">📝 Live Preview</h3>
+                            <p class="card-subtitle">How it will look in Discord</p>
+                        </div>
                         <span class="badge badge-success">Live</span>
                     </div>
                     <div class="card-body">
@@ -321,11 +336,13 @@ function generateMessagingTab() {
                             </div>
                         </div>
                         <div class="button-group">
-                            <button type="button" class="btn btn-secondary" onclick="updatePreview()">
-                                <span>🔄</span> Update Preview
+                            <button type="button" class="btn btn-outline btn-sm" style="flex: 1;" onclick="updatePreview()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"></path></svg>
+                                Refresh
                             </button>
-                            <button type="button" class="btn btn-success" onclick="sendTestMessage()">
-                                <span>🧪</span> Send Test
+                            <button type="button" class="btn btn-outline btn-sm" style="flex: 1;" onclick="sendTestMessage()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                                Send Test
                             </button>
                         </div>
                     </div>
@@ -333,15 +350,20 @@ function generateMessagingTab() {
                 
                 <div class="content-card">
                     <div class="card-header">
-                        <h3 class="card-title">🚀 Actions</h3>
+                        <div class="card-title-group">
+                            <h3 class="card-title">🚀 Deployment</h3>
+                            <p class="card-subtitle">Global broadcast actions</p>
+                        </div>
                     </div>
                     <div class="card-body">
                         <div class="button-group-vertical">
-                            <button type="button" class="btn btn-primary btn-lg" onclick="sendMessage()">
-                                <span>📤</span> Send Message Now
+                            <button type="button" class="btn btn-primary" style="padding: 14px;" onclick="sendMessage()">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                                Send Global Broadcast
                             </button>
-                            <button type="button" class="btn btn-outline btn-lg" onclick="scheduleMessage()">
-                                <span>🕒</span> Schedule for Later
+                            <button type="button" class="btn btn-outline" style="padding: 14px;" onclick="scheduleMessage()">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                Schedule for Later
                             </button>
                         </div>
                     </div>
@@ -349,16 +371,28 @@ function generateMessagingTab() {
             </div>
         </div>
         
-        <div id="sendingProgress" class="content-card" style="display:none; margin-top: 20px;">
+        <div id="sendingProgress" class="content-card" style="display:none; margin-top: 24px;">
             <div class="card-header">
-                <h3 class="card-title">📡 Sending Progress</h3>
+                <div class="card-title-group">
+                    <h3 class="card-title">📡 Sending Progress</h3>
+                    <p class="card-subtitle">Global delivery in progress</p>
+                </div>
             </div>
             <div class="card-body">
                 <div class="progress-bar">
                     <div id="progressFill" class="progress-fill"></div>
                 </div>
                 <div id="progressText" class="progress-text">Preparing to send...</div>
-                <div id="deliveryResults" class="delivery-results"></div>
+                <div class="delivery-results" id="deliveryResults">
+                    <div class="result-item">
+                        <span class="result-value" id="successCount">0</span>
+                        <span class="result-label">Success</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-value" id="failCount">0</span>
+                        <span class="result-label">Failed</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -373,7 +407,7 @@ async function generateVoteTrackingTab() {
     const voteStats = await monetizationService.getVoteStats();
     
     // Enrich recent votes
-    let enrichedRecentVotes = voteStats.recentVotes.slice(0,20);
+    let enrichedRecentVotes = voteStats.recentVotes;
     if (client && enrichedRecentVotes.length) {
         enrichedRecentVotes = await Promise.all(enrichedRecentVotes.map(async (vote) => {
             const uid = vote?.user?.id;
@@ -410,10 +444,22 @@ async function generateVoteTrackingTab() {
     
     return `
     <div class="tab-content" id="vote-tracking-tab">
-        <!-- Stats Overview -->
-        <div class="stats-grid">
+        <div class="welcome-section">
+            <div class="welcome-text">
+                <h2>Vote Tracking</h2>
+                <p>Monitor real-time voting activity and credit distributions across all servers.</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-primary btn-sm" onclick="refreshRecentVotes()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: middle;"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    Refresh Data
+                </button>
+            </div>
+        </div>
+
+        <div class="stats-grid" style="margin-bottom: 32px;">
             <div class="stat-card">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <div class="stat-icon" style="background: rgba(99, 102, 241, 0.1); color: #6366f1;">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="10"></circle>
                         <circle cx="12" cy="12" r="6"></circle>
@@ -422,13 +468,13 @@ async function generateVoteTrackingTab() {
                 </div>
                 <div class="stat-content">
                     <div class="stat-label">Total Vote Clicks</div>
-                    <div class="stat-value">${voteStats.totalVoteClicks}</div>
-                    <div class="stat-change neutral">All time</div>
+                    <div class="stat-value">${voteStats.totalVoteClicks.toLocaleString()}</div>
+                    <div class="stat-change neutral">Lifetime</div>
                 </div>
             </div>
 
             <div class="stat-card">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
+                <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
                         <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
@@ -443,7 +489,7 @@ async function generateVoteTrackingTab() {
             </div>
 
             <div class="stat-card">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white;">
+                <div class="stat-icon" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                         <line x1="16" y1="2" x2="16" y2="6"></line>
@@ -453,114 +499,135 @@ async function generateVoteTrackingTab() {
                 </div>
                 <div class="stat-content">
                     <div class="stat-label">Today's Votes</div>
-                    <div class="stat-value">${voteStats.todayVotes}</div>
+                    <div class="stat-value">${voteStats.todayVotes.toLocaleString()}</div>
                     <div class="stat-change neutral">Last 24h</div>
                 </div>
             </div>
 
             <div class="stat-card">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white;">
+                <div class="stat-icon" style="background: rgba(245, 158, 11, 0.1); color: #f59e0b;">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
                     </svg>
                 </div>
                 <div class="stat-content">
                     <div class="stat-label">Recent Activity</div>
-                    <div class="stat-value" id="recentActivityCount">${voteStats.recentVotesCount}</div>
-                    <div class="stat-change neutral">Live updates</div>
+                    <div class="stat-value" id="recentActivityCount">${voteStats.recentVotesCount.toLocaleString()}</div>
+                    <div class="stat-change neutral">Active window</div>
                 </div>
             </div>
         </div>
 
         <div class="content-card">
             <div class="card-header">
-                <h3 class="card-title">🗳️ Recent Vote Activity</h3>
-                <span class="badge badge-info">Last 20</span>
+                <div class="card-title-group">
+                    <h3 class="card-title">🗳️ Vote Activity Feed</h3>
+                    <p class="card-subtitle">Detailed log of all votes in the last 24 hours</p>
+                </div>
+                <div class="card-actions">
+                    <span class="badge badge-info" style="padding: 6px 12px;">Last 24 Hours</span>
+                </div>
             </div>
             <div class="card-body">
-                    <div class="filter-group">
-                        <div class="filter-item">
-                            <span class="filter-label">Status:</span>
-                            <select class="form-control-sm" id="voteStatusFilter" onchange="refreshRecentVotes(true)">
-                                <option value="all">All</option>
-                                <option value="granted">Granted</option>
-                                <option value="blocked">Blocked</option>
-                            </select>
-                        </div>
-                        <div class="filter-item">
-                            <span class="filter-label">Server ID:</span>
-                            <input type="text" class="form-control-sm" id="voteServerFilter" placeholder="Filter by ID" style="width: 200px;" onkeyup="handleVoteServerFilter()" />
-                        </div>
-                        <div class="filter-actions">
-                            <button class="btn-sm btn-outline" onclick="clearVoteFilters()">Clear</button>
-                            <button class="btn-sm btn-primary" onclick="refreshRecentVotes()">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: middle;"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                                Refresh
-                            </button>
+                <div class="filter-group" style="margin-bottom: 24px; padding: 20px; background: var(--bg-secondary); border-radius: 12px; border: 1px solid var(--border-color); display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
+                    <div class="filter-item" style="flex: 1; min-width: 200px;">
+                        <span class="filter-label" style="display: block; margin-bottom: 8px; font-size: 11px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px;">Filter by Status</span>
+                        <select class="form-control" id="voteStatusFilter" onchange="refreshRecentVotes(true)" style="width: 100%; height: 40px; border-radius: 8px; background: var(--card-bg);">
+                            <option value="all">All Statuses</option>
+                            <option value="granted">Granted Only</option>
+                            <option value="blocked">Blocked Only</option>
+                        </select>
+                    </div>
+                    <div class="filter-item" style="flex: 1; min-width: 200px;">
+                        <span class="filter-label" style="display: block; margin-bottom: 8px; font-size: 11px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px;">Search Server ID</span>
+                        <div style="position: relative;">
+                            <svg style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary);" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            <input type="text" class="form-control" id="voteServerFilter" placeholder="Enter ID..." onkeyup="handleVoteServerFilter()" style="width: 100%; height: 40px; border-radius: 8px; background: var(--card-bg); padding-left: 36px;" />
                         </div>
                     </div>
-                    
-                    <div class="table-responsive">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Server</th>
-                                    <th>User</th>
-                                    <th style="text-align: center;">Credits</th>
-                                    <th style="text-align: center;">Time</th>
-                                    <th style="text-align: center;">Status</th>
-                                    <th style="text-align: right;">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="recentVotesTbody">
-                                ${enrichedRecentVotes.map(vote => {
-                                    const server = client ? client.guilds.cache.get(vote.serverId) : null;
-                                    const serverName = server ? server.name : 'Unknown Server';
-                                    const timeAgo = new Date(vote.timestamp).toLocaleString();
-                                    const rawName = vote.user ? (vote.user.displayName || vote.user.username || '') : '';
-                                    const isNumericOnly = /^\d+$/.test(rawName);
-                                    const safeName = vote.user ? (
-                                        isNumericOnly
-                                            ? `user_${(vote.user.id || '').toString().slice(-4)}`
-                                            : rawName || `user_${(vote.user.id || '').toString().slice(-4)}`
-                                    ) : 'unknown_user';
-                                    const userDisplay = vote.user ? 
-                                        `<span class="user-mention">@${safeName}</span>
-                                            <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">ID: ${vote.user.id}</div>
-                                            <div style="margin-top: 6px; display: flex; gap: 4px;">
-                                                <button class="btn-xs btn-outline" onclick="copyToClipboard('${vote.user.id}')" title="Copy ID">📋</button>
-                                                <button class="btn-xs btn-outline" onclick="window.open('https://discord.com/users/${vote.user.id}', '_blank')" title="Profile">👤</button>
-                                            </div>` : 
-                                        '<span style="color: var(--text-tertiary); font-style: italic;">Unknown User</span>';
-                                    
-                                    const isGranted = vote.creditsGranted > 0;
-                                    const creditsBadge = isGranted 
-                                        ? `<span class="badge badge-success">+${vote.creditsGranted}</span>` 
-                                        : `<span class="badge badge-secondary">${vote.creditsGranted}</span>`;
-                                    const statusBadge = isGranted
-                                        ? `<span class="badge badge-success">✅ Granted</span>`
-                                        : `<span class="badge badge-warning">🚫 Blocked</span>`;
+                    <div class="filter-actions">
+                        <button class="btn btn-outline" onclick="clearVoteFilters()" style="height: 40px; border-radius: 8px; padding: 0 20px;">
+                            Reset Filters
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Server Info</th>
+                                <th>Voter Profile</th>
+                                <th style="text-align: center;">Reward</th>
+                                <th style="text-align: center;">Timestamp</th>
+                                <th style="text-align: center;">Status</th>
+                                <th style="text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recentVotesTbody">
+                            ${enrichedRecentVotes.map(vote => {
+                                const server = client ? client.guilds.cache.get(vote.serverId) : null;
+                                const serverName = server ? server.name : 'Unknown Server';
+                                const timestamp = new Date(vote.timestamp);
+                                const timeStr = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                const dateStr = timestamp.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                                
+                                const rawName = vote.user ? (vote.user.displayName || vote.user.username || '') : '';
+                                const isNumericOnly = /^\d+$/.test(rawName);
+                                const safeName = vote.user ? (
+                                    isNumericOnly
+                                        ? `user_${(vote.user.id || '').toString().slice(-4)}`
+                                        : rawName || `user_${(vote.user.id || '').toString().slice(-4)}`
+                                ) : 'unknown_user';
+                                
+                                const userDisplay = vote.user ? 
+                                    `<div class="user-info-cell">
+                                        <div class="user-name" style="font-weight: 600; color: var(--text-primary);">@${safeName}</div>
+                                        <div class="user-id" style="font-size: 11px; color: var(--text-tertiary);">ID: ${vote.user.id}</div>
+                                    </div>` : 
+                                    '<span class="text-muted">Unknown User</span>';
+                                
+                                const isGranted = vote.creditsGranted > 0;
+                                const creditsBadge = isGranted 
+                                    ? `<span class="badge badge-success" style="font-weight: 700;">+${vote.creditsGranted} Credits</span>` 
+                                    : `<span class="badge badge-secondary" style="opacity: 0.6;">${vote.creditsGranted} Credits</span>`;
+                                const statusBadge = isGranted
+                                    ? `<div style="display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--success); font-weight: 600; font-size: 13px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg> Granted</div>`
+                                    : `<div style="display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--warning); font-weight: 600; font-size: 13px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> Blocked</div>`;
 
-                                    return `
-                                    <tr>
-                                        <td data-label="Server">
-                                            <strong>${vote.serverId}</strong>
-                                            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${serverName}</div>
-                                        </td>
-                                        <td data-label="User">${userDisplay}</td>
-                                        <td data-label="Credits" style="text-align: center;">${creditsBadge}</td>
-                                        <td data-label="Time" style="text-align: center;">${timeAgo}</td>
-                                        <td data-label="Status" style="text-align: center;">${statusBadge}</td>
-                                        <td data-label="Actions" style="text-align: right;">
-                                            <button class="btn-sm btn-danger" onclick="deleteVoteRecord('${vote.id}')" title="Delete Record">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                return `
+                                <tr>
+                                    <td>
+                                        <div class="server-info-cell">
+                                            <div class="server-name" style="font-weight: 600; color: var(--text-primary);">${serverName}</div>
+                                            <div class="server-id" style="font-size: 11px; color: var(--text-tertiary); font-family: monospace;">${vote.serverId}</div>
+                                        </div>
+                                    </td>
+                                    <td>${userDisplay}</td>
+                                    <td style="text-align: center;">${creditsBadge}</td>
+                                    <td style="text-align: center;">
+                                        <div class="time-cell">
+                                            <div class="time-main" style="font-weight: 600; font-size: 13px;">${timeStr}</div>
+                                            <div class="time-sub" style="font-size: 11px; color: var(--text-tertiary);">${dateStr}</div>
+                                        </div>
+                                    </td>
+                                    <td style="text-align: center;">${statusBadge}</td>
+                                    <td style="text-align: right;">
+                                        <div class="action-buttons">
+                                            <button class="btn-icon btn-outline" onclick="window.open('https://discord.com/users/${vote.user?.id}', '_blank')" title="View Discord Profile">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                                             </button>
-                                        </td>
-                                    </tr>`;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+                                            <button class="btn-icon btn-danger" onclick="deleteVoteRecord('${vote.id}')" title="Delete Log Entry">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                            ${enrichedRecentVotes.length === 0 ? '<tr><td colspan="6" style="text-align: center; padding: 48px; color: var(--text-tertiary);">No voting activity recorded in the last 24 hours.</td></tr>' : ''}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -583,54 +650,103 @@ async function generatePremiumRequestsTab() {
     
     return `
     <div class="tab-content" id="premium-requests-tab">
+        <div class="welcome-section">
+            <div class="welcome-text">
+                <h2>Premium Subscriptions</h2>
+                <p>Review and manage manual premium activation requests from server owners.</p>
+            </div>
+            <div class="premium-badge-group">
+                <span class="badge badge-warning" style="padding: 10px 16px; font-size: 14px;">
+                    ${pendingPremium.length} Pending Requests
+                </span>
+            </div>
+        </div>
+
         <div class="content-card">
             <div class="card-header">
-                <h3 class="card-title">💳 Premium Requests Management</h3>
-                <span class="badge badge-warning">Pending: ${pendingPremium.length}</span>
+                <div class="card-title-group">
+                    <h3 class="card-title">💳 Request Queue</h3>
+                    <p class="card-subtitle">Review each request carefully before approval</p>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-outline btn-sm" onclick="window.location.reload()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"></path></svg>
+                        Refresh Queue
+                    </button>
+                </div>
             </div>
             <div class="card-body">
                 ${pendingPremium.length > 0 ? `
                 <div class="alert alert-warning">
-                    ⚠️ You have ${pendingPremium.length} pending premium request${pendingPremium.length !== 1 ? 's' : ''} awaiting review.
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    Action Required: ${pendingPremium.length} request${pendingPremium.length !== 1 ? 's' : ''} awaiting your review.
                 </div>
                 ` : `
                 <div class="alert alert-success">
-                    ✅ No pending premium requests at this time.
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    Queue Empty: All premium requests have been processed.
                 </div>
                 `}
+
                 <div class="table-responsive">
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Request ID</th>
-                                <th>Server</th>
-                                <th>Server ID</th>
+                                <th>Server Details</th>
                                 <th>Requester</th>
-                                <th>Created</th>
-                                <th style="min-width: 220px;">Actions</th>
+                                <th>Submission Date</th>
+                                <th style="text-align: center;">Status</th>
+                                <th style="text-align: right; min-width: 280px;">Approval Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${pendingPremium.map(pr => `
+                            ${pendingPremium.map(pr => {
+                                const isDuplicate = (duplicateCounts[pr.serverId] || 0) > 1;
+                                return `
                                 <tr>
-                                    <td><code>${pr._id}</code> ${(duplicateCounts[pr.serverId] || 0) > 1 ? '<span class="badge badge-warning" title="Duplicate request">Dup</span>' : ''}</td>
-                                    <td>${pr.serverName || 'Unknown'}</td>
-                                    <td>${pr.serverId}</td>
                                     <td>
-                                        <span class="user-mention">@${pr.requesterDisplayName || pr.requesterUsername || 'user'}</span>
-                                        <br><small style="color: #6b7280;">ID: ${pr.requesterUserId}</small>
+                                        <div class="server-info-cell">
+                                            <div style="display: flex; align-items: center; gap: 8px;">
+                                                <strong style="font-size: 15px;">${pr.serverName || 'Unknown Server'}</strong>
+                                                ${isDuplicate ? '<span class="duplicate-indicator" title="Multiple requests from this server">!</span>' : ''}
+                                            </div>
+                                            <div class="server-id-badge">ID: ${pr.serverId}</div>
+                                        </div>
                                     </td>
-                                    <td>${new Date(pr.createdAt).toLocaleString()}</td>
                                     <td>
-                                        <div style="display: flex; gap: 8px; align-items: center;">
-                                            <input type="number" min="1" max="3650" value="30" id="dur_${pr._id}" style="width: 90px; padding: 6px; border: 1px solid var(--border); border-radius: 6px;" title="Days" />
-                                            <button class="btn-sm btn-success" onclick="approvePremium('${pr._id}', '${pr.serverId}')">Approve</button>
-                                            <button class="btn-sm btn-danger" onclick="rejectPremium('${pr._id}', '${pr.serverId}')">Reject</button>
+                                        <div class="user-info-cell">
+                                            <span class="user-mention" style="font-weight: 600;">@${pr.requesterDisplayName || pr.requesterUsername || 'user'}</span>
+                                            <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">ID: ${pr.requesterUserId}</div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div style="font-size: 13px; color: var(--text-secondary);">
+                                            ${new Date(pr.createdAt).toLocaleDateString()}
+                                            <div style="font-size: 11px; color: var(--text-tertiary);">${new Date(pr.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                                        </div>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <span class="badge badge-warning">Pending</span>
+                                    </td>
+                                    <td style="text-align: right;">
+                                        <div style="display: flex; gap: 12px; align-items: center; justify-content: flex-end;">
+                                            <div class="action-input-group">
+                                                <span class="duration-label">DAYS</span>
+                                                <input type="number" min="1" max="3650" value="30" id="dur_${pr._id}" class="duration-input" />
+                                            </div>
+                                            <div class="action-btn-group">
+                                                <button class="btn btn-success btn-sm" onclick="approvePremium('${pr._id}', '${pr.serverId}')" style="background: #10b981; border: none;">
+                                                    Approve
+                                                </button>
+                                                <button class="btn btn-outline btn-sm" onclick="rejectPremium('${pr._id}', '${pr.serverId}')" style="color: #ef4444; border-color: #fca5a5;">
+                                                    Reject
+                                                </button>
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
-                            `).join('')}
-                            ${pendingPremium.length === 0 ? '<tr><td colspan="6" class="text-center text-muted">No pending requests</td></tr>' : ''}
+                            `}).join('')}
+                            ${pendingPremium.length === 0 ? '<tr><td colspan="5" style="text-align: center; padding: 48px; color: var(--text-tertiary);">No pending requests in the queue.</td></tr>' : ''}
                         </tbody>
                     </table>
                 </div>
@@ -793,9 +909,9 @@ async function generateMonetizationTab() {
                         <input type="text" id="serverIdInput" placeholder="Enter Server ID" class="form-control" />
                     </div>
                     <div class="action-buttons">
-                        <button class="btn btn-sm btn-success" onclick="addExemptServer()">Add Exempt</button>
-                        <button class="btn btn-sm btn-danger" onclick="addRestrictedServer()">Restrict</button>
-                        <button class="btn btn-sm btn-warning" onclick="resetServerCount()">Reset Count</button>
+                        <button class="btn btn-primary btn-sm" onclick="addExemptServer()">Add Exempt</button>
+                        <button class="btn btn-danger btn-sm" onclick="addRestrictedServer()">Restrict</button>
+                        <button class="btn btn-warning btn-sm" onclick="resetServerCount()">Reset Count</button>
                     </div>
                     <div class="form-group" style="margin-top: 15px; display: flex; gap: 8px;">
                         <input type="number" id="customLimitInput" placeholder="Limit" class="form-control" style="width: 80px;" min="1" />
@@ -891,60 +1007,137 @@ async function generateMonetizationTab() {
  */
 async function generateServersTab(client) {
     const servers = client ? Array.from(client.guilds.cache.values()) : [];
-    
+    const totalServers = servers.length;
+    const totalMembers = servers.reduce((acc, guild) => acc + (guild.memberCount || 0), 0);
+    const avgMembers = totalServers > 0 ? Math.round(totalMembers / totalServers) : 0;
+    const largeServers = servers.filter(g => (g.memberCount || 0) >= 500).length;
+
     return `
     <div class="tab-content" id="servers-tab">
+        <div class="welcome-section">
+            <div class="welcome-text">
+                <h2>Server Management</h2>
+                <p>Monitor and manage all Discord servers where the bot is currently active.</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-primary btn-sm" onclick="refreshServers()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: middle;"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    Refresh Servers
+                </button>
+            </div>
+        </div>
+
+        <div class="stats-grid" style="margin-bottom: 32px;">
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(99, 102, 241, 0.1); color: #6366f1;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Total Servers</div>
+                    <div class="stat-value">${totalServers.toLocaleString()}</div>
+                    <div class="stat-change neutral">Active guilds</div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Total Members</div>
+                    <div class="stat-value">${totalMembers.toLocaleString()}</div>
+                    <div class="stat-change positive">Combined reach</div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(245, 158, 11, 0.1); color: #f59e0b;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Avg Members</div>
+                    <div class="stat-value">${avgMembers.toLocaleString()}</div>
+                    <div class="stat-change neutral">Per server</div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(239, 68, 68, 0.1); color: #ef4444;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Large Servers</div>
+                    <div class="stat-value">${largeServers.toLocaleString()}</div>
+                    <div class="stat-change neutral">500+ members</div>
+                </div>
+            </div>
+        </div>
+
         <div class="content-card">
             <div class="card-header">
-                <h3 class="card-title">🖥️ Server Management</h3>
-                <div class="header-actions">
-                    <input type="text" class="form-control-sm search-input" id="serverSearch" placeholder="Search servers..." />
-                    <button class="btn btn-sm btn-primary" onclick="refreshServers()">
-                        <span>🔄</span> Refresh
-                    </button>
+                <div class="card-title-group">
+                    <h3 class="card-title">🖥️ Server Directory</h3>
+                    <p class="card-subtitle">Comprehensive list of all connected servers</p>
+                </div>
+                <div class="card-actions">
+                    <div class="search-wrapper" style="position: relative;">
+                        <svg style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary);" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        <input type="text" class="form-control" id="serverSearch" placeholder="Search servers..." style="padding-left: 36px; min-width: 260px;" onkeyup="filterServersTable()" />
+                    </div>
                 </div>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="data-table">
+                    <table class="data-table" id="serversTableMain">
                         <thead>
                             <tr>
-                                <th>Server Name</th>
+                                <th>Server</th>
                                 <th>Server ID</th>
-                                <th>Members</th>
-                                <th>Joined</th>
-                                <th>Actions</th>
+                                <th style="text-align: center;">Members</th>
+                                <th style="text-align: center;">Joined</th>
+                                <th style="text-align: right;">Actions</th>
                             </tr>
                         </thead>
-                        <tbody id="serversTable">
-                            ${servers.map(guild => `
-                                <tr data-server-id="${guild.id}">
+                        <tbody id="serversTableBody">
+                            ${servers.map(guild => {
+                                const initial = (guild.name || '?').charAt(0).toUpperCase();
+                                const joinedDate = guild.joinedAt ? new Date(guild.joinedAt) : null;
+                                const joinedStr = joinedDate ? joinedDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A';
+                                
+                                return `
+                                <tr data-server-id="${guild.id}" class="server-row">
                                     <td>
-                                        <div class="server-name-cell">
-                                            <span class="server-icon">${(guild.name || '?').charAt(0).toUpperCase()}</span>
-                                            <span>${guild.name || 'Unknown Server'}</span>
+                                        <div class="server-info-cell">
+                                            <div class="server-avatar-mini" style="background: var(--primary-light); color: var(--primary); width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;">
+                                                ${guild.iconURL() ? `<img src="${guild.iconURL({ size: 32 })}" style="width: 100%; height: 100%; border-radius: 8px; object-fit: cover;" />` : initial}
+                                            </div>
+                                            <div class="server-meta">
+                                                <div class="server-name" style="font-weight: 600; color: var(--text-primary);">${guild.name || 'Unknown Server'}</div>
+                                                <div class="server-owner" style="font-size: 11px; color: var(--text-tertiary);">Owner ID: ${guild.ownerId || 'Unknown'}</div>
+                                            </div>
                                         </div>
                                     </td>
-                                    <td><code class="code-snippet">${guild.id}</code></td>
-                                    <td>${(guild.memberCount || 0).toLocaleString()}</td>
-                                    <td>${guild.joinedAt ? new Date(guild.joinedAt).toLocaleDateString() : 'N/A'}</td>
-                                    <td>
+                                    <td><code class="code-snippet" style="background: var(--bg-secondary); padding: 4px 8px; border-radius: 4px; font-size: 12px; border: 1px solid var(--border-color);">${guild.id}</code></td>
+                                    <td style="text-align: center;">
+                                        <span class="badge badge-secondary" style="font-family: monospace; font-size: 13px;">${(guild.memberCount || 0).toLocaleString()}</span>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <div class="time-cell">
+                                            <div class="time-main" style="font-size: 13px;">${joinedStr}</div>
+                                        </div>
+                                    </td>
+                                    <td style="text-align: right;">
                                         <div class="action-buttons">
-                                            <button class="btn-icon" onclick="viewServer('${guild.id}')" title="View Details">
-                                                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2"/>
-                                                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
-                                                </svg>
+                                            <button class="btn-icon btn-outline" onclick="viewServer('${guild.id}')" title="View Details">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                                             </button>
-                                            <button class="btn-icon btn-danger" onclick="leaveServer('${guild.id}', '${guild.name}')" title="Leave Server">
-                                                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                                                    <path d="M13 16l4-4m0 0l-4-4m4 4H7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                                </svg>
+                                            <button class="btn-icon btn-danger" onclick="leaveServer('${guild.id}', '${guild.name.replace(/'/g, "\\'")}')" title="Leave Server">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
                                             </button>
                                         </div>
                                     </td>
                                 </tr>
-                            `).join('')}
+                            `}).join('')}
                         </tbody>
                     </table>
                 </div>
@@ -960,49 +1153,201 @@ async function generateServersTab(client) {
 function generateLogsTab() {
     return `
     <div class="tab-content" id="logs-tab">
+        <div class="welcome-section">
+            <div class="welcome-text">
+                <h2>Activity Log</h2>
+                <p>Track all system events, admin actions, and bot activities in real-time.</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-outline btn-sm" onclick="window.location.reload()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"></path></svg>
+                    Refresh Logs
+                </button>
+                <button class="btn btn-primary btn-sm">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+                    Export
+                </button>
+            </div>
+        </div>
+
         <div class="content-card">
             <div class="card-header">
-                <h3 class="card-title">📋 Activity Log</h3>
-                <div class="filter-group">
-                    <select class="form-control-sm">
-                        <option>All Activities</option>
-                        <option>Server Events</option>
-                        <option>Translation Events</option>
-                        <option>Admin Actions</option>
-                    </select>
-                    <button class="btn btn-sm btn-outline">Export</button>
+                <div class="card-title-group">
+                    <h3 class="card-title">📋 System Events</h3>
+                    <p class="card-subtitle">Detailed audit trail of bot operations</p>
+                </div>
+                <div class="card-actions">
+                    <div class="filter-group" style="display: flex; gap: 8px;">
+                        <select class="form-control-sm" style="min-width: 160px; height: 36px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary);">
+                            <option>All Activities</option>
+                            <option>Server Events</option>
+                            <option>Translation Events</option>
+                            <option>Admin Actions</option>
+                        </select>
+                    </div>
                 </div>
             </div>
-            <div class="card-body">
-                <div class="log-list">
-                    <div class="log-item log-info">
-                        <div class="log-time">2024-02-11 14:32:45</div>
-                        <div class="log-content">
-                            <strong>Server Joined:</strong> New server "Coding Community" (ID: 123456789)
+            <div class="card-body" style="padding: 0;">
+                <div class="modern-timeline">
+                    <div class="timeline-item info">
+                        <div class="timeline-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                        </div>
+                        <div class="timeline-content">
+                            <div class="timeline-header">
+                                <span class="timeline-title">Server Joined</span>
+                                <span class="timeline-time">14:32:45</span>
+                            </div>
+                            <div class="timeline-body">
+                                New server <span class="highlight">"Coding Community"</span> (ID: 123456789)
+                            </div>
+                            <div class="timeline-footer">Feb 11, 2024</div>
                         </div>
                     </div>
-                    <div class="log-item log-success">
-                        <div class="log-time">2024-02-11 14:28:12</div>
-                        <div class="log-content">
-                            <strong>Translation Completed:</strong> English → Spanish (Server: Gaming Hub)
+
+                    <div class="timeline-item success">
+                        <div class="timeline-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        </div>
+                        <div class="timeline-content">
+                            <div class="timeline-header">
+                                <span class="timeline-title">Translation Completed</span>
+                                <span class="timeline-time">14:28:12</span>
+                            </div>
+                            <div class="timeline-body">
+                                <span class="badge badge-info">EN → ES</span> processed for server <span class="highlight">"Gaming Hub"</span>
+                            </div>
+                            <div class="timeline-footer">Feb 11, 2024</div>
                         </div>
                     </div>
-                    <div class="log-item log-warning">
-                        <div class="log-time">2024-02-11 14:15:03</div>
-                        <div class="log-content">
-                            <strong>Rate Limit Warning:</strong> Server "Test Guild" approaching limit
+
+                    <div class="timeline-item warning">
+                        <div class="timeline-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                        </div>
+                        <div class="timeline-content">
+                            <div class="timeline-header">
+                                <span class="timeline-title">Rate Limit Warning</span>
+                                <span class="timeline-time">14:15:03</span>
+                            </div>
+                            <div class="timeline-body">
+                                Server <span class="highlight">"Test Guild"</span> is approaching its daily translation limit.
+                            </div>
+                            <div class="timeline-footer">Feb 11, 2024</div>
                         </div>
                     </div>
-                    <div class="log-item log-info">
-                        <div class="log-time">2024-02-11 13:45:22</div>
-                        <div class="log-content">
-                            <strong>Admin Action:</strong> Premium approved for server "Premium Guild"
+
+                    <div class="timeline-item info">
+                        <div class="timeline-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                        </div>
+                        <div class="timeline-content">
+                            <div class="timeline-header">
+                                <span class="timeline-title">Admin Action</span>
+                                <span class="timeline-time">13:45:22</span>
+                            </div>
+                            <div class="timeline-body">
+                                Premium subscription approved for server <span class="highlight">"Premium Guild"</span>.
+                            </div>
+                            <div class="timeline-footer">Feb 11, 2024</div>
                         </div>
                     </div>
                 </div>
+            </div>
+            <div class="card-footer" style="padding: 16px; border-top: 1px solid var(--border-color); text-align: center;">
+                <button class="btn btn-outline btn-sm">Load More Activities</button>
             </div>
         </div>
     </div>
+
+    <style>
+        .modern-timeline {
+            padding: 24px;
+            position: relative;
+        }
+        .modern-timeline::before {
+            content: '';
+            position: absolute;
+            left: 35px;
+            top: 24px;
+            bottom: 24px;
+            width: 2px;
+            background: var(--border-color);
+            opacity: 0.5;
+        }
+        .timeline-item {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 32px;
+            position: relative;
+        }
+        .timeline-item:last-child {
+            margin-bottom: 0;
+        }
+        .timeline-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--bg-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+            box-shadow: 0 0 0 4px var(--card-bg);
+            border: 2px solid var(--border-color);
+            flex-shrink: 0;
+            color: var(--text-secondary);
+        }
+        .timeline-item.info .timeline-icon { border-color: var(--info); color: var(--info); }
+        .timeline-item.success .timeline-icon { border-color: var(--success); color: var(--success); }
+        .timeline-item.warning .timeline-icon { border-color: var(--warning); color: var(--warning); }
+        .timeline-item.danger .timeline-icon { border-color: var(--danger); color: var(--danger); }
+
+        .timeline-content {
+            flex: 1;
+            padding: 16px;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            transition: transform var(--transition-fast);
+        }
+        .timeline-content:hover {
+            transform: translateX(4px);
+            background: var(--card-bg-alt);
+        }
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .timeline-title {
+            font-weight: 700;
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+        .timeline-time {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            font-family: monospace;
+        }
+        .timeline-body {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .timeline-footer {
+            margin-top: 12px;
+            font-size: 11px;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .highlight {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+    </style>
     `;
 }
 

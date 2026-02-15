@@ -445,16 +445,18 @@ function copyToClipboard(text) {
 }
 
 // ===== Server Search =====
-const serverSearch = document.getElementById('serverSearch');
-serverSearch?.addEventListener('input', (e) => {
-    const searchTerm = e.target.value.toLowerCase();
-    const rows = document.querySelectorAll('#serversTable tr');
+function filterServersTable() {
+    const searchTerm = document.getElementById('serverSearch')?.value.toLowerCase();
+    const rows = document.querySelectorAll('#serversTableBody tr');
     
     rows.forEach(row => {
         const text = row.textContent.toLowerCase();
         row.style.display = text.includes(searchTerm) ? '' : 'none';
     });
-});
+}
+
+const serverSearch = document.getElementById('serverSearch');
+serverSearch?.addEventListener('input', debounce(filterServersTable, 150));
 
 // ===== Load Recent Votes on Page Load =====
 if (document.getElementById('recentVotesTbody')) {

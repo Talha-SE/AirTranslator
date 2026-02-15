@@ -418,7 +418,7 @@ async function getRecentVotes(req, res, reqUrl) {
         const serverFilter = (reqUrl.searchParams.get('serverId') || '').trim();
         
         const voteStats = await monetizationService.getVoteStats();
-        let recent = voteStats.recentVotes.slice(0, 20);
+        let recent = voteStats.recentVotes;
         
         // Enrich user data
         if (client && recent.length) {

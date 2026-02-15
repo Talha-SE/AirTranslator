@@ -234,15 +234,27 @@ const getVoteStats = async () => {
 
 /**
  * Get recent vote events from database
- * @param {number} limit - Number of recent votes to fetch
+ * @param {number} limit - Number of recent votes to fetch (0 for all)
+ * @param {number} hours - Number of hours to look back (default 24)
  * @returns {Promise<Array>} - Array of recent vote events
  */
-const getRecentVoteEvents = async (limit = 20) => {
+const getRecentVoteEvents = async (limit = 20, hours = 24) => {
     try {
-        return await VoteEvent.find()
-            .sort({ timestamp: -1 })
-            .limit(limit)
-            .lean();
+        const query = {};
+        
+        if (hours > 0) {
+            const cutoff = new Date();
+            cutoff.setHours(cutoff.getHours() - hours);
+            query.timestamp = { $gte: cutoff };
+        }
+
+        let dbQuery = VoteEvent.find(query).sort({ timestamp: -1 });
+        
+        if (limit > 0) {
+            dbQuery = dbQuery.limit(limit);
+        }
+
+        return await dbQuery.lean();
     } catch (error) {
         console.error('Error getting recent vote events:', error);
         return [];

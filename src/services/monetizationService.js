@@ -540,7 +540,8 @@ class MonetizationService {
     async getVoteStats() {
         try {
             const stats = await databaseService.getVoteStats();
-            const recentVotes = await databaseService.getRecentVoteEvents(20);
+            // Fetch all votes from the last 24 hours (limit = 0)
+            const recentVotes = await databaseService.getRecentVoteEvents(0, 24);
             
             return {
                 totalVoteClicks: stats.totalVoteClicks,

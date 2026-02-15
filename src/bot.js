@@ -386,7 +386,6 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.DirectMessages,
@@ -567,33 +566,36 @@ client.on('guildCreate', async (guild) => {
         
         const welcomeEmbed = new EmbedBuilder()
             .setColor(0x5865F2)
-            .setTitle('🌍 Translation Bot Ready!')
-            .setDescription('Use `/quicksetup` to configure translation between channels.')
+            .setTitle('🌍 Air Translator Ready!')
+            .setDescription('Break language barriers instantly! You can now manage your entire server translation settings from our modern web dashboard.')
             .addFields(
-                { name: 'Example', value: '```/quicksetup source: #english target: #spanish language: Spanish```' }
-            );
-            
-        await channel.send({ embeds: [welcomeEmbed] });
-
-        // Send a concise AutoSetup message with short steps
-        const guidedEmbed = new EmbedBuilder()
-            .setColor(0x2ECC71)
-            .setTitle('🧭 AutoSetup')
-            .setDescription('Below is AutoSetup — just follow these quick steps:')
-            .addFields(
-                { name: '1) Select channels', value: 'Pick 1–5 channels in the selector below.' },
-                { name: '2) Continue', value: 'Press "Continue" to proceed.' },
-                { name: '3) Add languages', value: 'Enter languages (e.g., Spanish, French), then submit.' }
+                { name: '🚀 Quick Start', value: 'Managing your server is now easier than ever. Click the button below to open the dashboard.' },
+                { name: '⌨️ Commands', value: 'Prefer commands? Use `/help` to see all available slash commands.' }
             )
-            .setFooter({ text: 'You can cancel anytime. Try /help for more.' })
+            .setFooter({ text: 'Empower your global community today! 🌍✨' })
             .setTimestamp();
 
-        await channel.send({ embeds: [guidedEmbed] });
+        const dashboardButton = new ButtonBuilder()
+            .setLabel('Open Dashboard')
+            .setURL('https://airtranslator.brevios.com/dashboard')
+            .setStyle(ButtonStyle.Link);
 
-        // Also post the interactive Auto Setup UI so admins can start without typing a command
+        const supportButton = new ButtonBuilder()
+            .setLabel('Support Server')
+            .setURL('https://discord.gg/your-support-link') // Note: Update this if you have a specific support link
+            .setStyle(ButtonStyle.Link);
+
+        const actionRow = new ActionRowBuilder().addComponents(dashboardButton, supportButton);
+            
+        await channel.send({ 
+            embeds: [welcomeEmbed],
+            components: [actionRow]
+        });
+
+        // Optional: Keep the interactive AutoSetup for those who want to stay in Discord
         const channelSelect = new ChannelSelectMenuBuilder()
             .setCustomId('autosetup_channels')
-            .setPlaceholder('Select 1-5 channels for translation')
+            .setPlaceholder('Select 1-5 channels for auto-setup')
             .setMinValues(1)
             .setMaxValues(5)
             .setChannelTypes([ChannelType.GuildText, ChannelType.GuildVoice]);
@@ -606,7 +608,7 @@ client.on('guildCreate', async (guild) => {
         const selectRow = new ActionRowBuilder().addComponents(channelSelect);
 
         await channel.send({
-            content: 'Below is AutoSetup — just follow the steps.',
+            content: '**Prefer in-Discord setup?** Use the menu below:',
             components: [selectRow, controlsRow]
         });
     } catch (error) {
