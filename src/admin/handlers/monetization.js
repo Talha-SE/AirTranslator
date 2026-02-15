@@ -303,7 +303,7 @@ async function rejectPremiumRequest(req, res, sessionToken, getSession) {
         try {
             const client = global.discordClient;
             const reasonText = reason && String(reason).trim() ? String(reason).trim() : null;
-            const OFFICIAL_PRICE_URL = 'https://airtranslator.brevios.com/pricing';
+            const OFFICIAL_PRICE_URL = 'https://www.patreon.com/c/tsio/membership';
             const SUPPORT_SERVER_URL = 'https://discord.gg/WeynxzR9nq';
             
             if (client && rejected.requesterUserId) {

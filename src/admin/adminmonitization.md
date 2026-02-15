@@ -215,7 +215,7 @@ Same embed sent to systemChannel or first available channel with permissions
 // Includes:
 - Rejection message
 - Optional reason from admin
-- Official Price Page URL: https://airtranslator.brevios.com/pricing
+- Official Price Page URL: https://www.patreon.com/c/tsio/membership
 - Support server: https://discord.gg/WeynxzR9nq
 ```
 

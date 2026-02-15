@@ -199,7 +199,7 @@ function getLanguageDisplayName(language) {
 // Helper function to translate premium payment message into server languages
 async function translatePremiumMessage(serverId) {
     try {
-        const originalText = `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://airtranslator.brevios.com/pricing or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
+        const originalText = `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://www.patreon.com/c/tsio/membership or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
         
         // Get server setup to find configured languages
         const serverSetup = await databaseService.getServerSetups(serverId);
@@ -277,7 +277,7 @@ async function translatePremiumMessage(serverId) {
             languageCount: targetLanguages?.length || 0
         });
         // Fallback to English on error
-        return `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://airtranslator.brevios.com/pricing or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
+        return `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://www.patreon.com/c/tsio/membership or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
     }
 }
 
@@ -916,7 +916,7 @@ client.on(Events.InteractionCreate, async interaction => {
                         new ButtonBuilder()
                             .setLabel('💳')
                             .setStyle(ButtonStyle.Link)
-                            .setURL('https://www.patreon.com/cw/TSIO/membership'),
+                            .setURL('https://www.patreon.com/c/tsio/membership'),
                         new ButtonBuilder()
                             .setCustomId(`premium_request:${serverId}`)
                             .setLabel('✅')
