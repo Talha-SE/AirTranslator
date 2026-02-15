@@ -910,18 +910,6 @@ async function translateAndReply(message, languages, options = {}) {
 
 module.exports = async (client, message) => {
     if (message.author.bot) return;
-
-    // Handle mentions: If bot is mentioned, strip the mention to allow translation
-    // This allows "Auto-like" behavior without MessageContent intent (user must ping bot)
-    if (message.mentions.has(client.user)) {
-        // Remove the bot's mention from the content
-        const cleanContent = message.content.replace(/<@!?[0-9]+>/g, '').trim();
-        if (cleanContent) {
-            // Update the content property for this execution so translation services use the text
-            message.content = cleanContent;
-        }
-    }
-
     if (!message.content.trim()) return;
 
     // Handle Personal Translation in DMs (private inboxes)
