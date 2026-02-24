@@ -304,7 +304,7 @@ function generateMessagingTab() {
                         </div>
                     </div>
                     
-                    <div class="form-group" style="display: flex; gap: 24px;">
+                    <div class="form-group" style="display: flex; gap: 24px; flex-wrap: wrap;">
                         <label class="checkbox-label">
                             <input type="checkbox" id="includeFooter" checked />
                             <span>Include footer & timestamp</span>
@@ -312,6 +312,10 @@ function generateMessagingTab() {
                         <label class="checkbox-label">
                             <input type="checkbox" id="urgentMessage" />
                             <span>Mark as urgent</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="sendAsText" />
+                            <span>Send as plain text (no card)</span>
                         </label>
                     </div>
                 </div>
@@ -383,15 +387,31 @@ function generateMessagingTab() {
                     <div id="progressFill" class="progress-fill"></div>
                 </div>
                 <div id="progressText" class="progress-text">Preparing to send...</div>
-                <div class="delivery-results" id="deliveryResults">
-                    <div class="result-item">
-                        <span class="result-value" id="successCount">0</span>
-                        <span class="result-label">Success</span>
+                <div id="currentServerStatus" style="margin-bottom: 15px; font-weight: 600; color: var(--primary); text-align: center; height: 24px;"></div>
+                
+                <div class="delivery-results" id="deliveryResults" style="display: flex; gap: 15px; justify-content: center; margin-bottom: 20px;">
+                    <div class="result-item" style="text-align: center;">
+                        <span class="result-value" id="successCount" style="font-size: 1.5rem; font-weight: bold; color: var(--success); display: block;">0</span>
+                        <span class="result-label" style="font-size: 0.85rem; color: var(--text-secondary);">Success</span>
                     </div>
-                    <div class="result-item">
-                        <span class="result-value" id="failCount">0</span>
-                        <span class="result-label">Failed</span>
+                    <div class="result-item" style="text-align: center;">
+                        <span class="result-value" id="failCount" style="font-size: 1.5rem; font-weight: bold; color: var(--danger); display: block;">0</span>
+                        <span class="result-label" style="font-size: 0.85rem; color: var(--text-secondary);">Failed</span>
                     </div>
+                </div>
+
+                <div class="detailed-log-container" style="margin-top: 20px; max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem;">
+                    <table style="width: 100%; text-align: left; border-collapse: collapse;">
+                        <thead style="background: var(--bg-tertiary); position: sticky; top: 0; z-index: 1;">
+                            <tr>
+                                <th style="padding: 10px 15px; font-weight: 600; color: var(--text-secondary);">Server</th>
+                                <th style="padding: 10px 15px; font-weight: 600; color: var(--text-secondary);">Status</th>
+                                <th style="padding: 10px 15px; font-weight: 600; color: var(--text-secondary);">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detailedLogBody">
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>

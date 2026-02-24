@@ -256,7 +256,8 @@ async function sendMessage() {
         content: document.getElementById('messageContent')?.value,
         color: document.getElementById('messageColor')?.value,
         includeFooter: document.getElementById('includeFooter')?.checked,
-        urgentMessage: document.getElementById('urgentMessage')?.checked
+        urgentMessage: document.getElementById('urgentMessage')?.checked,
+        sendAsText: document.getElementById('sendAsText')?.checked
     };
     
     if (!messageData.content) {
@@ -267,11 +268,18 @@ async function sendMessage() {
     const sendingProgress = document.getElementById('sendingProgress');
     const progressFill = document.getElementById('progressFill');
     const progressText = document.getElementById('progressText');
-    const deliveryResults = document.getElementById('deliveryResults');
+    const currentServerStatus = document.getElementById('currentServerStatus');
+    const detailedLogBody = document.getElementById('detailedLogBody');
+    const successCount = document.getElementById('successCount');
+    const failCount = document.getElementById('failCount');
     
     if (sendingProgress) sendingProgress.style.display = 'block';
-    if (progressText) progressText.textContent = 'Sending message...';
-    if (progressFill) progressFill.style.width = '30%';
+    if (progressText) progressText.textContent = 'Initializing broadcast...';
+    if (progressFill) progressFill.style.width = '0%';
+    if (currentServerStatus) currentServerStatus.textContent = '';
+    if (detailedLogBody) detailedLogBody.innerHTML = '';
+    if (successCount) successCount.textContent = '0';
+    if (failCount) failCount.textContent = '0';
     
     try {
         const response = await fetch('/admin/send-message', {
@@ -283,29 +291,76 @@ async function sendMessage() {
             body: JSON.stringify(messageData)
         });
         
-        const result = await response.json();
-        
-        if (progressFill) progressFill.style.width = '100%';
-        
-        if (result.success) {
-            if (progressText) progressText.textContent = `✅ Message sent successfully to ${result.sent} servers!`;
-            if (deliveryResults) {
-                deliveryResults.innerHTML = `
-                    <div style="margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
-                        <div>Total: ${result.total}</div>
-                        <div style="color: var(--success);">Sent: ${result.sent}</div>
-                        <div style="color: var(--danger);">Failed: ${result.failed}</div>
-                    </div>
-                `;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n\n');
+            buffer = lines.pop(); // Keep the last incomplete chunk
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        
+                        if (data.type === 'connected') {
+                            if (progressText) progressText.textContent = 'Connected, starting delivery...';
+                            if (progressFill) progressFill.style.width = '5%';
+                        } else if (data.type === 'start') {
+                            if (currentServerStatus) currentServerStatus.textContent = `Sending to: ${data.serverName}`;
+                        } else if (data.type === 'finish') {
+                            const detail = data.detail;
+                            
+                            // Update counts
+                            if (detail.status === 'sent') {
+                                if (successCount) successCount.textContent = parseInt(successCount.textContent || '0') + 1;
+                            } else {
+                                if (failCount) failCount.textContent = parseInt(failCount.textContent || '0') + 1;
+                            }
+                            
+                            // Add row to log
+                            if (detailedLogBody) {
+                                const row = document.createElement('tr');
+                                row.style.borderBottom = '1px solid var(--border-color)';
+                                const statusColor = detail.status === 'sent' ? 'var(--success)' : 'var(--danger)';
+                                const statusIcon = detail.status === 'sent' ? '✅' : '❌';
+                                
+                                row.innerHTML = `
+                                    <td style="padding: 8px;">${detail.serverName}</td>
+                                    <td style="padding: 8px; color: ${statusColor}; font-weight: 500;">${statusIcon} ${detail.status}</td>
+                                    <td style="padding: 8px; color: var(--text-secondary); font-size: 0.85em;">${detail.channelName || detail.reason || '-'}</td>
+                                `;
+                                detailedLogBody.prepend(row);
+                            }
+                            
+                            // Estimate progress (visual only since we don't know total easily in stream without extra packet)
+                            // But we can just pulse or increment slightly
+                            const currentWidth = parseFloat(progressFill.style.width) || 5;
+                            if (currentWidth < 90) {
+                                progressFill.style.width = `${currentWidth + 1}%`;
+                            }
+                        } else if (data.type === 'complete') {
+                            const result = data.result;
+                            if (progressFill) progressFill.style.width = '100%';
+                            if (progressText) progressText.textContent = `✅ Completed! Sent: ${result.sent}, Failed: ${result.failed}`;
+                            if (currentServerStatus) currentServerStatus.textContent = 'Broadcast Complete';
+                        } else if (data.type === 'error') {
+                            if (progressText) progressText.textContent = `❌ Error: ${data.message}`;
+                        }
+                    } catch (e) {
+                        console.error('Error parsing SSE data:', e);
+                    }
+                }
             }
-        } else {
-            if (progressText) progressText.textContent = '❌ Failed to send message';
-            if (deliveryResults) deliveryResults.innerHTML = `<div style="color: var(--danger); margin-top: 12px;">${result.message}</div>`;
         }
     } catch (error) {
         console.error('Error sending message:', error);
-        if (progressText) progressText.textContent = '❌ Error sending message';
-        if (deliveryResults) deliveryResults.innerHTML = `<div style="color: var(--danger); margin-top: 12px;">Network error occurred</div>`;
+        if (progressText) progressText.textContent = '❌ Network error occurred';
     }
 }
 
@@ -320,6 +375,9 @@ async function scheduleMessage() {
         title: document.getElementById('messageTitle')?.value,
         content: document.getElementById('messageContent')?.value,
         color: document.getElementById('messageColor')?.value,
+        includeFooter: document.getElementById('includeFooter')?.checked,
+        urgentMessage: document.getElementById('urgentMessage')?.checked,
+        sendAsText: document.getElementById('sendAsText')?.checked,
         schedule: document.getElementById('schedule')?.value,
         time: document.getElementById('scheduleTime')?.value,
         timezone: document.getElementById('timezone')?.value,

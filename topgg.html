@@ -335,11 +335,12 @@
     }
     .video-container {
       width: 100%;
-      border-radius: 24px 24px 0 0;
+      border-radius: 16px;
       overflow: hidden;
       line-height: 0;
       background: #000;
-      border-bottom: 1px solid var(--border-card);
+      border: 1px solid var(--border-card);
+      margin: 20px 0;
     }
     .video-container video {
       width: 100%;
@@ -350,17 +351,85 @@
       .header h1 { font-size: 2.2rem; }
       .vote-section { flex-direction: column; text-align: center; margin: 20px; }
       .section { padding: 30px 20px; }
+      .premium-card {
+        flex-direction: column;
+        text-align: center;
+      }
+      .premium-card .premium-content {
+        margin-bottom: 16px;
+      }
+    }
+    
+    .premium-card {
+      margin: 35px auto;
+      padding: 24px 30px;
+      background: linear-gradient(135deg, rgba(255, 215, 0, 0.08) 0%, rgba(0, 0, 0, 0.2) 100%);
+      border: 1px solid rgba(255, 215, 0, 0.25);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 800px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2), inset 0 0 20px rgba(255, 215, 0, 0.03);
+      position: relative;
+      overflow: hidden;
+      backdrop-filter: blur(10px);
+    }
+    
+    .premium-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: linear-gradient(to bottom, #ffd700, #ffaa00);
+    }
+    
+    .premium-content {
+      flex: 1;
+    }
+    
+    .premium-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #ffd700;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .premium-description {
+      color: #e0e0e0;
+      font-size: 0.95rem;
+      margin: 0;
+      opacity: 0.9;
+    }
+    
+    .premium-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #ffd700 0%, #ffaa00 100%);
+      color: #000 !important;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
+      white-space: nowrap;
+    }
+    
+    .premium-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(255, 215, 0, 0.5);
     }
   </style>
 </head>
 <body><div class="container">
     <div class="main-card">
-      <div class="video-container">
-        <video autoplay loop muted playsinline>
-          <source src="https://i.imgur.com/bExrssl.mp4" type="video/mp4">
-          Your browser does not support the video tag.
-        </video>
-      </div>
       <div class="header">
         <h1><span class="logo-emoji">🌍</span> <span class="logo-text">AirTranslator</span></h1>
         <p class="description">The most advanced AI translation bot for Discord. Break language barriers with human-like accuracy.</p>
@@ -371,8 +440,23 @@
           <span class="badge">🧠 AI Powered</span>
           <span class="badge">⚡ Real-time</span>
         </div>
+        
+        <div class="premium-card">
+          <div class="premium-content">
+            <div class="premium-title">
+              <span>💎</span>
+              <span>Premium Membership</span>
+              <span style="background: rgba(255, 215, 0, 0.2); padding: 2px 8px; border-radius: 4px; font-size: 0.8em; color: #ffd700; border: 1px solid rgba(255, 215, 0, 0.3);">$5/mo</span>
+            </div>
+            <p class="premium-description">Unlock unlimited translations, personal buddy mode, and exclusive features to support the bot!</p>
+          </div>
+          <a href="https://www.patreon.com/c/tsio/membership" target="_blank" class="premium-btn">
+            Get Premium ➜
+          </a>
+        </div>
+
         <div class="cta">
-          <a class="btn btn-primary" href="https://discord.com/oauth2/authorize?client_id=1380177061032759416&permissions=2148001856&integration_type=0&scope=bot+applications.commands">Invite Bot</a>
+          <a class="btn btn-primary" href="https://discord.com/oauth2/authorize?client_id=1380177061032759416&permissions=8&integration_type=0&scope=bot+applications.commands&response_type=code&redirect_uri=https%3A%2F%2Fairtranslator.brevios.com%2Fdashboard">Invite Bot</a>
           <a class="btn btn-secondary" href="https://airtranslator.vercel.com" target="_blank">Official Website</a>
           <a class="btn btn-ghost" href="https://discord.gg/WeynxzR9nq">Join Support</a>
         </div>
@@ -384,6 +468,20 @@
           <p>Vote for AirTranslator on Top.gg to unlock <strong>Free Bonus Messages</strong> every day!</p>
         </div>
         <a class="btn btn-primary" href="https://top.gg/bot/1380177061032759416/vote" target="_blank">Vote Now</a>
+      </div>
+
+      <div class="section">
+        <h2>📊 Dashboard to manage the bot</h2>
+        <p style="color: #b0c4de; margin-bottom: 20px;">Easily configure and monitor your translations through our intuitive web dashboard.</p>
+        <div class="video-container">
+          <video autoplay loop muted playsinline>
+            <source src="https://i.imgur.com/bExrssl.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+          </video>
+        </div>
+        <div style="margin-top: 25px; text-align: center;">
+          <a class="btn btn-primary" href="https://airtranslator.brevios.com/dashboard" target="_blank">Access Dashboard</a>
+        </div>
       </div>
 
       <div class="section">

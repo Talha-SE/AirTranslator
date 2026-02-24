@@ -553,12 +553,9 @@ const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const DETECT_API_KEY = process.env.MISTRAL_DETECT_API_KEY || MISTRAL_API_KEY;
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
-//const TRANSLATION_MODEL = 'mistral-small-2501';
-//const TRANSLATION_MODEL = 'mistral-small-2503';
-//const TRANSLATION_MODEL = 'voxtral-small-2507';
 //const TRANSLATION_MODEL = 'devstral-small-latest';
-//const TRANSLATION_MODEL = 'mistral-medium-2508';
-const TRANSLATION_MODEL = 'mistral-small-2506';
+const TRANSLATION_MODEL = 'mistral-medium-latest';
+//const TRANSLATION_MODEL = 'mistral-small-2506';
 //const TRANSLATION_MODEL = 'ministral-14b-latest';
 const THINKING_MODE_ENABLED = true; // Enable thinking mode for ministral-14b-latest
 /**

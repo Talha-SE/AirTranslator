@@ -61,36 +61,51 @@ function parsePostData(req) {
 /**
  * Sends messages to Discord servers
  * @param {Object} messageData - Message configuration data
+ * @param {Function} onProgress - Optional callback for progress updates (called with { serverName, status, result? })
  * @returns {Object} Result object with success status and delivery results
  */
-async function sendServerMessage(messageData) {
+async function sendServerMessage(messageData, onProgress) {
     const client = global.discordClient;
     
     if (!client) {
         return { success: false, message: 'Bot not ready' };
     }
     
-    const { target, serverId, title, content, color, includeFooter, urgentMessage } = messageData;
+    const { target, serverId, title, content, color, includeFooter, urgentMessage, sendAsText } = messageData;
     
     if (!content) {
         return { success: false, message: 'Message content is required' };
     }
     
-    const embed = new EmbedBuilder()
-        .setDescription(content)
-        .setColor(color || '#3498db')
-        .setTimestamp();
-    
-    if (title) {
-        embed.setTitle(title);
-    }
-    
-    if (includeFooter) {
-        embed.setFooter({ text: 'AirTranslator Bot' });
-    }
-    
-    if (urgentMessage) {
-        embed.addFields({ name: '⚠️ Priority', value: 'Important Message', inline: true });
+    let messagePayload = {};
+
+    if (sendAsText) {
+        let textParts = [];
+        if (urgentMessage) textParts.push('⚠️ **IMPORTANT**');
+        if (title) textParts.push(`**${title}**`);
+        textParts.push(content);
+        if (includeFooter) textParts.push(`\n_Sent via AirTranslator Bot_`);
+        
+        messagePayload = { content: textParts.join('\n\n') };
+    } else {
+        const embed = new EmbedBuilder()
+            .setDescription(content)
+            .setColor(color || '#3498db')
+            .setTimestamp();
+        
+        if (title) {
+            embed.setTitle(title);
+        }
+        
+        if (includeFooter) {
+            embed.setFooter({ text: 'AirTranslator Bot' });
+        }
+        
+        if (urgentMessage) {
+            embed.addFields({ name: '⚠️ Priority', value: 'Important Message', inline: true });
+        }
+        
+        messagePayload = { embeds: [embed] };
     }
     
     let targetGuilds = [];
@@ -118,6 +133,10 @@ async function sendServerMessage(messageData) {
     };
     
     for (const guild of targetGuilds) {
+        if (onProgress) {
+            onProgress({ type: 'start', serverName: guild.name });
+        }
+        
         try {
             // Find a suitable channel to send the message
             let channel = guild.systemChannel;
@@ -138,31 +157,46 @@ async function sendServerMessage(messageData) {
             }
             
             if (channel) {
-                await channel.send({ embeds: [embed] });
+                await channel.send(messagePayload);
                 results.sent++;
-                results.details.push({ 
+                const detail = { 
                     serverId: guild.id, 
                     serverName: guild.name, 
                     status: 'sent', 
                     channelName: channel.name 
-                });
+                };
+                results.details.push(detail);
+                
+                if (onProgress) {
+                    onProgress({ type: 'finish', serverName: guild.name, status: 'sent', detail });
+                }
             } else {
                 results.failed++;
-                results.details.push({ 
+                const detail = { 
                     serverId: guild.id, 
                     serverName: guild.name, 
                     status: 'failed', 
                     reason: 'No suitable channel found' 
-                });
+                };
+                results.details.push(detail);
+                
+                if (onProgress) {
+                    onProgress({ type: 'finish', serverName: guild.name, status: 'failed', detail });
+                }
             }
         } catch (error) {
             results.failed++;
-            results.details.push({ 
+            const detail = { 
                 serverId: guild.id, 
                 serverName: guild.name, 
                 status: 'failed', 
                 reason: error.message 
-            });
+            };
+            results.details.push(detail);
+            
+            if (onProgress) {
+                onProgress({ type: 'finish', serverName: guild.name, status: 'failed', detail });
+            }
         }
     }
     
@@ -177,14 +211,34 @@ async function handleSendMessage(req, res) {
         const postData = await parsePostData(req);
         const messageData = typeof postData === 'string' ? JSON.parse(postData) : postData;
         
-        const result = await sendServerMessage(messageData);
+        // Set headers for SSE
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+        });
+
+        // Send initial connection message
+        res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
         
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
+        const result = await sendServerMessage(messageData, (progressEvent) => {
+            // Stream progress updates
+            res.write(`data: ${JSON.stringify(progressEvent)}\n\n`);
+        });
+        
+        // Send final result
+        res.write(`data: ${JSON.stringify({ type: 'complete', result })}\n\n`);
+        res.end();
     } catch (error) {
-        console.error('Message sending error:', error);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Server error' }));
+        console.error('Error sending message:', error);
+        // If headers not sent, send JSON error. If sent, stream error.
+        if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, message: error.message }));
+        } else {
+            res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+            res.end();
+        }
     }
 }
 
@@ -192,7 +246,7 @@ async function handleSendMessage(req, res) {
  * Schedules a message to be sent at specific times
  */
 function scheduleMessage(messageConfig) {
-    const { schedule, time, timezone, customSchedule, target, content, title, color } = messageConfig;
+    const { schedule, time, timezone, customSchedule, target, content, title, color, includeFooter, urgentMessage, sendAsText } = messageConfig;
     
     let cronSchedule = customSchedule;
     
@@ -210,7 +264,7 @@ function scheduleMessage(messageConfig) {
     const jobId = `sched_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     const job = nodeCron.schedule(cronSchedule, async () => {
-        await sendServerMessage({ target, content, title, color });
+        await sendServerMessage({ target, content, title, color, includeFooter, urgentMessage, sendAsText });
     }, {
         timezone: timezone || 'UTC'
     });
