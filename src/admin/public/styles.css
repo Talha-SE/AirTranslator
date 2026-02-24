@@ -1523,9 +1523,19 @@ textarea.form-control {
     flex: 1;
 }
 
+.lang-count {
+    color: var(--text-tertiary);
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
 .lang-percent {
     color: var(--text-secondary);
     font-weight: 700;
+    min-width: 52px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 
 .lang-progress {
@@ -1539,6 +1549,16 @@ textarea.form-control {
     height: 100%;
     background: var(--gradient-primary);
     border-radius: 3px;
+    transition: width 320ms ease;
+}
+
+.lang-empty-state {
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border-color);
+    border-radius: 10px;
+    padding: 12px;
 }
 
 /* Modern Activity List */

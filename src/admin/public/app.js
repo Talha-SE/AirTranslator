@@ -535,17 +535,85 @@ document.querySelectorAll('.nav-item').forEach(item => {
     }
 });
 
+function getLanguageMeta(code) {
+    const languageMap = {
+        en: { name: 'English', flag: '🇬🇧' },
+        es: { name: 'Spanish', flag: '🇪🇸' },
+        fr: { name: 'French', flag: '🇫🇷' },
+        de: { name: 'German', flag: '🇩🇪' },
+        it: { name: 'Italian', flag: '🇮🇹' },
+        pt: { name: 'Portuguese', flag: '🇵🇹' },
+        ja: { name: 'Japanese', flag: '🇯🇵' },
+        ko: { name: 'Korean', flag: '🇰🇷' },
+        zh: { name: 'Chinese', flag: '🇨🇳' },
+        ru: { name: 'Russian', flag: '🇷🇺' },
+        ar: { name: 'Arabic', flag: '🇸🇦' },
+        hi: { name: 'Hindi', flag: '🇮🇳' },
+        ur: { name: 'Urdu', flag: '🇵🇰' },
+        tr: { name: 'Turkish', flag: '🇹🇷' },
+        nl: { name: 'Dutch', flag: '🇳🇱' },
+        pl: { name: 'Polish', flag: '🇵🇱' },
+        vi: { name: 'Vietnamese', flag: '🇻🇳' },
+        id: { name: 'Indonesian', flag: '🇮🇩' },
+        uk: { name: 'Ukrainian', flag: '🇺🇦' },
+        ro: { name: 'Romanian', flag: '🇷🇴' },
+        fa: { name: 'Persian', flag: '🇮🇷' },
+        bn: { name: 'Bengali', flag: '🇧🇩' }
+    };
+
+    const normalized = (code || '').toLowerCase();
+    return languageMap[normalized] || { name: normalized.toUpperCase() || 'Unknown', flag: '🌐' };
+}
+
+function renderTopLanguages(topLanguages = [], totalLanguageUsages = 0) {
+    const container = document.getElementById('top-languages-list');
+    if (!container) return;
+
+    const totalLabel = document.getElementById('languages-live-total');
+    if (totalLabel) {
+        totalLabel.textContent = `${(Number(totalLanguageUsages) || 0).toLocaleString()} tracked`;
+    }
+
+    if (!Array.isArray(topLanguages) || topLanguages.length === 0) {
+        container.innerHTML = '<div class="lang-empty-state">No translation activity yet. Language popularity will appear here after usage starts.</div>';
+        return;
+    }
+
+    container.innerHTML = topLanguages.map((item) => {
+        const meta = getLanguageMeta(item.code);
+        const count = Number(item.count) || 0;
+        const percentage = Math.max(0, Number(item.percentage) || 0);
+        const width = Math.max(6, Math.min(100, percentage));
+        return `
+            <div class="lang-item" data-lang-code="${item.code}">
+                <div class="lang-meta">
+                    <span class="lang-flag">${meta.flag}</span>
+                    <span class="lang-name">${meta.name}</span>
+                    <span class="lang-count">${count.toLocaleString()}</span>
+                    <span class="lang-percent">${percentage.toFixed(1)}%</span>
+                </div>
+                <div class="lang-progress">
+                    <div class="lang-bar" style="width: ${width}%"></div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function refreshAnalyticsMetrics() {
+    const response = await fetch('/admin/metrics', { credentials: 'include' });
+    if (!response.ok) {
+        throw new Error(`metrics request failed with ${response.status}`);
+    }
+    const data = await response.json();
+    renderTopLanguages(data.topLanguages || [], data.totalLanguageUsages || 0);
+}
+
 // ===== Auto-refresh for real-time data =====
 if (activeTab === 'analytics') {
-    // Refresh analytics every 30 seconds
+    refreshAnalyticsMetrics().catch(err => console.error('Error refreshing metrics:', err));
     setInterval(() => {
-        fetch('/admin/metrics', { credentials: 'include' })
-            .then(res => res.json())
-            .then(data => {
-                // Update stat cards if needed
-                console.log('Metrics refreshed:', data);
-            })
-            .catch(err => console.error('Error refreshing metrics:', err));
+        refreshAnalyticsMetrics().catch(err => console.error('Error refreshing metrics:', err));
     }, 30000);
 }
 

@@ -9,6 +9,21 @@ const databaseService = require('../../services/databaseService');
 async function generateAnalyticsTab(analytics, client) {
     const serverCount = client ? client.guilds.cache.size : 0;
     const userCount = client ? client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0) : 0;
+    const normalizeLanguageCode = (lang) => (lang || '').toString().trim().toLowerCase();
+    const languagePopularity = {};
+    let totalLanguageUsages = 0;
+
+    Object.entries(analytics.languageUsage || {}).forEach(([pair, count]) => {
+        const safeCount = Number(count) || 0;
+        if (safeCount <= 0) return;
+        const parts = pair.split('→');
+        const target = normalizeLanguageCode(parts.length > 1 ? parts[1] : pair);
+        if (!target) return;
+        languagePopularity[target] = (languagePopularity[target] || 0) + safeCount;
+        totalLanguageUsages += safeCount;
+    });
+
+    const totalLanguageRowsLabel = totalLanguageUsages.toLocaleString();
 
     return `
     <div class="tab-content" id="analytics-tab">
@@ -139,9 +154,10 @@ async function generateAnalyticsTab(analytics, client) {
                 <div class="content-card language-card">
                     <div class="card-header">
                         <h3 class="card-title">Top Languages</h3>
+                        <span class="badge badge-info" id="languages-live-total">${totalLanguageRowsLabel} tracked</span>
                     </div>
                     <div class="card-body">
-                        <div class="language-ranking">
+                        <div class="language-ranking" id="top-languages-list">
                             <div class="lang-item">
                                 <div class="lang-meta">
                                     <span class="lang-flag">🇪🇸</span>
