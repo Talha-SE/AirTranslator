@@ -67,6 +67,14 @@ function generateLayout(title, content, activeTab = 'analytics') {
                     <span class="nav-text">Monetization</span>
                 </a>
 
+                <a href="/admin?tab=payments" class="nav-item ${activeTab === 'payments' ? 'active' : ''}" data-tab="payments">
+                    <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <rect x="2" y="5" width="16" height="11" rx="2" stroke="currentColor" stroke-width="2"/>
+                        <path d="M2 9h16M6 13h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <span class="nav-text">Payments</span>
+                </a>
+
                 <a href="/admin?tab=servers" class="nav-item ${activeTab === 'servers' ? 'active' : ''}" data-tab="servers">
                     <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
                         <rect x="2" y="2" width="16" height="5" rx="1" stroke="currentColor" stroke-width="2"/>

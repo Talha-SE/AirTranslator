@@ -8,6 +8,7 @@ const auth = require('./auth');
 const analyticsHandler = require('./handlers/analytics');
 const messagingHandler = require('./handlers/messaging');
 const monetizationHandler = require('./handlers/monetization');
+const paymentsHandler = require('./handlers/payments');
 const serversHandler = require('./handlers/servers');
 const { generateLoginPage } = require('./templates/login');
 const { generateDashboard } = require('./templates/dashboard');
@@ -70,6 +71,18 @@ const server = http.createServer(async (req, res) => {
     const pathname = reqUrl.pathname;
     
     try {
+        // ===== CORS Preflight Handler =====
+        if (req.method === 'OPTIONS') {
+            res.writeHead(200, {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Session-ID',
+                'Access-Control-Max-Age': '86400'
+            });
+            res.end();
+            return;
+        }
+        
         // ===== Static Assets =====
         if (pathname.startsWith('/admin/public/')) {
             const fileName = pathname.replace('/admin/public/', '');
@@ -156,6 +169,99 @@ const server = http.createServer(async (req, res) => {
                 'Location': '/admin'
             });
             res.end();
+            return;
+        }
+        
+        // ===== Public Webhook Endpoints (No Auth Required) =====
+        
+        // Vote webhook endpoint
+        if (pathname === '/webhook/vote' && req.method === 'POST') {
+            console.log('🔔 Webhook received at /webhook/vote');
+            try {
+                const data = await parsePostData(req);
+                const body = typeof data === 'string' ? JSON.parse(data) : data;
+                
+                console.log('📊 Webhook data received:', body);
+                
+                const authHeader = req.headers.authorization;
+                if (process.env.TOPGG_WEBHOOK_SECRET && authHeader !== process.env.TOPGG_WEBHOOK_SECRET) {
+                    console.log('❌ Unauthorized webhook attempt');
+                    res.writeHead(401, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Unauthorized' }));
+                    return;
+                }
+                
+                const { user: userId, type, isWeekend } = body;
+                
+                if (type === 'upvote') {
+                    console.log(`📊 Received vote from user ${userId}${isWeekend ? ' (Weekend vote)' : ''}`);
+                    
+                    const recentServerId = global.userServerTracking?.get(userId);
+                    
+                    if (recentServerId) {
+                        const result = await monetizationService.handleVoteReward(userId, recentServerId, 10);
+                        
+                        if (result.success) {
+                            console.log(`✅ Vote reward processed for user ${userId} in server ${recentServerId}`);
+                        }
+                    } else {
+                        console.log(`⚠️ No recent server found for user ${userId}`);
+                    }
+                }
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                console.error('Error processing vote webhook:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Internal server error' }));
+            }
+            return;
+        }
+        
+        // Payment webhook endpoint (public, no auth required)
+        if (pathname === '/webhook/payment' && req.method === 'POST') {
+            console.log('💳 Payment webhook received');
+            try {
+                const data = await parsePostData(req);
+                const body = typeof data === 'string' ? JSON.parse(data) : data;
+                
+                console.log('💰 Payment data received:', body);
+                
+                // Create payment record with CORS headers
+                await paymentsHandler.createPaymentFromBody(body, res);
+                return;
+            } catch (error) {
+                console.error('Error processing payment webhook:', error);
+                res.writeHead(500, { 
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                });
+                res.end(JSON.stringify({ error: 'Internal server error' }));
+            }
+            return;
+        }
+        
+        // Payment completion webhook (public, no auth required)
+        if (pathname === '/webhook/payment-complete' && req.method === 'POST') {
+            console.log('✅ Payment completion webhook received');
+            try {
+                const data = await parsePostData(req);
+                const body = typeof data === 'string' ? JSON.parse(data) : data;
+                
+                console.log('💰 Payment completion data:', body);
+                
+                // Update payment status with CORS headers
+                await paymentsHandler.updatePaymentStatusFromBody(body, res);
+                return;
+            } catch (error) {
+                console.error('Error processing payment completion:', error);
+                res.writeHead(500, { 
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                });
+                res.end(JSON.stringify({ error: 'Internal server error' }));
+            }
             return;
         }
         
@@ -318,48 +424,29 @@ const server = http.createServer(async (req, res) => {
             return;
         }
         
-        // Vote webhook endpoint (public, no auth required)
-        if (pathname === '/webhook/vote' && req.method === 'POST') {
-            console.log('🔔 Webhook received at /webhook/vote');
-            try {
-                const data = await parsePostData(req);
-                const body = typeof data === 'string' ? JSON.parse(data) : data;
-                
-                console.log('📊 Webhook data received:', body);
-                
-                const authHeader = req.headers.authorization;
-                if (process.env.TOPGG_WEBHOOK_SECRET && authHeader !== process.env.TOPGG_WEBHOOK_SECRET) {
-                    console.log('❌ Unauthorized webhook attempt');
-                    res.writeHead(401, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ error: 'Unauthorized' }));
-                    return;
-                }
-                
-                const { user: userId, type, isWeekend } = body;
-                
-                if (type === 'upvote') {
-                    console.log(`📊 Received vote from user ${userId}${isWeekend ? ' (Weekend vote)' : ''}`);
-                    
-                    const recentServerId = global.userServerTracking?.get(userId);
-                    
-                    if (recentServerId) {
-                        const result = await monetizationService.handleVoteReward(userId, recentServerId, 10);
-                        
-                        if (result.success) {
-                            console.log(`✅ Vote reward processed for user ${userId} in server ${recentServerId}`);
-                        }
-                    } else {
-                        console.log(`⚠️ No recent server found for user ${userId}`);
-                    }
-                }
-                
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: true }));
-            } catch (error) {
-                console.error('Error processing vote webhook:', error);
-                res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Internal server error' }));
-            }
+        // Payment endpoints
+        if (pathname === '/admin/api/payments' && req.method === 'GET') {
+            await paymentsHandler.getPayments(req, res);
+            return;
+        }
+        
+        if (pathname === '/admin/api/payments/stats' && req.method === 'GET') {
+            await paymentsHandler.getPaymentStats(req, res);
+            return;
+        }
+        
+        if (pathname === '/admin/api/payments/create' && req.method === 'POST') {
+            await paymentsHandler.createPayment(req, res);
+            return;
+        }
+        
+        if (pathname === '/admin/api/payments/update' && req.method === 'POST') {
+            await paymentsHandler.updatePaymentStatus(req, res);
+            return;
+        }
+        
+        if (pathname === '/admin/api/payments/delete' && req.method === 'DELETE') {
+            await paymentsHandler.deletePayment(req, res);
             return;
         }
         

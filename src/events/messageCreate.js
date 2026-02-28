@@ -142,7 +142,7 @@ function getLanguageFlag(langCode) {
 // Helper function to translate premium payment message into server languages
 async function translatePremiumMessage(serverId) {
     try {
-        const originalText = `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://www.patreon.com/c/tsio/membership or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
+        const originalText = `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://airtranslator.brevios.com/pricing or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
         
         // Get server setup to find configured languages
         const serverSetup = await getServerSetups(serverId);
@@ -218,7 +218,7 @@ async function translatePremiumMessage(serverId) {
             apiKeyPresent: !!process.env.MISTRAL_API_KEY
         });
         // Fallback to English on error
-        return `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://www.patreon.com/c/tsio/membership or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
+        return `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://airtranslator.brevios.com/pricing or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
     }
 }
 
@@ -568,7 +568,7 @@ async function sendLimitReachedMessage(message) {
                 new ButtonBuilder()
                     .setLabel('💳')
                     .setStyle(ButtonStyle.Link)
-                    .setURL('https://www.patreon.com/c/tsio/membership'),
+                    .setURL('https://airtranslator.brevios.com/pricing'),
                 new ButtonBuilder()
                     .setCustomId(`premium_request:${message.guild.id}`)
                     .setLabel('✅')

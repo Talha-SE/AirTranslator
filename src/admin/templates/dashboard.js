@@ -1388,6 +1388,307 @@ function generateLogsTab() {
 }
 
 /**
+ * Generate payments tab content
+ */
+async function generatePaymentsTab() {
+    const Payment = require('../../models/Payment');
+    
+    // Fetch payment statistics
+    const [
+        totalPayments,
+        activeSubscriptions,
+        activeTrials,
+        monthlyPlans,
+        yearlyPlans,
+        recentPayments
+    ] = await Promise.all([
+        Payment.countDocuments({ status: { $in: ['completed', 'active', 'trial', 'pending'] } }),
+        Payment.countDocuments({ status: 'active', planType: 'Monthly' }),
+        Payment.countDocuments({ status: 'trial', isTrial: true }),
+        Payment.countDocuments({ planType: 'Monthly', status: { $in: ['completed', 'active'] } }),
+        Payment.countDocuments({ planType: 'Yearly', status: { $in: ['completed', 'active'] } }),
+        Payment.find({ status: { $in: ['completed', 'active', 'trial', 'pending'] } })
+            .sort({ paymentDate: -1 })
+            .limit(50)
+            .lean()
+    ]);
+
+    const estimatedRevenue = (monthlyPlans * 5) + (yearlyPlans * 50);
+
+    // Format payment rows
+    const paymentRows = recentPayments.map(payment => {
+        const date = new Date(payment.paymentDate);
+        const formattedDate = date.toLocaleString('en-US', { 
+            month: 'short', 
+            day: 'numeric', 
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        const statusBadgeClass = {
+            'completed': 'success',
+            'active': 'success',
+            'trial': 'info',
+            'pending': 'warning',
+            'cancelled': 'danger',
+            'expired': 'secondary'
+        }[payment.status] || 'secondary';
+
+        const trialBadge = payment.isTrial ? 
+            `<span class="badge badge-info" style="margin-left: 8px;">Trial</span>` : '';
+
+        return `
+            <tr>
+                <td>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <span style="font-weight: 600; color: var(--text-primary);">${payment.discordUsername}</span>
+                        <span style="font-size: 12px; color: var(--text-tertiary);">${payment.discordServerName}</span>
+                    </div>
+                </td>
+                <td>
+                    <span class="badge badge-${payment.planType === 'Monthly' ? 'primary' : 'warning'}">
+                        ${payment.planName}
+                    </span>
+                    ${trialBadge}
+                </td>
+                <td><strong>${payment.price}</strong></td>
+                <td><span class="badge badge-${statusBadgeClass}">${payment.status}</span></td>
+                <td style="color: var(--text-secondary);">${formattedDate}</td>
+                <td>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn-icon" onclick="viewPaymentDetails('${payment.paymentId}')" title="View Details">
+                            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" stroke-width="2"/>
+                                <path d="M2 10s3-7 8-7 8 7 8 7-3 7-8 7-8-7-8-7z" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </button>
+                        <button class="btn-icon btn-danger" onclick="deletePayment('${payment.paymentId}')" title="Delete">
+                            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                <path d="M7 9v6m6-6v6M4 7h12M5 7l1 10a2 2 0 002 2h4a2 2 0 002-2l1-10M9 7V4a1 1 0 011-1h0a1 1 0 011 1v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+    <div class="tab-content" id="payments-tab">
+        <!-- Welcome Section -->
+        <div class="welcome-section">
+            <div class="welcome-text">
+                <h2>💳 Payment Tracking</h2>
+                <p>Monitor subscriptions, trials, and revenue from your users.</p>
+            </div>
+            <div class="welcome-actions">
+                <button class="btn btn-outline btn-sm" onclick="window.location.reload()">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M17 10a7 7 0 11-1.5-4.3M17 5v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Refresh Data
+                </button>
+                <button class="btn btn-primary btn-sm" onclick="exportPayments()">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M3 17v2h14v-2M10 3v12m0 0l-4-4m4 4l4-4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Export CSV
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: var(--success);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M12 6v6l4 2"></path>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Total Payments</div>
+                    <div class="stat-value">${totalPayments.toLocaleString()}</div>
+                    <div class="stat-footer">
+                        <span class="trend positive">All time</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: var(--primary-light); color: var(--primary);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Est. Monthly Revenue</div>
+                    <div class="stat-value">$${estimatedRevenue.toLocaleString()}</div>
+                    <div class="stat-footer">
+                        <span class="trend neutral">${monthlyPlans} monthly + ${yearlyPlans} yearly</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(59, 130, 246, 0.1); color: var(--info);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Active Subscriptions</div>
+                    <div class="stat-value">${activeSubscriptions.toLocaleString()}</div>
+                    <div class="stat-footer">
+                        <span class="trend positive">Monthly plans</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(245, 158, 11, 0.1); color: var(--warning);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Active Trials</div>
+                    <div class="stat-value">${activeTrials.toLocaleString()}</div>
+                    <div class="stat-footer">
+                        <span class="trend neutral">7-day trials</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="card" style="margin-top: 24px; padding: 20px;">
+            <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center;">
+                <div style="flex: 1; min-width: 200px;">
+                    <input type="text" id="searchPayments" placeholder="Search username or server..." 
+                        class="form-input" style="width: 100%;"
+                        onkeyup="filterPayments()">
+                </div>
+                <select id="filterStatus" class="form-select" onchange="filterPayments()">
+                    <option value="">All Statuses</option>
+                    <option value="completed">Completed</option>
+                    <option value="active">Active</option>
+                    <option value="trial">Trial</option>
+                    <option value="cancelled">Cancelled</option>
+                    <option value="expired">Expired</option>
+                </select>
+                <select id="filterPlan" class="form-select" onchange="filterPayments()">
+                    <option value="">All Plans</option>
+                    <option value="Monthly">Monthly</option>
+                    <option value="Yearly">Yearly</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Payments Table -->
+        <div class="card" style="margin-top: 24px; overflow: hidden;">
+            <div class="card-header">
+                <h3>Recent Payments</h3>
+                <span class="badge badge-info">${recentPayments.length} records</span>
+            </div>
+            <div style="overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>User & Server</th>
+                            <th>Plan</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="paymentsTableBody">
+                        ${paymentRows || '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-tertiary);">No payments found</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .form-input, .form-select {
+            padding: 10px 14px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all var(--transition-fast);
+        }
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-light);
+        }
+        .btn-icon {
+            padding: 6px;
+            border: none;
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-icon:hover {
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+        .btn-icon.btn-danger:hover {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+    </style>
+
+    <script>
+        function filterPayments() {
+            const search = document.getElementById('searchPayments').value.toLowerCase();
+            const status = document.getElementById('filterStatus').value;
+            const plan = document.getElementById('filterPlan').value;
+            
+            // This is a simple client-side filter
+            // For production, implement server-side filtering with pagination
+            console.log('Filtering:', { search, status, plan });
+        }
+
+        function viewPaymentDetails(paymentId) {
+            alert('Viewing details for payment: ' + paymentId);
+            // Implement modal or details view
+        }
+
+        function deletePayment(paymentId) {
+            if (confirm('Are you sure you want to delete this payment record?')) {
+                fetch('/admin/api/payments/delete?paymentId=' + paymentId, {
+                    method: 'DELETE'
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert('Error deleting payment: ' + data.error);
+                    }
+                })
+                .catch(err => alert('Error: ' + err.message));
+            }
+        }
+
+        function exportPayments() {
+            window.open('/admin/api/payments/export', '_blank');
+        }
+    </script>
+    `;
+}
+
+/**
  * Generate complete dashboard
  */
 async function generateDashboard(analytics, client, activeTab = 'analytics') {
@@ -1410,6 +1711,9 @@ async function generateDashboard(analytics, client, activeTab = 'analytics') {
             break;
         case 'monetization':
             tabContent = await generateMonetizationTab();
+            break;
+        case 'payments':
+            tabContent = await generatePaymentsTab();
             break;
         case 'servers':
             tabContent = await generateServersTab(client);
@@ -1437,6 +1741,7 @@ module.exports = {
     generateVoteTrackingTab,
     generatePremiumRequestsTab,
     generateMonetizationTab,
+    generatePaymentsTab,
     generateServersTab,
     generateLogsTab
 };

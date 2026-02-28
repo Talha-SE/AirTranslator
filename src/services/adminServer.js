@@ -5656,7 +5656,7 @@ const server = http.createServer(async (req, res) => {
                 try {
                     const client = global.discordClient;
                     const reasonText = reason && String(reason).trim() ? String(reason).trim() : null;
-                    const OFFICIAL_PRICE_URL = 'https://www.patreon.com/c/tsio/membership';
+                    const OFFICIAL_PRICE_URL = 'https://airtranslator.brevios.com/pricing';
                     const SUPPORT_SERVER_URL = 'https://discord.gg/WeynxzR9nq';
                     const dmLines = [
                         `❌ Your premium request for "${rejected.serverName || rejected.serverId}" has been rejected.`
