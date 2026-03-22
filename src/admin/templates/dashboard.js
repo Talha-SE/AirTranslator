@@ -1402,12 +1402,12 @@ async function generatePaymentsTab() {
         yearlyPlans,
         recentPayments
     ] = await Promise.all([
-        Payment.countDocuments({ status: { $in: ['completed', 'active', 'trial', 'pending'] } }),
+        Payment.countDocuments({ status: { $in: ['completed', 'active', 'trial', 'pending', 'patreon'] } }),
         Payment.countDocuments({ status: 'active', planType: 'Monthly' }),
         Payment.countDocuments({ status: 'trial', isTrial: true }),
         Payment.countDocuments({ planType: 'Monthly', status: { $in: ['completed', 'active'] } }),
         Payment.countDocuments({ planType: 'Yearly', status: { $in: ['completed', 'active'] } }),
-        Payment.find({ status: { $in: ['completed', 'active', 'trial', 'pending'] } })
+        Payment.find({ status: { $in: ['completed', 'active', 'trial', 'pending', 'patreon'] } })
             .sort({ paymentDate: -1 })
             .limit(50)
             .lean()
@@ -1431,6 +1431,7 @@ async function generatePaymentsTab() {
             'active': 'success',
             'trial': 'info',
             'pending': 'warning',
+            'patreon': 'primary',
             'cancelled': 'danger',
             'expired': 'secondary'
         }[payment.status] || 'secondary';

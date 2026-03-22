@@ -1,5 +1,56 @@
 const Payment = require('../../models/Payment');
 
+async function notifyAdminForPatreonSubmission(payment) {
+    try {
+        const client = global.discordClient;
+        const adminUserId = process.env.ADMIN_NOTIFY_USER_ID;
+
+        if (!client || !adminUserId) {
+            return;
+        }
+
+        const submittedAt = payment?.createdAt ? new Date(payment.createdAt) : new Date();
+        const timestampSeconds = Math.floor(submittedAt.getTime() / 1000);
+
+        const embed = {
+            color: 0x8b5cf6,
+            title: '📥 Patreon Payment Details',
+            description: 'A user submitted Patreon payment details from the pricing popup.',
+            fields: [
+                { name: 'Discord User', value: payment?.discordUsername || 'N/A', inline: true },
+                { name: 'Server Name', value: payment?.discordServerName || 'N/A', inline: true },
+                { name: 'Status', value: payment?.status || 'patreon', inline: true },
+                { name: 'Plan', value: `${payment?.planName || 'Patreon'} (${payment?.planType || 'Monthly'})`, inline: true },
+                { name: 'Price', value: payment?.price || 'N/A', inline: true },
+                { name: 'Payment ID', value: payment?.paymentId || 'N/A', inline: true },
+                { name: 'Submitted At', value: `<t:${timestampSeconds}:F>`, inline: false }
+            ],
+            timestamp: submittedAt.toISOString(),
+            footer: { text: 'Air Translator • Admin Alert' }
+        };
+
+        const adminUser = await client.users.fetch(adminUserId);
+        if (!adminUser) {
+            return;
+        }
+
+        await adminUser.send({ embeds: [embed] }).catch(async () => {
+            await adminUser.send(
+                `📥 Patreon Payment Details\n` +
+                `Discord User: ${payment?.discordUsername || 'N/A'}\n` +
+                `Server Name: ${payment?.discordServerName || 'N/A'}\n` +
+                `Status: ${payment?.status || 'patreon'}\n` +
+                `Plan: ${payment?.planName || 'Patreon'} (${payment?.planType || 'Monthly'})\n` +
+                `Price: ${payment?.price || 'N/A'}\n` +
+                `Payment ID: ${payment?.paymentId || 'N/A'}\n` +
+                `Submitted At: ${submittedAt.toISOString()}`
+            );
+        });
+    } catch (error) {
+        console.warn('Failed to notify admin for Patreon submission:', error?.message || error);
+    }
+}
+
 /**
  * Parse POST data helper
  */
@@ -94,12 +145,12 @@ async function getPaymentStats(req, res) {
             yearlyRevenue,
             recentPayments
         ] = await Promise.all([
-            Payment.countDocuments({ status: { $in: ['completed', 'active', 'trial', 'pending'] } }),
+            Payment.countDocuments({ status: { $in: ['completed', 'active', 'trial', 'pending', 'patreon'] } }),
             Payment.countDocuments({ status: 'active', planType: 'Monthly' }),
             Payment.countDocuments({ status: 'trial', isTrial: true }),
             Payment.countDocuments({ planType: 'Monthly', status: { $in: ['completed', 'active'] } }),
             Payment.countDocuments({ planType: 'Yearly', status: { $in: ['completed', 'active'] } }),
-            Payment.find({ status: { $in: ['completed', 'active', 'trial', 'pending'] } })
+            Payment.find({ status: { $in: ['completed', 'active', 'trial', 'pending', 'patreon'] } })
                 .sort({ paymentDate: -1 })
                 .limit(10)
                 .lean()
@@ -159,6 +210,15 @@ async function createPayment(req, res) {
 
         const payment = new Payment(paymentData);
         await payment.save();
+
+        const isPatreonSubmission =
+            paymentData.status === 'patreon' ||
+            String(paymentData.planName || '').toLowerCase() === 'patreon' ||
+            String(paymentData.checkoutUrl || '').toLowerCase().includes('patreon.com');
+
+        if (isPatreonSubmission) {
+            notifyAdminForPatreonSubmission(payment);
+        }
 
         console.log(`✅ Payment record created: ${paymentId} - ${data.username} - ${data.planName} (${data.planType}) - Status: ${paymentData.status}`);
 
@@ -274,6 +334,15 @@ async function createPaymentFromBody(data, res) {
 
         const payment = new Payment(paymentData);
         await payment.save();
+
+        const isPatreonSubmission =
+            paymentData.status === 'patreon' ||
+            String(paymentData.planName || '').toLowerCase() === 'patreon' ||
+            String(paymentData.checkoutUrl || '').toLowerCase().includes('patreon.com');
+
+        if (isPatreonSubmission) {
+            notifyAdminForPatreonSubmission(payment);
+        }
 
         console.log(`✅ Payment record created: ${paymentId} - ${data.username} - ${data.planName} (${data.planType}) - Status: ${paymentData.status}`);
 

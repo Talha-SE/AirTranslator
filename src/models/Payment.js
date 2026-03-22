@@ -17,7 +17,7 @@ const paymentSchema = new mongoose.Schema({
     planName: {
         type: String,
         required: true,
-        enum: ['Pro', 'Yearly Pass']
+        enum: ['Pro', 'Yearly Pass', 'Patreon']
     },
     planType: {
         type: String,
@@ -38,7 +38,7 @@ const paymentSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'completed', 'trial', 'active', 'cancelled', 'expired'],
+        enum: ['pending', 'patreon', 'completed', 'trial', 'active', 'cancelled', 'expired'],
         default: 'completed'
     },
     paymentDate: {

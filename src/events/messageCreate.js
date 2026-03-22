@@ -522,7 +522,7 @@ async function sendLimitReachedMessage(message) {
 
         const supportButton = new ButtonBuilder()
             .setCustomId(`see_payment_options:${message.guild.id}`)
-            .setLabel('Paid Options')
+            .setLabel('Free Trial')
             .setStyle(ButtonStyle.Primary);
 
         const actionRow = new ActionRowBuilder()
@@ -767,7 +767,7 @@ async function translateAndReply(message, languages, options = {}) {
                             .setStyle(ButtonStyle.Success),
                         new ButtonBuilder()
                             .setCustomId(`see_payment_options:${message.guild.id}`)
-                            .setLabel('Paid Options')
+                            .setLabel('Free Trial')
                             .setStyle(ButtonStyle.Primary)
                     );
                     replyOptions.components = [buttons];
