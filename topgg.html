@@ -1,226 +1,654 @@
-<div style="max-width:900px;margin:0 auto;font-family:Arial,Helvetica,sans-serif;background:#0b1220;color:#e6f0ff;border-radius:18px;overflow:hidden;border:1px solid #1e2a44;">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AirTranslator - Best AI Translation Bot for Discord | 100+ Languages</title>
+  <meta name="description" content="AirTranslator: The #1 AI Discord translator bot. Get human-like translations in 100+ languages. Features flag translation, auto-detection, and OCR image translation. Best for global gaming and crypto communities.">
+  <meta name="keywords" content="Discord translation bot, AI translator Discord, Korean Discord translator, Japanese Discord translation, Chinese translator Discord, free language bot, real-time Discord translation, OCR image translator, flag translation bot, AirTranslator, Discord multilingual bot, gaming translator, crypto community translator, 한국어 디스코드 번역기, 日本語ディスコード翻訳, 简体中文翻译机器人">
+  <meta name="author" content="AirTranslator">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://top.gg/bot/1380177061032759416">
+  <meta property="og:title" content="AirTranslator - #1 AI Translation Bot for Discord">
+  <meta property="og:description" content="Translate messages instantly in 100+ languages with AI. Perfect for international Discord servers.">
+  <meta property="og:image" content="https://airtranslator.vercel.app/og-image.png">
 
-  <!-- HEADER -->
-  <div style="padding:40px 25px;text-align:center;background:linear-gradient(180deg,#111a2e 0%,#0b1220 100%);">
-    <h1 style="margin:0 0 10px 0;font-size:36px;font-weight:bold;color:#fff;">🌍 AirTranslator</h1>
-    <p style="opacity:0.85;font-size:17px;margin:10px auto 25px;max-width:600px;color:#b0c4de;line-height:1.6;">
-      The most advanced AI translation bot for Discord. Break language barriers with human-like accuracy.
-    </p>
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://top.gg/bot/1380177061032759416">
+  <meta property="twitter:title" content="AirTranslator - AI Discord Translator">
+  <meta property="twitter:description" content="Break language barriers on Discord with human-quality AI translations. Supports flags, images, and auto-detect.">
+  <meta property="twitter:image" content="https://airtranslator.vercel.app/og-image.png">
+  
 
-    <div style="margin:20px 0 30px;">
-      <span style="display:inline-block;background:#16213a;padding:7px 15px;border-radius:20px;margin:5px;font-size:13px;border:1px solid #28364d;">🌐 100+ Languages</span>
-      <span style="display:inline-block;background:#16213a;padding:7px 15px;border-radius:20px;margin:5px;font-size:13px;border:1px solid #28364d;">🖼️ Image OCR</span>
-      <span style="display:inline-block;background:#16213a;padding:7px 15px;border-radius:20px;margin:5px;font-size:13px;border:1px solid #28364d;">🎯 Auto Detect</span>
-      <span style="display:inline-block;background:#16213a;padding:7px 15px;border-radius:20px;margin:5px;font-size:13px;border:1px solid #28364d;">🧠 AI Powered</span>
-      <span style="display:inline-block;background:#16213a;padding:7px 15px;border-radius:20px;margin:5px;font-size:13px;border:1px solid #28364d;">⚡ Real-Time</span>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      /* Spacing scale and colors */
+      --space-1: 6px;
+      --space-2: 12px;
+      --space-3: 20px;
+      --space-4: 32px;
+      --space-5: 48px;
+      --space-6: 64px;
+      --primary: #2d86ff;
+      --primary-600: #1f6fe0;
+      --accent: #5fb0ff;
+      --text-primary-dark: #0f172a;
+      --bg-card: rgba(255, 255, 255, 0.78);
+      --border-card: rgba(45, 134, 255, 0.14);
+      --shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
+      --glass-bg: rgba(255, 255, 255, 0.55);
+      --glass-border: rgba(255, 255, 255, 0.8);
+    }
+    body {
+      font-family: inherit;
+      /* Modern layered background — darker, stronger bluish tone (user requested more) */
+      background: linear-gradient(180deg, #6fa7ff 0%, #4f98ff 40%, #9fcfff 100%);
+      background-image:
+        radial-gradient(at 10% 10%, rgba(45, 134, 255, 0.50) 0, transparent 45%),
+        radial-gradient(at 60% 5%, rgba(14, 165, 233, 0.36) 0, transparent 45%),
+        radial-gradient(at 90% 10%, rgba(99, 102, 241, 0.36) 0, transparent 45%),
+        radial-gradient(at 50% 50%, rgba(137, 171, 255, 0.44) 0, transparent 50%),
+        radial-gradient(at 10% 90%, rgba(107, 147, 243, 0.34) 0, transparent 50%),
+        radial-gradient(at 90% 90%, rgba(86, 155, 250, 0.34) 0, transparent 50%);
+      color: #0f172a;
+      line-height: 1.7;
+      padding: 0;
+      margin: 0;
+      overflow-x: hidden;
+    }
+    .background-blobs {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .blob {
+      position: absolute;
+      width: 520px;
+      height: 520px;
+      background: radial-gradient(circle, rgba(45, 134, 255, 0.50) 0%, transparent 70%);
+      border-radius: 50%;
+      filter: blur(92px);
+      animation: move 25s infinite alternate ease-in-out;
+    }
+    .blob-1 { top: -100px; left: -100px; }
+    .blob-2 { bottom: -100px; right: -100px; animation-delay: -5s; }
+    @keyframes move {
+      from { transform: translate(0, 0) scale(1); }
+      to { transform: translate(100px, 50px) scale(1.1); }
+    }
+    /* Smooth animated gradient for logo text */
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    h1 {
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin: 0;
+    }
+    h2, h3 {
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 0 20px;
+      position: relative;
+      z-index: 1;
+    }
+    .main-card {
+      /* Soft glass panel with a subtle bluish gradient to match the page */
+      background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(240,249,255,0.92) 40%, rgba(235,245,255,0.9) 100%);
+      backdrop-filter: blur(18px) saturate(190%);
+      -webkit-backdrop-filter: blur(18px) saturate(190%);
+      border: 1px solid rgba(45,134,255,0.12);
+      border-radius: 24px;
+      box-shadow: 0 28px 60px rgba(15,23,42,0.10), inset 0 1px 0 rgba(255,255,255,0.6);
+      overflow: hidden;
+    }
+    .header {
+      text-align: center;
+      padding: 20px 40px 40px;
+      background: linear-gradient(180deg, rgba(245,250,255,0.96) 0%, transparent 100%);
+      position: relative;
+    }
+    .header h1 {
+      font-size: clamp(2.4rem, 7vw, 3.5rem);
+      margin: 0 0 12px 0;
+      font-weight: 800;
+      line-height: 1.1;
+      text-align: center;
+      letter-spacing: -0.03em;
+    }
+    .header h1 .logo-text {
+      /* Match topgglight heading: dark-to-muted vertical text gradient */
+      background: linear-gradient(180deg, #0f172a 0%, #475569 100%);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: inline-block;
+      white-space: nowrap;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      text-shadow: none;
+    }
+    .header h1 .logo-emoji {
+      font-style: normal;
+      filter: drop-shadow(0 0 15px rgba(45, 134, 255, 0.25));
+    }
+    .seo-content {
+      position: absolute;
+      top: -1000px;
+      left: -1000px;
+      height: 1px;
+      width: 1px;
+      overflow: hidden;
+    }
+    .header .description {
+      font-size: 1.1rem;
+      opacity: 0.9;
+      max-width: 600px;
+      margin: 0 auto 20px;
+      color: #475569;
+    }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 35px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 100px;
+      background: rgba(245,250,255,0.9);
+      border: 1px solid rgba(45, 134, 255, 0.10);
+      color: #334155;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    .badge:hover {
+      background: rgba(255, 255, 255, 1);
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+    .cta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 28px;
+      border-radius: 14px;
+      font-weight: 600;
+      font-size: 1rem;
+      text-decoration: none !important;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+      color: #fff !important;
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #1e293b 0%, #475569 100%);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px -5px rgba(0,0,0,0.2), 0 0 15px rgba(14,165,233,0.3);
+      border-color: rgba(14,165,233,0.3);
+    }
+    .btn-secondary {
+      background: #ffffff;
+      color: #0f172a !important;
+      box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+      border: 1px solid rgba(45, 134, 255, 0.08);
+    }
+    .btn-secondary:hover {
+      background: #f8fbff;
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10);
+    }
+    .btn-ghost {
+      background: rgba(255, 255, 255, 0.7);
+      color: #0f172a !important;
+      border: 1px solid rgba(45, 134, 255, 0.08);
+    }
+    .btn-ghost:hover {
+      background: rgba(255, 255, 255, 1);
+      border-color: rgba(45, 134, 255, 0.18);
+      transform: translateY(-3px);
+    }
+    .premium-card {
+      margin: 40px;
+      padding: 26px 28px;
+      background: linear-gradient(135deg, rgba(251, 191, 36, 0.14) 0%, rgba(255, 255, 255, 0.92) 100%);
+      border: 1px solid rgba(251, 191, 36, 0.34);
+      border-radius: 20px;
+      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .premium-card-content {
+      min-width: 0;
+      flex: 1;
+    }
+    .premium-card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .premium-card-header h3 {
+      margin: 0;
+      color: #d97706;
+      font-size: 1.5rem;
+    }
+    .premium-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5px 10px;
+      border-radius: 8px;
+      background: rgba(251, 191, 36, 0.18);
+      border: 1px solid rgba(251, 191, 36, 0.32);
+      color: #b45309;
+      font-size: 0.85rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .premium-card p {
+      margin: 0;
+      color: #475569;
+      font-size: 1rem;
+      line-height: 1.7;
+    }
+    .premium-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-width: 170px;
+      padding: 14px 22px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
+      color: #111827 !important;
+      font-weight: 800;
+      text-decoration: none !important;
+      box-shadow: 0 12px 26px rgba(245, 158, 11, 0.28);
+      transition: all 0.25s ease;
+      white-space: nowrap;
+    }
+    .premium-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 32px rgba(245, 158, 11, 0.34);
+      filter: brightness(1.03);
+    }
+    .vote-section {
+      margin: 40px;
+      padding: 30px;
+      background: linear-gradient(135deg, rgba(225, 240, 255, 0.85) 0%, rgba(245,252,255,0.92) 100%);
+      border: 1px solid rgba(45, 134, 255, 0.14);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 30px;
+    }
+    .vote-content h3 {
+      margin: 0 0 8px;
+      font-size: 1.5rem;
+      color: #0f172a;
+    }
+    .vote-content p {
+      margin: 0;
+      color: #475569;
+    }
+    .section {
+      padding: 40px;
+      border-top: 1px solid rgba(45, 134, 255, 0.10);
+    }
+    .section h2 {
+      font-size: 1.8rem;
+      margin-top: 0;
+      margin-bottom: 30px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .feature-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      list-style: none;
+      padding: 0;
+    }
+    .feature-item {
+      background: rgba(245,250,255,0.90);
+      border: 1px solid rgba(45, 134, 255, 0.08);
+      padding: 24px;
+      border-radius: 16px;
+      transition: all 0.3s ease;
+    }
+    .feature-item:hover {
+      background: rgba(255, 255, 255, 1);
+      border-color: rgba(45, 134, 255, 0.20);
+      transform: translateY(-5px);
+    }
+    .feature-item strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #0f172a;
+      font-size: 1.1rem;
+    }
+    .command-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      list-style: none;
+      padding: 0;
+    }
+    .command-item {
+      background: rgba(245,250,255,0.92);
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-family: 'Roboto Mono', monospace;
+      font-size: 0.9rem;
+      border: 1px solid rgba(45, 134, 255, 0.08);
+      color: #1d4ed8;
+    }
+    .highlight {
+      background: rgba(45, 134, 255, 0.08);
+      border-radius: 16px;
+      padding: 24px;
+      color: #475569;
+      font-size: 0.95rem;
+      line-height: 1.8;
+    }
+    .faq-item {
+      margin-bottom: 24px;
+    }
+    .faq-question {
+      color: #0f172a;
+      font-weight: 600;
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+    }
+    .faq-answer {
+      color: #475569;
+    }
+    .lang-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .lang-tag {
+      background: rgba(245,250,255,0.92);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: #334155;
+      border: 1px solid rgba(45, 134, 255, 0.08);
+    }
+    .footer {
+      text-align: center;
+      padding: 40px;
+      color: #64748b;
+      font-size: 0.9rem;
+    }
+    .video-container {
+      width: 100%;
+      border-radius: 16px;
+      overflow: hidden;
+      line-height: 0;
+      background: linear-gradient(180deg, rgba(235,245,255,0.96), rgba(240,250,255,0.94));
+      border: 1px solid rgba(45,134,255,0.08);
+      margin: 20px 0;
+    }
+    .video-container video {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    @media (max-width: 768px) {
+      .header h1 { font-size: 2.2rem; }
+      .header .description { font-size: 1rem; }
+      .vote-section { flex-direction: column; text-align: center; margin: 20px; padding: 24px; }
+      .section { padding: 28px 18px; }
+      .container { padding: 0 14px; }
+      .btn { width: 100%; justify-content: center; }
+      .cta { flex-direction: column; }
+      .premium-card { margin: 20px; padding: 22px 20px; flex-direction: column; align-items: stretch; }
+      .premium-card-header h3 { font-size: 1.35rem; }
+      .premium-btn { width: 100%; min-width: 0; }
+    }
+    /* Top.gg text color control: define variables and apply overrides so preview respects theme */
+    :root {
+      --tt-text: var(--text-primary-dark);
+      --tt-muted: #475569;
+    }
+    body {
+      color: var(--tt-text) !important;
+    }
+    /* Headings use primary text color */
+    .header h1,
+    .header h2,
+    .header h3,
+    .section h2,
+    .vote-content h3,
+    .premium-card-header h3 {
+      color: var(--tt-text) !important;
+    }
+    /* Paragraphs and descriptive text use muted color */
+    p,
+    .header .description,
+    .premium-card p,
+    .vote-content p,
+    .faq-answer,
+    .feature-card p,
+    .step-desc {
+      color: var(--tt-muted) !important;
+    }
+    /* Strong/labels keep primary */
+    .feature-item strong,
+    .faq-question,
+    .step-title {
+      color: var(--tt-text) !important;
+    }
+  </style>
+</head>
+<body><div class="container">
+    <div class="main-card">
+      <div class="header">
+        <h1><span class="logo-text">Air Translator</span></h1>
+        <p class="description">The most advanced AI translation bot for Discord. Break language barriers with human-like accuracy.</p>
+        <div class="badges">
+          <span class="badge">🌐 100+ Languages</span>
+          <span class="badge">🖼️ Image Text</span>
+          <span class="badge">🎯 Auto Detect</span>
+          <span class="badge">🧠 AI Powered</span>
+          <span class="badge">⚡ Real-time</span>
+        </div>
+        <div class="cta">
+          <a class="btn btn-primary" href="https://discord.com/oauth2/authorize?client_id=1380177061032759416&permissions=2148001856&integration_type=0&scope=bot+applications.commands">Invite Bot</a>
+          <a class="btn btn-secondary" href="https://airtranslator.vercel.com" target="_blank">Official Website</a>
+          <a class="btn btn-ghost" href="https://discord.gg/WeynxzR9nq">Join Support</a>
+        </div>
+      </div>
+
+      <div class="premium-card">
+        <div class="premium-card-content">
+          <div class="premium-card-header">
+            <span style="font-size: 1.4rem;">👑</span>
+            <h3>Premium Membership</h3>
+            <span class="premium-badge">$5/mo</span>
+          </div>
+          <p>Unlock unlimited translations, personal buddy mode, and exclusive features!</p>
+        </div>
+        <a class="premium-btn" href="https://www.patreon.com/c/tsio/membership" target="_blank">Get Premium ➜</a>
+      </div>
+
+      <div class="vote-section">
+        <div class="vote-content">
+          <h3>🎁 Support Us & Get Rewarded</h3>
+          <p>Vote for AirTranslator on Top.gg to unlock <strong>Free Bonus Messages</strong> every day!</p>
+        </div>
+        <a class="btn btn-primary" href="https://top.gg/bot/1380177061032759416/vote" target="_blank">Vote Now</a>
+      </div>
+
+      <div class="section">
+        <h2>📊 Dashboard to manage the bot</h2>
+        <p style="color: #475569; margin-bottom: 20px;">Easily configure and monitor your translations through our intuitive web dashboard.</p>
+        <div class="video-container">
+          <video autoplay loop muted playsinline>
+            <source src="https://i.imgur.com/bExrssl.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+          </video>
+        </div>
+        <div style="margin-top: 25px; text-align: center;">
+          <a class="btn btn-primary" href="https://airtranslator.brevios.com/dashboard" target="_blank">Access Dashboard</a>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>✨ Key Features</h2>
+        <ul class="feature-list">
+          <li class="feature-item">🧠 <strong>AI-Powered Translations</strong> Human-like fluency across 100+ languages with deep contextual understanding.</li>
+          <li class="feature-item">🚩 <strong>Flag Reactions</strong> Simply react with a flag to any message or image to translate it instantly.</li>
+          <li class="feature-item">📨 <strong>Personal Buddy</strong> Get translations sent directly to your DMs for private reading.</li>
+          <li class="feature-item">🎯 <strong>Auto Detection</strong> Intelligent engine detects source languages automatically.</li>
+          <li class="feature-item">🎭 <strong>Tone & Emotion</strong> Recognizes sarcasm, humor, and cultural nuances for perfect accuracy.</li>
+          <li class="feature-item">🎛️ <strong>Style Selector</strong> Choose between clean thread views or seamless inline text display.</li>
+          <li class="feature-item">🔧 <strong>Unlimited Setups</strong> Configure as many language channels as you need without limits.</li>
+          <li class="feature-item">🚀 <strong>Quick Setup</strong> Get your server multilingual in seconds with <code>/quicksetup</code>.</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>🧠 Top Use Cases</h2>
+        <ul class="feature-list">
+          <li class="feature-item">🌐 <strong>Global Communities</strong> Connect gamers and communities from every corner of the world.</li>
+          <li class="feature-item">📚 <strong>Study Groups</strong> Perfect for language learners and international academic collaboration.</li>
+          <li class="feature-item">🏢 <strong>Business Teams</strong> Enable seamless remote collaboration for international companies.</li>
+          <li class="feature-item">🎤 <strong>Live Events</strong> Real-time translation for Discord stages, webinars, and community calls.</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>🛠️ Popular Commands</h2>
+        <div class="command-list">
+          <div class="command-item">/quicksetup</div>
+          <div class="command-item">/toggletone</div>
+          <div class="command-item">/style</div>
+          <div class="command-item">/personalbuddy</div>
+          <div class="command-item">/flags</div>
+          <div class="command-item">/listsetups</div>
+          <div class="command-item">/deletesetup</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>🚀 How to Get Started</h2>
+        <ol style="margin: 0; padding-left: 20px; color: #475569;">
+          <li style="margin-bottom: 12px;"><strong>Invite:</strong> Add AirTranslator to your server using the invite button above.</li>
+          <li style="margin-bottom: 12px;"><strong>Setup:</strong> Run <code>/quicksetup</code> in any channel to configure your languages.</li>
+          <li style="margin-bottom: 0;"><strong>Chat:</strong> Start messaging! The bot handles the rest automatically.</li>
+        </ol>
+      </div>
+
+      <div class="section">
+        <h2>🌐 Supported Languages</h2>
+        <p style="color: #475569; margin-bottom: 20px;">AirTranslator provides high-quality AI translations for over 100 languages, including:</p>
+        <div class="lang-grid">
+          <span class="lang-tag">🇺🇸 English</span>
+          <span class="lang-tag">🇰🇷 Korean</span>
+          <span class="lang-tag">🇯🇵 Japanese</span>
+          <span class="lang-tag">🇨🇳 Chinese</span>
+          <span class="lang-tag">🇪🇸 Spanish</span>
+          <span class="lang-tag">🇫🇷 French</span>
+          <span class="lang-tag">🇩🇪 German</span>
+          <span class="lang-tag">🇷🇺 Russian</span>
+          <span class="lang-tag">🇻🇳 Vietnamese</span>
+          <span class="lang-tag">🇮🇳 Hindi</span>
+          <span class="lang-tag">🇵🇹 Portuguese</span>
+          <span class="lang-tag">🇮🇹 Italian</span>
+          <span class="lang-tag">🇹🇷 Turkish</span>
+          <span class="lang-tag">🇸🇦 Arabic</span>
+          <span class="lang-tag">🇹🇭 Thai</span>
+          <span class="lang-tag">🇮🇩 Indonesian</span>
+          <span class="lang-tag">🇵🇭 Tagalog</span>
+          <span class="lang-tag">🇵🇱 Polish</span>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>❓ Frequently Asked Questions</h2>
+        <div class="faq-item">
+          <div class="faq-question">How do I translate a message on Discord?</div>
+          <div class="faq-answer">Simply react to any message with a country flag emoji (e.g., 🇺🇸 for English, 🇰🇷 for Korean) and AirTranslator will instantly provide a translation. You can also use /quicksetup for automatic channel translation.</div>
+        </div>
+        <div class="faq-item">
+          <div class="faq-question">Is AirTranslator free to use?</div>
+          <div class="faq-answer">Yes! AirTranslator offers a generous free tier. You can also earn bonus messages daily by voting for the bot on Top.gg.</div>
+        </div>
+        <div class="faq-item">
+          <div class="faq-question">Does it support image translation (OCR)?</div>
+          <div class="faq-answer">Absolutely. AirTranslator uses advanced AI to detect and translate text within images. Just react with a flag to an image or use the context menu.</div>
+        </div>
+        <div class="faq-item">
+          <div class="faq-question">What makes AirTranslator better than other bots?</div>
+          <div class="faq-answer">Unlike basic translation bots, AirTranslator uses state-of-the-art AI models that understand context, slang, and emotion, providing human-like fluency instead of literal word-for-word translations.</div>
+        </div>
+          <div class="faq-item">
+            <div class="faq-question">How do I use the Dashboard to manage my server?</div>
+            <div class="faq-answer">Open the Dashboard from the "Official Website" link, sign in with your Discord account, then configure server settings, language channels, and view usage analytics. Changes apply instantly to connected servers and give you centralized control over translations and setups.</div>
+          </div>
+          <div class="faq-item">
+            <div class="faq-question">What does Premium include and how does billing work?</div>
+            <div class="faq-answer">Premium unlocks unlimited translations, Personal Buddy mode, priority processing, and exclusive features. Billing is handled through the payment provider listed on the Premium page (such as Patreon) with recurring monthly payments; you can manage or cancel your subscription from that provider's account settings.</div>
+          </div>
+      </div>
+
     </div>
-
-    <div style="margin:30px 0 0;">
-      <a href="https://discord.com/oauth2/authorize?client_id=1380177061032759416&permissions=8&scope=bot%20applications.commands"
-         style="display:inline-block;padding:13px 26px;background:#3ba4ff;color:#000;text-decoration:none;border-radius:11px;font-weight:bold;margin:6px;font-size:15px;">
-         🚀 Invite Bot
-      </a>
-
-      <a href="https://airtranslator.vercel.com"
-         style="display:inline-block;padding:13px 26px;background:#ffffff;color:#000;text-decoration:none;border-radius:11px;font-weight:bold;margin:6px;font-size:15px;">
-         🌐 Website
-      </a>
-
-      <a href="https://discord.gg/WeynxzR9nq"
-         style="display:inline-block;padding:13px 26px;background:#1c2742;color:#fff;text-decoration:none;border-radius:11px;font-weight:bold;margin:6px;border:1px solid #2f3c5a;font-size:15px;">
-         💬 Support
-      </a>
+    <div class="footer">
+      <p>© 2026 AirTranslator. Supporting 10,000+ servers worldwide.</p>
+      <p>Official Support: <a href="https://discord.gg/WeynxzR9nq" style="color: var(--primary);">discord.gg/WeynxzR9nq</a></p>
+    </div>
+    <div class="seo-content">
+      <h1>Discord Translation Bot - AirTranslator AI</h1>
+      <p>AirTranslator is the leading AI-powered translation bot for Discord, designed to break language barriers in global communities. Whether you are running a gaming server, a crypto community, or a professional workspace, our bot provides real-time, human-quality translations in over 100 languages.</p>
+      <h2>Key Features for Better Discord Communication</h2>
+      <ul>
+        <li><strong>Flag Translation:</strong> React with a flag to translate any message instantly.</li>
+        <li><strong>Auto-Translation:</strong> Automatically translate messages in specific channels for seamless multilingual chat.</li>
+        <li><strong>Image Translation (OCR):</strong> Translate text inside images and screenshots with advanced AI.</li>
+        <li><strong>Human-Like Accuracy:</strong> Powered by state-of-the-art AI models that understand context and slang.</li>
+      </ul>
+      <p>Supported languages include English, Spanish, French, German, Chinese, Japanese, Korean, Russian, Arabic, and many more. Install AirTranslator today and make your Discord server truly global.</p>
     </div>
   </div>
-
-  <!-- PREMIUM -->
-  <div style="padding:30px 25px;border-top:1px solid #1e2a44;background:linear-gradient(135deg,rgba(255,215,0,0.08) 0%,rgba(0,0,0,0) 100%);border-bottom:1px solid rgba(255,215,0,0.15);">
-    <div style="text-align:center;">
-      <h2 style="margin:0 0 10px;font-size:24px;color:#ffd700;">💎 Premium Membership — $5/month</h2>
-      <p style="opacity:0.9;color:#e0e0e0;margin:0 0 18px;font-size:15px;">
-        Unlock unlimited translations, personal buddy mode, priority performance, and exclusive features to support the bot!
-      </p>
-      <a href="https://www.patreon.com/c/tsio/membership"
-         style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#ffd700 0%,#ffaa00 100%);color:#000;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">
-         Get Premium ➜
-      </a>
-    </div>
-  </div>
-
-  <!-- VOTE SECTION -->
-  <div style="padding:30px 25px;border-top:1px solid #1e2a44;background:linear-gradient(135deg,rgba(45,134,255,0.12) 0%,rgba(0,0,0,0) 100%);">
-    <div style="text-align:center;">
-      <h3 style="margin:0 0 8px;font-size:22px;color:#fff;">🎁 Support Us & Get Rewarded</h3>
-      <p style="color:#b0c4de;margin:0 0 20px;font-size:15px;">
-        Vote for AirTranslator on Top.gg to unlock <strong style="color:#fff;">Free Bonus Messages</strong> every day!
-      </p>
-      <a href="https://top.gg/bot/1380177061032759416/vote"
-         style="display:inline-block;padding:12px 26px;background:#3ba4ff;color:#000;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">
-         Vote Now
-      </a>
-    </div>
-  </div>
-
-  <!-- DASHBOARD -->
-  <div style="padding:35px 25px;border-top:1px solid #1e2a44;">
-    <h2 style="margin:0 0 12px;font-size:26px;color:#fff;">📊 Dashboard</h2>
-    <p style="color:#b0c4de;margin:0 0 20px;font-size:15px;line-height:1.7;">
-      Easily configure and monitor your translations through our intuitive web dashboard. Manage channels, view analytics, and customize bot settings with ease.
-    </p>
-    <div style="text-align:center;margin:20px auto;max-width:100%;background:#000;border-radius:12px;overflow:hidden;border:1px solid #28364d;">
-      <img src="https://i.imgur.com/bExrssl.gif" alt="Dashboard Preview" style="width:100%;height:auto;display:block;">
-    </div>
-    <div style="text-align:center;margin-top:20px;">
-      <a href="https://airtranslator.brevios.com/dashboard"
-         style="display:inline-block;padding:12px 26px;background:#3ba4ff;color:#000;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">
-         Access Dashboard
-      </a>
-    </div>
-  </div>
-
-  <!-- KEY FEATURES -->
-  <div style="padding:35px 25px;border-top:1px solid #1e2a44;">
-    <h2 style="margin:0 0 20px;font-size:26px;color:#fff;">✨ Key Features</h2>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px;">
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);padding:18px;border-radius:12px;">
-        <div style="font-size:16px;font-weight:bold;margin-bottom:6px;color:#fff;">🧠 AI-Powered Translations</div>
-        <div style="color:#b0c4de;font-size:14px;line-height:1.6;">Human-like fluency across 100+ languages with deep contextual understanding.</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);padding:18px;border-radius:12px;">
-        <div style="font-size:16px;font-weight:bold;margin-bottom:6px;color:#fff;">🚩 Flag Reactions</div>
-        <div style="color:#b0c4de;font-size:14px;line-height:1.6;">Simply react with a flag to any message or image to translate it instantly.</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);padding:18px;border-radius:12px;">
-        <div style="font-size:16px;font-weight:bold;margin-bottom:6px;color:#fff;">📨 Personal Buddy</div>
-        <div style="color:#b0c4de;font-size:14px;line-height:1.6;">Get translations sent directly to your DMs for private reading.</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);padding:18px;border-radius:12px;">
-        <div style="font-size:16px;font-weight:bold;margin-bottom:6px;color:#fff;">🎯 Auto Detection</div>
-        <div style="color:#b0c4de;font-size:14px;line-height:1.6;">Intelligent engine detects source languages automatically.</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);padding:18px;border-radius:12px;">
-        <div style="font-size:16px;font-weight:bold;margin-bottom:6px;color:#fff;">🎭 Tone & Emotion</div>
-        <div style="color:#b0c4de;font-size:14px;line-height:1.6;">Recognizes sarcasm, humor, and cultural nuances for perfect accuracy.</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);padding:18px;border-radius:12px;">
-        <div style="font-size:16px;font-weight:bold;margin-bottom:6px;color:#fff;">🎛️ Style Selector</div>
-        <div style="color:#b0c4de;font-size:14px;line-height:1.6;">Choose between clean thread views or seamless inline text display.</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);padding:18px;border-radius:12px;">
-        <div style="font-size:16px;font-weight:bold;margin-bottom:6px;color:#fff;">🔧 Unlimited Setups</div>
-        <div style="color:#b0c4de;font-size:14px;line-height:1.6;">Configure as many language channels as you need without limits.</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);padding:18px;border-radius:12px;">
-        <div style="font-size:16px;font-weight:bold;margin-bottom:6px;color:#fff;">🚀 Quick Setup</div>
-        <div style="color:#b0c4de;font-size:14px;line-height:1.6;">Get your server multilingual in seconds with /quicksetup command.</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- USE CASES -->
-  <div style="padding:35px 25px;border-top:1px solid #1e2a44;">
-    <h2 style="margin:0 0 20px;font-size:26px;color:#fff;">🧠 Top Use Cases</h2>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px;">
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);padding:18px;border-radius:12px;">
-        <div style="font-size:16px;font-weight:bold;margin-bottom:6px;color:#fff;">🌐 Global Communities</div>
-        <div style="color:#b0c4de;font-size:14px;line-height:1.6;">Connect gamers and communities from every corner of the world.</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);padding:18px;border-radius:12px;">
-        <div style="font-size:16px;font-weight:bold;margin-bottom:6px;color:#fff;">📚 Study Groups</div>
-        <div style="color:#b0c4de;font-size:14px;line-height:1.6;">Perfect for language learners and international academic collaboration.</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);padding:18px;border-radius:12px;">
-        <div style="font-size:16px;font-weight:bold;margin-bottom:6px;color:#fff;">🏢 Business Teams</div>
-        <div style="color:#b0c4de;font-size:14px;line-height:1.6;">Enable seamless remote collaboration for international companies.</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);padding:18px;border-radius:12px;">
-        <div style="font-size:16px;font-weight:bold;margin-bottom:6px;color:#fff;">🎤 Live Events</div>
-        <div style="color:#b0c4de;font-size:14px;line-height:1.6;">Real-time translation for Discord stages, webinars, and community calls.</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- COMMANDS -->
-  <div style="padding:35px 25px;border-top:1px solid #1e2a44;">
-    <h2 style="margin:0 0 18px;font-size:26px;color:#fff;">🛠️ Popular Commands</h2>
-    <div style="background:#111a2e;padding:18px;border-radius:12px;font-family:monospace;border:1px solid #1e2a44;">
-      <div style="margin-bottom:8px;color:#3ba4ff;font-size:14px;">/quicksetup</div>
-      <div style="margin-bottom:8px;color:#3ba4ff;font-size:14px;">/toggletone</div>
-      <div style="margin-bottom:8px;color:#3ba4ff;font-size:14px;">/style</div>
-      <div style="margin-bottom:8px;color:#3ba4ff;font-size:14px;">/personalbuddy</div>
-      <div style="margin-bottom:8px;color:#3ba4ff;font-size:14px;">/flags</div>
-      <div style="margin-bottom:8px;color:#3ba4ff;font-size:14px;">/listsetups</div>
-      <div style="margin-bottom:0;color:#3ba4ff;font-size:14px;">/deletesetup</div>
-    </div>
-  </div>
-
-  <!-- HOW TO GET STARTED -->
-  <div style="padding:35px 25px;border-top:1px solid #1e2a44;">
-    <h2 style="margin:0 0 18px;font-size:26px;color:#fff;">🚀 How to Get Started</h2>
-    <ol style="margin:0;padding-left:25px;color:#b0c4de;line-height:1.9;font-size:15px;">
-      <li style="margin-bottom:12px;"><strong style="color:#fff;">Invite:</strong> Add AirTranslator to your server using the invite button above.</li>
-      <li style="margin-bottom:12px;"><strong style="color:#fff;">Setup:</strong> Run <code style="background:#111a2e;padding:2px 6px;border-radius:4px;color:#3ba4ff;">/quicksetup</code> in any channel to configure your languages.</li>
-      <li style="margin-bottom:0;"><strong style="color:#fff;">Chat:</strong> Start messaging! The bot handles the rest automatically.</li>
-    </ol>
-  </div>
-
-  <!-- SUPPORTED LANGUAGES -->
-  <div style="padding:35px 25px;border-top:1px solid #1e2a44;">
-    <h2 style="margin:0 0 12px;font-size:26px;color:#fff;">🌐 Supported Languages</h2>
-    <p style="color:#b0c4de;margin:0 0 18px;font-size:15px;line-height:1.7;">
-      AirTranslator provides high-quality AI translations for over 100 languages, including:
-    </p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:10px;">
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇺🇸 English</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇰🇷 Korean</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇯🇵 Japanese</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇨🇳 Chinese</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇪🇸 Spanish</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇫🇷 French</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇩🇪 German</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇷🇺 Russian</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇻🇳 Vietnamese</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇮🇳 Hindi</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇵🇹 Portuguese</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇮🇹 Italian</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇹🇷 Turkish</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇸🇦 Arabic</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇹🇭 Thai</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇮🇩 Indonesian</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇵🇭 Tagalog</div>
-      <div style="background:rgba(255,255,255,0.05);padding:8px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(255,255,255,0.06);">🇵🇱 Polish</div>
-    </div>
-  </div>
-
-  <!-- FAQ -->
-  <div style="padding:35px 25px;border-top:1px solid #1e2a44;">
-    <h2 style="margin:0 0 20px;font-size:26px;color:#fff;">❓ Frequently Asked Questions</h2>
-    
-    <div style="margin-bottom:20px;">
-      <div style="font-size:16px;font-weight:bold;color:#fff;margin-bottom:6px;">How do I translate a message on Discord?</div>
-      <div style="color:#b0c4de;font-size:14px;line-height:1.7;">Simply react to any message with a country flag emoji (e.g., 🇺🇸 for English, 🇰🇷 for Korean) and AirTranslator will instantly provide a translation. You can also use /quicksetup for automatic channel translation.</div>
-    </div>
-    
-    <div style="margin-bottom:20px;">
-      <div style="font-size:16px;font-weight:bold;color:#fff;margin-bottom:6px;">Is AirTranslator free to use?</div>
-      <div style="color:#b0c4de;font-size:14px;line-height:1.7;">Yes! AirTranslator offers a generous free tier. You can also earn bonus messages daily by voting for the bot on Top.gg.</div>
-    </div>
-    
-    <div style="margin-bottom:20px;">
-      <div style="font-size:16px;font-weight:bold;color:#fff;margin-bottom:6px;">Does it support image translation (OCR)?</div>
-      <div style="color:#b0c4de;font-size:14px;line-height:1.7;">Absolutely. AirTranslator uses advanced AI to detect and translate text within images. Just react with a flag to an image or use the context menu.</div>
-    </div>
-    
-    <div style="margin-bottom:0;">
-      <div style="font-size:16px;font-weight:bold;color:#fff;margin-bottom:6px;">What makes AirTranslator better than other bots?</div>
-      <div style="color:#b0c4de;font-size:14px;line-height:1.7;">Unlike basic translation bots, AirTranslator uses state-of-the-art AI models that understand context, slang, and emotion, providing human-like fluency instead of literal word-for-word translations.</div>
-    </div>
-  </div>
-
-  <!-- FOOTER -->
-  <div style="padding:30px 25px;text-align:center;border-top:1px solid #1e2a44;font-size:13px;color:#6a7b93;line-height:1.7;">
-    <p style="margin:0 0 6px;">© 2026 AirTranslator — Supporting 10,000+ servers worldwide.</p>
-    <p style="margin:0;">Official Support: <a href="https://discord.gg/WeynxzR9nq" style="color:#3ba4ff;text-decoration:none;">discord.gg/WeynxzR9nq</a></p>
-  </div>
-
-</div>
+</body>
+</html>

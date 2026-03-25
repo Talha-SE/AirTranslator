@@ -6223,8 +6223,8 @@ const server = http.createServer(async (req, res) => {
             }
 
         // Vote webhook endpoint for top.gg
-        } else if (pathname === '/webhook/vote' && req.method === 'POST') {
-            console.log('🔔 Webhook received at /webhook/vote');
+        } else if ((pathname === '/webhook/vote' || pathname === '/webhooks/topgg') && req.method === 'POST') {
+            console.log(`🔔 Webhook received at ${pathname}`);
             try {
                 const data = await parsePostData(req);
                 const body = JSON.parse(data.body);

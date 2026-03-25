@@ -143,6 +143,7 @@ The admin panel is fully responsive:
 - `GET /health` - Health check
 - `GET /ping` - Simple ping
 - `POST /webhook/vote` - Top.gg vote webhook
+- `POST /webhooks/topgg` - Alias for the Top.gg vote webhook
 
 ### Authentication
 - `POST /admin/login` - User login

@@ -522,7 +522,7 @@ async function sendLimitReachedMessage(message) {
 
         const supportButton = new ButtonBuilder()
             .setCustomId(`see_payment_options:${message.guild.id}`)
-            .setLabel('Free Trial')
+            .setLabel('Paid Options')
             .setStyle(ButtonStyle.Primary);
 
         const actionRow = new ActionRowBuilder()
@@ -759,7 +759,7 @@ async function translateAndReply(message, languages, options = {}) {
                 };
                 
                 // Add interactive buttons only to the last embed
-                if (i === chunks.length - 1) {
+                    if (i === chunks.length - 1) {
                     const buttons = new ActionRowBuilder().addComponents(
                         new ButtonBuilder()
                             .setCustomId(`vote_on_topgg:${message.guild.id}`)
@@ -767,7 +767,7 @@ async function translateAndReply(message, languages, options = {}) {
                             .setStyle(ButtonStyle.Success),
                         new ButtonBuilder()
                             .setCustomId(`see_payment_options:${message.guild.id}`)
-                            .setLabel('Free Trial')
+                            .setLabel('Paid Options')
                             .setStyle(ButtonStyle.Primary)
                     );
                     replyOptions.components = [buttons];

@@ -175,8 +175,8 @@ const server = http.createServer(async (req, res) => {
         // ===== Public Webhook Endpoints (No Auth Required) =====
         
         // Vote webhook endpoint
-        if (pathname === '/webhook/vote' && req.method === 'POST') {
-            console.log('🔔 Webhook received at /webhook/vote');
+        if ((pathname === '/webhook/vote' || pathname === '/webhooks/topgg') && req.method === 'POST') {
+            console.log(`🔔 Webhook received at ${pathname}`);
             try {
                 const data = await parsePostData(req);
                 const body = typeof data === 'string' ? JSON.parse(data) : data;
