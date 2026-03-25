@@ -188,6 +188,77 @@ async function translatePremiumMessage(serverId) {
     }
 }
 
+// Helper function to translate translation-limit message into server languages
+async function translateLimitReachedMessage(serverId, freeTranslationLimit) {
+    const originalText = `Your server has reached the free translation limit of **${freeTranslationLimit} messages**.\n\n🎯 Get More Translations\nVote to unlock up to **50 more free translations**!\n\n💎 Go Premium – Only $5/month\nEnjoy unlimited translations and full access to all premium features 🤖🚀\n👉 Tap the Paid Option button below to view pricing and subscribe.\n\n⏱️ Reset Schedule\nFree translations reset monthly for all servers.`;
+
+    try {
+        const serverSetup = await getServerSetups(serverId);
+        if (!serverSetup) {
+            return originalText;
+        }
+
+        const allLanguages = new Set();
+
+        if (serverSetup.serverWideTranslation && serverSetup.serverWideLanguages) {
+            serverSetup.serverWideLanguages.forEach(lang => {
+                if (lang && lang !== AUTO_DETECT_LANGUAGE) {
+                    allLanguages.add(lang.toLowerCase());
+                }
+            });
+        }
+
+        if (serverSetup.setups && serverSetup.setups.length > 0) {
+            serverSetup.setups.forEach(setup => {
+                if (setup.languages && Array.isArray(setup.languages)) {
+                    setup.languages.forEach(lang => {
+                        if (lang && lang !== AUTO_DETECT_LANGUAGE) {
+                            allLanguages.add(lang.toLowerCase());
+                        }
+                    });
+                }
+            });
+        }
+
+        const targetLanguages = Array.from(allLanguages).filter(lang => lang !== 'en' && lang !== 'english');
+        if (targetLanguages.length === 0) {
+            return originalText;
+        }
+
+        const translations = await translateTextToMultipleLanguages(
+            originalText,
+            targetLanguages,
+            'en',
+            false,
+            undefined,
+            'mistral-medium-2508'
+        );
+
+        const formattedParts = [];
+        formattedParts.push(`🇬🇧 **English:**\n${originalText}`);
+
+        for (const lang of targetLanguages) {
+            const translation = translations[lang];
+            if (translation && translation.trim()) {
+                const langFlag = getLanguageFlag(lang);
+                const langName = getLanguageDisplayName(lang);
+                formattedParts.push(`${langFlag} **${langName}:**\n${translation}`);
+            }
+        }
+
+        return formattedParts.join('\n\n');
+    } catch (error) {
+        console.error('Error translating limit reached message:', {
+            error: error?.message || error,
+            stack: error?.stack,
+            serverId,
+            freeTranslationLimit,
+            apiKeyPresent: !!process.env.MISTRAL_API_KEY
+        });
+        return originalText;
+    }
+}
+
 async function startVoteTrackingForServer(serverId, userInfo, client) {
     try {
         setTimeout(async () => {
@@ -569,22 +640,12 @@ async function messageReactionAdd(client, reaction, user) {
                 // Fetch server stats for consistent messaging
                 const serverStats = await monetizationService.getServerStats(serverId);
 
+                const translatedLimitDescription = await translateLimitReachedMessage(serverId, serverStats.freeTranslationLimit);
+
                 const embed = new EmbedBuilder()
                     .setTitle('🚫 Translation Limit Reached')
-                    .setDescription(`Your server has reached the free translation limit of **${serverStats.freeTranslationLimit} messages**.`)
+                    .setDescription(translatedLimitDescription)
                     .setColor('#e74c3c')
-                    .addFields(
-                        {
-                            name: '🎯 Get More Translations',
-                            value: 'Vote to unlock up to **50 more free translations**!',
-                            inline: false
-                        },
-                        {
-                            name: '⏱️ Reset Schedule',
-                            value: 'Free translations reset monthly for all servers.',
-                            inline: false
-                        }
-                    )
                     .setFooter({
                         text: 'Thank you for using AirTranslator!',
                         iconURL: client.user.displayAvatarURL()
