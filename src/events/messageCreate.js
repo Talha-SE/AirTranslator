@@ -159,7 +159,7 @@ function buildTrackedPricingUrl({ serverId, serverName, userId, username, source
 // Helper function to translate premium payment message into server languages
 async function translatePremiumMessage(serverId) {
     try {
-        const originalText = `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Tap the card button (💳) below to view the pricing page and subscribe.\n\n✅ Have You Already paid?\nPress the ✅ button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
+        const originalText = `✨ Unlock Full Access – Only $5/month ✨\n\nGet unlimited access to all bot features 🤖🚀\n\n👉 Tap the card button (💳) below to view the pricing page and subscribe.\n\nHave You Already paid?\nSimply press the tick button (✅) below to request approval.\nOur team will review your request and activate Premium on your server shortly 🚀`;
         
         // Get server setup to find configured languages
         const serverSetup = await getServerSetups(serverId);
@@ -235,7 +235,7 @@ async function translatePremiumMessage(serverId) {
             apiKeyPresent: !!process.env.MISTRAL_API_KEY
         });
         // Fallback to English on error
-        return `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Tap the card button (💳) below to view the pricing page and subscribe.\n\n✅ Have You Already paid?\nPress the ✅ button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
+        return `✨ Unlock Full Access – Only $5/month ✨\n\nGet unlimited access to all bot features 🤖🚀\n\n👉 Tap the card button (💳) below to view the pricing page and subscribe.\n\nHave You Already paid?\nSimply press the tick button (✅) below to request approval.\nOur team will review your request and activate Premium on your server shortly 🚀`;
     }
 }
 
@@ -534,7 +534,7 @@ async function sendLimitReachedMessage(message) {
         const voteButton = new ButtonBuilder()
             .setCustomId(`vote_on_topgg:${message.guild.id}`)
             .setLabel('Vote to Unlock')
-            .setEmoji('�️')
+            .setEmoji('🗳️')
             .setStyle(ButtonStyle.Success);
 
         const supportButton = new ButtonBuilder()

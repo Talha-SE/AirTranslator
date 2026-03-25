@@ -294,7 +294,7 @@ async function translatePremiumMessage(serverId) {
             languageCount: targetLanguages?.length || 0
         });
         // Fallback to English on error
-        return `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Tap the card button (💳) below to view the pricing page and subscribe.\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
+        return `✨ Unlock Full Access – Only $5/month ✨\n\nGet unlimited access to all bot features 🤖🚀\n\n👉 Tap the card button (💳) below to view the pricing page and subscribe.\n\nHave You Already paid?\nSimply press the tick button (✅) below to request approval.\nOur team will review your request and activate Premium on your server shortly 🚀`;
     }
 }
 
