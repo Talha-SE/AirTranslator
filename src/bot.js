@@ -85,6 +85,23 @@ async function fetchTopGgBotStats(botId) {
   }
 }
 
+function buildTrackedPricingUrl({ serverId, serverName, userId, username, source = 'discord_payment_options_button' }) {
+    const isDev = process.env.NODE_ENV !== 'production';
+    const websiteBaseUrl = isDev ? 'http://localhost:5173' : 'https://airtranslator.brevios.com';
+    const params = new URLSearchParams({
+        source,
+        origin: 'discord-bot',
+        provider: 'patreon',
+        medium: 'button',
+        serverId: String(serverId || ''),
+        serverName: String(serverName || ''),
+        userId: String(userId || ''),
+        username: String(username || ''),
+        clickId: `clk_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+    });
+    return `${websiteBaseUrl}/patreon-redirect?${params.toString()}`;
+}
+
 // Helper function to get language flag emoji
 function getLanguageFlag(langCode) {
     const lang = langCode.toLowerCase();
@@ -199,7 +216,7 @@ function getLanguageDisplayName(language) {
 // Helper function to translate premium payment message into server languages
 async function translatePremiumMessage(serverId) {
     try {
-        const originalText = `✨ Unlock Full Access – Only $5/month ✨\n\nGet unlimited access to all bot features 🤖🚀\n\n👉 Click here: https://airtranslator.brevios.com/pricing \nOr tap the card button (💳) below to view the pricing page and subscribe. \n\nHave You Already paid?\nSimply press the tick button (✅) below to request approval. \nOur team will review your request and activate Premium on your server shortly 🚀`;
+        const originalText = `✨ Unlock Full Access – Only $5/month ✨\n\nGet unlimited access to all bot features 🤖🚀\n\n👉 Tap the card button (💳) below to view the pricing page and subscribe.\n\nHave You Already paid?\nSimply press the tick button (✅) below to request approval.\nOur team will review your request and activate Premium on your server shortly 🚀`;
         
         // Get server setup to find configured languages
         const serverSetup = await databaseService.getServerSetups(serverId);
@@ -277,7 +294,7 @@ async function translatePremiumMessage(serverId) {
             languageCount: targetLanguages?.length || 0
         });
         // Fallback to English on error
-        return `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://airtranslator.brevios.com/pricing or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
+        return `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Tap the card button (💳) below to view the pricing page and subscribe.\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
     }
 }
 
@@ -898,6 +915,13 @@ client.on(Events.InteractionCreate, async interaction => {
                     if (!serverId) serverId = interaction.guildId || 'unknown';
 
                     const serverName = interaction.guild?.name || 'This server';
+                    const trackedPricingUrl = buildTrackedPricingUrl({
+                        serverId,
+                        serverName,
+                        userId: interaction.user?.id,
+                        username: interaction.user?.username,
+                        source: 'discord_payment_options_button'
+                    });
 
                     // Get translated description based on server languages
                     const translatedDescription = await translatePremiumMessage(serverId);
@@ -916,7 +940,7 @@ client.on(Events.InteractionCreate, async interaction => {
                         new ButtonBuilder()
                             .setLabel('💳')
                             .setStyle(ButtonStyle.Link)
-                            .setURL('https://airtranslator.brevios.com/pricing'),
+                            .setURL(trackedPricingUrl),
                         new ButtonBuilder()
                             .setCustomId(`premium_request:${serverId}`)
                             .setLabel('✅')

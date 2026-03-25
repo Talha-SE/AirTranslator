@@ -139,10 +139,27 @@ function getLanguageFlag(langCode) {
     return flags[lang] || '🌐';
 }
 
+function buildTrackedPricingUrl({ serverId, serverName, userId, username, source = 'discord_limit_dm' }) {
+    const isDev = process.env.NODE_ENV !== 'production';
+    const websiteBaseUrl = isDev ? 'http://localhost:5173' : 'https://airtranslator.brevios.com';
+    const params = new URLSearchParams({
+        source,
+        origin: 'discord-bot',
+        provider: 'patreon',
+        medium: 'button',
+        serverId: String(serverId || ''),
+        serverName: String(serverName || ''),
+        userId: String(userId || ''),
+        username: String(username || ''),
+        clickId: `clk_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+    });
+    return `${websiteBaseUrl}/patreon-redirect?${params.toString()}`;
+}
+
 // Helper function to translate premium payment message into server languages
 async function translatePremiumMessage(serverId) {
     try {
-        const originalText = `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://airtranslator.brevios.com/pricing or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
+        const originalText = `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Tap the card button (💳) below to view the pricing page and subscribe.\n\n✅ Have You Already paid?\nPress the ✅ button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
         
         // Get server setup to find configured languages
         const serverSetup = await getServerSetups(serverId);
@@ -218,7 +235,7 @@ async function translatePremiumMessage(serverId) {
             apiKeyPresent: !!process.env.MISTRAL_API_KEY
         });
         // Fallback to English on error
-        return `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Click the link https://airtranslator.brevios.com/pricing or button below to view the pricing page 💳\n\n✅ Have You Already paid?\nPress the button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
+        return `• Pay $5 USD / month for full access to all bot features 🤖✨\n\n👉 Tap the card button (💳) below to view the pricing page and subscribe.\n\n✅ Have You Already paid?\nPress the ✅ button below to request approval. Our team will review it and activate premium on your server shortly 🚀`;
     }
 }
 
@@ -564,11 +581,19 @@ async function sendLimitReachedMessage(message) {
                 )
                 .setTimestamp();
 
+            const trackedPricingUrl = buildTrackedPricingUrl({
+                serverId: message.guild.id,
+                serverName: message.guild.name,
+                userId: message.author?.id,
+                username: message.author?.username,
+                source: 'discord_limit_dm'
+            });
+
             const dmRow = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
                     .setLabel('💳')
                     .setStyle(ButtonStyle.Link)
-                    .setURL('https://airtranslator.brevios.com/pricing'),
+                    .setURL(trackedPricingUrl),
                 new ButtonBuilder()
                     .setCustomId(`premium_request:${message.guild.id}`)
                     .setLabel('✅')
