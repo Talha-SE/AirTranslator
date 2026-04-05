@@ -303,13 +303,9 @@ async function translateVoteMessage(serverId) {
     try {
         const originalText = `Select where you want to vote to support Air Translator:
 
-🟢 Vote on the Air Translator Official Site
-Get 20 free translations by clicking the 20 button.
-You'll be redirected to our official website 🌐
-
-🔵 Vote on Top.gg
-Get 10 free translations by clicking the 10 button.
-You'll be redirected to the Top.gg bot page 🚀`;
+    🔵 Vote on Top.gg
+    Get 30 free translations by clicking the button below.
+    You'll be redirected to the Top.gg bot page 🚀`;
         
         // Get server setup to find configured languages
         const serverSetup = await databaseService.getServerSetups(serverId);
@@ -389,13 +385,9 @@ You'll be redirected to the Top.gg bot page 🚀`;
         // Fallback to English on error
         return `Select where you want to vote to support Air Translator:
 
-🟢 Vote on the Air Translator Official Site
-Get 20 free translations by clicking the 20 button.
-You'll be redirected to our official website 🌐
-
-🔵 Vote on Top.gg
-Get 10 free translations by clicking the 10 button.
-You'll be redirected to the Top.gg bot page 🚀`;
+    🔵 Vote on Top.gg
+    Get 30 free translations by clicking the button below.
+    You'll be redirected to the Top.gg bot page 🚀`;
     }
 }
 
@@ -734,7 +726,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 return;
             }
 
-            // Handle Vote Button Click -> Show 2 Options
+            // Handle Vote Button Click -> Show Top.gg Option
             if (customId.startsWith('vote_on_topgg')) {
                 try {
                     // Defer reply immediately to prevent timeout
@@ -757,42 +749,36 @@ client.on(Events.InteractionCreate, async interaction => {
                     // Get translated vote message
                     const voteContent = await translateVoteMessage(serverId);
 
-                    const choiceEmbed = new EmbedBuilder()
-                        .setTitle('🗳️ Choose Vote Option')
+                    const voteEmbed = new EmbedBuilder()
+                        .setTitle('🗳️ Vote on Top.gg')
                         .setDescription(voteContent)
                         .setColor('#5865F2')
                         .setFooter({ text: 'Air Translator • Vote rewards' });
 
-                    const choiceRow = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder()
-                            .setCustomId(`vote_choice_official:${serverId}`)
-                            .setLabel('Vote on Official Site (20)')
-                            .setEmoji('🌐')
-                            .setStyle(ButtonStyle.Success),
+                    const voteRow = new ActionRowBuilder().addComponents(
                         new ButtonBuilder()
                             .setCustomId(`vote_choice_topgg:${serverId}`)
-                            .setLabel('Vote on Top.gg (10)')
+                            .setLabel('Vote on Top.gg')
                             .setEmoji('🗳️')
                             .setStyle(ButtonStyle.Primary)
                     );
 
-                    await interaction.editReply({ embeds: [choiceEmbed], components: [choiceRow] });
+                    await interaction.editReply({ embeds: [voteEmbed], components: [voteRow] });
                 } catch (err) {
                     logger.warn('vote_on_topgg handler error', { error: err?.message || err });
                     try {
-                        await interaction.editReply({ content: '❌ Error showing vote options.' });
+                        await interaction.editReply({ content: '❌ Error showing vote prompt.' });
                     } catch {}
                 }
                 return;
             }
 
-            // Handle Vote Choice (Top.gg or Official)
-            if (customId.startsWith('vote_choice_topgg') || customId.startsWith('vote_choice_official')) {
+            // Handle Vote Choice (Top.gg only)
+            if (customId.startsWith('vote_choice_topgg')) {
                 try {
-                    const isTopgg = customId.startsWith('vote_choice_topgg');
-                    const source = isTopgg ? 'topgg' : 'official';
-                    const BONUS = isTopgg ? 10 : 20;
-                    const SITE_NAME = isTopgg ? 'Top.gg' : 'Official Site';
+                    const source = 'topgg';
+                    const BONUS = 30;
+                    const SITE_NAME = 'Top.gg';
                     const DELAY_MS = 60 * 1000;
                     
                     let serverId = customId.includes(':') ? customId.split(':')[1] : null;
@@ -830,13 +816,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     
                     console.log(`✅ User ${interaction.user.id} can vote on server ${serverId} (${source})`);
 
-                    // Use env var or default to production, but checking if we are in dev mode
-                    const isDev = process.env.NODE_ENV !== 'production';
-                    const websiteBaseUrl = isDev ? 'http://localhost:5173' : 'https://airtranslator.brevios.com';
-
-                    const linkUrl = isTopgg 
-                        ? `https://top.gg/bot/1380177061032759416/vote?guild=${serverId}`
-                        : `${websiteBaseUrl}/vote?server=${serverId}&user=${interaction.user.id}`;
+                    const linkUrl = `https://top.gg/bot/1380177061032759416/vote?guild=${serverId}`;
 
                     const voteLinkRow = new ActionRowBuilder().addComponents(
                         new ButtonBuilder()
@@ -849,46 +829,9 @@ client.on(Events.InteractionCreate, async interaction => {
                     const pendingEmbed = new EmbedBuilder()
                         .setColor('#129af5')
                         .setTitle('🗳️ Vote Instructions')
-                        .setDescription(isTopgg 
-                            ? `We'll add **${BONUS} free translations** to this server in about **${Math.floor(DELAY_MS/1000)} seconds**.\nPlease complete the vote on ${SITE_NAME} in the meantime by clicking the button below 👇.`
-                            : `Click the button below to solve the captcha on our official site.\n**${BONUS} free translations** will be instantly added to your server upon completion! 🚀`
-                        );
+                        .setDescription(`We'll add **${BONUS} free translations** to this server in about **${Math.floor(DELAY_MS/1000)} seconds**.\nPlease complete the vote on ${SITE_NAME} in the meantime by clicking the button below 👇.`);
 
                     await interaction.reply({ embeds: [pendingEmbed], components: [voteLinkRow], flags: MessageFlags.Ephemeral });
-
-                    if (isTopgg) {
-                        const requester = {
-                            id: interaction.user.id,
-                            username: interaction.user.username,
-                            displayName: interaction.user.displayName || interaction.user.username,
-                            displayAvatarURL: (...args) => interaction.user.displayAvatarURL(...args)
-                        };
-
-                        setTimeout(async () => {
-                            try {
-                                const result = await monetizationService.handleVoteReward(interaction.user.id, serverId, BONUS, requester, source);
-                                if (result?.success) {
-                                    const successEmbed = new EmbedBuilder()
-                                        .setColor('#00ff88')
-                                        .setTitle('🎉 Free Credits Added!')
-                                        .setDescription(`**${BONUS} free translations** have been added to this server.\n\nThanks to **${requester?.displayName || 'a user'}** for supporting AirTranslator!`)
-                                        .setFooter({ text: 'Air Translator • Vote rewards', iconURL: interaction.client.user.displayAvatarURL() })
-                                        .setTimestamp(new Date());
-
-                                    try {
-                                        // Try to send to the channel where interaction happened, or DM
-                                        if (interaction.channel) {
-                                            await interaction.channel.send({ embeds: [successEmbed] });
-                                        }
-                                    } catch (e) {
-                                        console.error('Could not send vote success message:', e);
-                                    }
-                                }
-                            } catch (e) {
-                                console.error('Error in delayed vote reward:', e);
-                            }
-                        }, DELAY_MS);
-                    }
 
                 } catch (err) {
                     logger.warn('vote choice handler error', { error: err?.message || err });

@@ -142,7 +142,7 @@ class VoteCheckService {
                     const canReward = now - lastRewarded >= twelveHoursMs;
 
                     if (targetServerId && canReward) {
-                        console.log(`⏳ Scheduling 10 free translations for user ${userId} in server ${targetServerId} after 1 minute`);
+                        console.log(`⏳ Scheduling 30 free translations for user ${userId} in server ${targetServerId} after 1 minute`);
 
                         // Persist cooldown immediately to avoid duplicate scheduling
                         try {
@@ -154,10 +154,10 @@ class VoteCheckService {
 
                         setTimeout(async () => {
                             try {
-                                const result = await monetizationService.handleVoteReward(userId, targetServerId, 10, null, 'topgg');
+                                const result = await monetizationService.handleVoteReward(userId, targetServerId, 30, null, 'topgg');
                                 if (result && result.success) {
-                                    console.log(`✅ Vote reward (10 translations) granted to server ${targetServerId} by user ${userId}`);
-                                    await this.sendVoteConfirmation(userId, targetServerId, 10);
+                                    console.log(`✅ Vote reward (30 translations) granted to server ${targetServerId} by user ${userId}`);
+                                    await this.sendVoteConfirmation(userId, targetServerId, 30);
                                     // Refresh cooldown to actual grant time for this server
                                     try { await databaseService.upsertUserVoteCooldown(userId, targetServerId, new Date(), 'topgg'); } catch (_) {}
                                 } else {
@@ -211,7 +211,7 @@ class VoteCheckService {
     /**
      * Send vote confirmation message to Discord
      */
-    async sendVoteConfirmation(userId, serverId, amount = 20) {
+    async sendVoteConfirmation(userId, serverId, amount = 30) {
         try {
             if (!this.client) return;
 

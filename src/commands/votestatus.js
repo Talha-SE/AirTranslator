@@ -35,7 +35,7 @@ module.exports = {
             const embed = new EmbedBuilder()
                 .setTitle(`🗳️ Vote Status`)
                 .setColor(statusColor)
-                .setDescription(serverStats.isExempt ? '💎 **Premium Server** - Unlimited translations!' : `Vote every 12 hours to get **+10 bonus translations**!`)
+                .setDescription(serverStats.isExempt ? '💎 **Premium Server** - Unlimited translations!' : `Vote every 12 hours to get **+30 bonus translations**!`)
                 .addFields(
                     {
                         name: `${statusEmoji} Translation Status`,
@@ -47,7 +47,7 @@ module.exports = {
             if (!serverStats.isExempt) {
                 embed.addFields({
                     name: '🎁 Vote Reward',
-                    value: '**+10 translations** every 12 hours\nRewards are automatic & instant!',
+                    value: '**+30 translations** every 12 hours\nRewards are automatic & instant!',
                     inline: false
                 });
             }

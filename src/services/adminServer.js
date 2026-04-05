@@ -6251,11 +6251,11 @@ const server = http.createServer(async (req, res) => {
                     const recentServerId = global.userServerTracking?.get(userId);
                     
                     if (recentServerId) {
-                        // Give reward to the specific server (10 translations instead of 50)
-                        const result = await monetizationService.handleVoteReward(userId, recentServerId, 10);
+                        // Give reward to the specific server (30 translations per Top.gg vote)
+                        const result = await monetizationService.handleVoteReward(userId, recentServerId, 30);
                         
                         if (result.success) {
-                            console.log(`✅ Vote reward (10 translations) processed for user ${userId} in server ${recentServerId}`);
+                            console.log(`✅ Vote reward (30 translations) processed for user ${userId} in server ${recentServerId}`);
                             
                             // Send confirmation message to the user
                             try {
@@ -6276,7 +6276,7 @@ const server = http.createServer(async (req, res) => {
                                             const { EmbedBuilder } = require('discord.js');
                                             const confirmEmbed = new EmbedBuilder()
                                                 .setTitle('🎉 Vote Reward Received!')
-                                                .setDescription(`Thank you <@${userId}> for voting on Top.gg!\n\n**Your server has received 10 bonus translations!**`)
+                                                .setDescription(`Thank you <@${userId}> for voting on Top.gg!\n\n**Your server has received 30 bonus translations!**`)
                                                 .setColor('#28a745')
                                                 .setFooter({
                                                     text: 'You can vote again in 12 hours for more rewards!',
@@ -6321,10 +6321,10 @@ const server = http.createServer(async (req, res) => {
                     global.userServerTracking = global.userServerTracking || new Map();
                     global.userServerTracking.set(userId, serverId);
                     
-                    const result = await monetizationService.handleVoteReward(userId, serverId, 10);
+                    const result = await monetizationService.handleVoteReward(userId, serverId, 30);
                     
                     if (result.success) {
-                        console.log(`✅ Test vote reward (10 translations) processed for user ${userId} in server ${serverId}`);
+                        console.log(`✅ Test vote reward (30 translations) processed for user ${userId} in server ${serverId}`);
                         
                         // Send confirmation message
                         try {
@@ -6344,7 +6344,7 @@ const server = http.createServer(async (req, res) => {
                                         const { EmbedBuilder } = require('discord.js');
                                         const confirmEmbed = new EmbedBuilder()
                                             .setTitle('🧪 Test Vote Reward!')
-                                            .setDescription(`Test vote reward for <@${userId}>!\\n\\n**Your server has received 10 bonus translations!**`)
+                                            .setDescription(`Test vote reward for <@${userId}>!\\n\\n**Your server has received 30 bonus translations!**`)
                                             .setColor('#28a745')
                                             .setFooter({
                                                 text: 'This was a test vote reward.',

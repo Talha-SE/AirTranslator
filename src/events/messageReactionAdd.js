@@ -307,12 +307,8 @@ async function translateVoteMessage(serverId) {
     try {
         const originalText = `Select where you want to vote to support Air Translator:
 
-🟢 Vote on the Air Translator Official Site
-Get 20 free translations by clicking the 20 button.
-You'll be redirected to our official website 🌐
-
 🔵 Vote on Top.gg
-Get 10 free translations by clicking the 10 button.
+Get 30 free translations by clicking the button below.
 You'll be redirected to the Top.gg bot page 🚀`;
         
         // Get server setup to find configured languages
@@ -390,7 +386,7 @@ You'll be redirected to the Top.gg bot page 🚀`;
 Get 20 free translations
 
 **Top.gg**
-Get 10 free translations`;
+Get 30 free translations`;
     }
 }
 

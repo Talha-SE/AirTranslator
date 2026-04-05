@@ -199,7 +199,7 @@ const server = http.createServer(async (req, res) => {
                     const recentServerId = global.userServerTracking?.get(userId);
                     
                     if (recentServerId) {
-                        const result = await monetizationService.handleVoteReward(userId, recentServerId, 10);
+                        const result = await monetizationService.handleVoteReward(userId, recentServerId, 30);
                         
                         if (result.success) {
                             console.log(`✅ Vote reward processed for user ${userId} in server ${recentServerId}`);
