@@ -64,6 +64,7 @@ const logger = createLogger('bot');
 
 const TOPGG_VOTE_BONUS_AMOUNT = 35;
 const PENDING_VOTE_TARGET_TTL_MS = 60 * 60 * 1000;
+const TOPGG_CLICK_REWARD_DELAY_MS = 60 * 1000;
 
 function trackTopggVoteTarget(userId, serverId) {
     if (!userId || !serverId) return;
@@ -96,6 +97,66 @@ function trackTopggVoteTarget(userId, serverId) {
         }
         global.pendingTopggVoteTargetsLastCleanup = now;
     }
+}
+
+function scheduleTopggRewardAfterClick({ userId, serverId, bonusAmount, source = 'topgg', userInfo }) {
+    if (!userId || !serverId) {
+        return { scheduled: false, reason: 'missing_ids' };
+    }
+
+    if (!global.pendingTopggRewardTimers) {
+        global.pendingTopggRewardTimers = new Map();
+    }
+
+    const key = `${String(userId)}:${String(serverId)}:${String(source)}`;
+    const existing = global.pendingTopggRewardTimers.get(key);
+    if (existing?.scheduledAt) {
+        const elapsed = Date.now() - existing.scheduledAt;
+        const remainingMs = Math.max(0, TOPGG_CLICK_REWARD_DELAY_MS - elapsed);
+        return { scheduled: false, reason: 'already_pending', remainingMs };
+    }
+
+    const timer = setTimeout(async () => {
+        try {
+            const result = await monetizationService.handleVoteReward(
+                String(userId),
+                String(serverId),
+                bonusAmount,
+                userInfo,
+                source
+            );
+
+            if (result?.success) {
+                logger.success('Top.gg delayed reward granted from button click', { userId, serverId, bonusAmount, source });
+                try {
+                    await voteCheckService.sendVoteConfirmation(String(userId), String(serverId), bonusAmount);
+                } catch (notifyError) {
+                    logger.warn('Failed to send delayed reward confirmation', { error: notifyError?.message || notifyError, userId, serverId });
+                }
+            } else {
+                logger.info('Top.gg delayed reward skipped from button click', {
+                    userId,
+                    serverId,
+                    source,
+                    reason: result?.message || result?.error || 'unknown',
+                    onCooldown: !!result?.onCooldown,
+                });
+            }
+        } catch (error) {
+            logger.error('Top.gg delayed reward failed from button click', { error: error?.message || error, userId, serverId, source });
+        } finally {
+            if (global.pendingTopggRewardTimers) {
+                global.pendingTopggRewardTimers.delete(key);
+            }
+        }
+    }, TOPGG_CLICK_REWARD_DELAY_MS);
+
+    global.pendingTopggRewardTimers.set(key, {
+        scheduledAt: Date.now(),
+        timer,
+    });
+
+    return { scheduled: true, key };
 }
 
 async function fetchTopGgBotStats(botId) {
@@ -819,7 +880,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     const source = 'topgg';
                     const BONUS = TOPGG_VOTE_BONUS_AMOUNT;
                     const SITE_NAME = 'Top.gg';
-                    const DELAY_MS = 60 * 1000;
+                    const DELAY_MS = TOPGG_CLICK_REWARD_DELAY_MS;
                     
                     let serverId = customId.includes(':') ? customId.split(':')[1] : null;
                     if (!serverId && global.userServerTracking && interaction.user) {
@@ -857,6 +918,34 @@ client.on(Events.InteractionCreate, async interaction => {
                     }
                     
                     console.log(`✅ User ${interaction.user.id} can vote on server ${serverId} (${source})`);
+
+                    const scheduleResult = scheduleTopggRewardAfterClick({
+                        userId: interaction.user.id,
+                        serverId,
+                        bonusAmount: BONUS,
+                        source,
+                        userInfo: {
+                            id: interaction.user.id,
+                            username: interaction.user.username,
+                            displayName: interaction.user.displayName || interaction.user.username,
+                            displayAvatarURL: () => interaction.user.displayAvatarURL(),
+                        },
+                    });
+
+                    if (!scheduleResult.scheduled && scheduleResult.reason === 'already_pending') {
+                        const pendingMins = Math.ceil((scheduleResult.remainingMs || 0) / 60000) || 1;
+                        await interaction.reply({
+                            embeds: [new EmbedBuilder()
+                                .setColor('#f59e0b')
+                                .setTitle('⏳ Reward Already Pending')
+                                .setDescription(`A vote reward is already scheduled for this server. Please wait about **${pendingMins} minute(s)** before clicking again.`)
+                                .setFooter({ text: 'Air Translator • Vote rewards' })
+                                .setTimestamp(new Date())
+                            ],
+                            flags: MessageFlags.Ephemeral
+                        });
+                        return;
+                    }
 
                     const linkUrl = `https://top.gg/bot/1380177061032759416/vote?guild=${serverId}`;
 

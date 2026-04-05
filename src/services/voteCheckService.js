@@ -136,7 +136,8 @@ class VoteCheckService {
 
             let newVotesProcessed = 0;
             const now = Date.now();
-            const fiveMinutesAgo = now - (5 * 60 * 1000);
+            const recentLookbackMs = 2 * 60 * 60 * 1000;
+            const recentCutoff = now - recentLookbackMs;
             const twelveHoursMs = 12 * 60 * 60 * 1000;
             const ONE_MINUTE_MS = 60 * 1000;
 
@@ -147,7 +148,7 @@ class VoteCheckService {
                 // Only process votes from the last 5 minutes that we haven't already processed
                 const lastChecked = this.checkedVotes.get(userId) || 0;
                 
-                if (voteTimestamp > fiveMinutesAgo && voteTimestamp > lastChecked) {
+                if (voteTimestamp >= recentCutoff && voteTimestamp > lastChecked) {
                     console.log(`🗳️ Processing new vote from user ${userId}`);
                     
                     // First, check if the vote includes guild information (server-specific vote)
