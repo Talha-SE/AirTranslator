@@ -216,7 +216,7 @@ function getLanguageDisplayName(language) {
 // Helper function to translate premium payment message into server languages
 async function translatePremiumMessage(serverId) {
     try {
-        const originalText = `✨ Unlock Full Access – Only $5/month ✨\n\nGet unlimited access to all bot features 🤖🚀\n\n👉 Tap the card button (💳) below to view the pricing page and subscribe.\n\nHave You Already paid?\nSimply press the tick button (✅) below to request approval.\nOur team will review your request and activate Premium on your server shortly 🚀`;
+        const originalText = `✨ Unlock Full Access – Only $5/month ✨\n\nGet unlimited access to all bot features 🤖🚀\n\n👉 Tap the card button (💳) below to open the Patreon pricing page and subscribe.\n\nOr click the link: https://www.patreon.com/c/tsio/membership\n\nHave You Already paid?\nSimply press the tick button (✅) below to request approval.\nOur team will review your request and activate Premium on your server shortly 🚀`;
         
         // Get server setup to find configured languages
         const serverSetup = await databaseService.getServerSetups(serverId);
@@ -294,7 +294,7 @@ async function translatePremiumMessage(serverId) {
             languageCount: targetLanguages?.length || 0
         });
         // Fallback to English on error
-        return `✨ Unlock Full Access – Only $5/month ✨\n\nGet unlimited access to all bot features 🤖🚀\n\n👉 Tap the card button (💳) below to view the pricing page and subscribe.\n\nHave You Already paid?\nSimply press the tick button (✅) below to request approval.\nOur team will review your request and activate Premium on your server shortly 🚀`;
+        return `✨ Unlock Full Access – Only $5/month ✨\n\nGet unlimited access to all bot features 🤖🚀\n\n👉 Tap the card button (💳) below to open the Patreon pricing page and subscribe.\n\nOr click the link: https://www.patreon.com/c/tsio/membership\n\nHave You Already paid?\nSimply press the tick button (✅) below to request approval.\nOur team will review your request and activate Premium on your server shortly 🚀`;
     }
 }
 
