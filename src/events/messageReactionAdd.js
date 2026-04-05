@@ -108,7 +108,7 @@ function buildTrackedPricingUrl({ serverId, serverName, userId, username, source
 // Helper function to translate premium payment message into server languages
 async function translatePremiumMessage(serverId) {
     try {
-        const originalText = `✨ Unlock Full Access – Only $5/month ✨\n\nGet unlimited access to all bot features 🤖🚀\n\n👉 Tap the card button (💳) below to open the Patreon pricing page and subscribe.\n\nOr click the link: https://www.patreon.com/c/tsio/membership\n\nHave You Already paid?\nSimply press the tick button (✅) below to request approval.\nOur team will review your request and activate Premium on your server shortly 🚀`;
+        const originalText = `✨ Unlock Full Access – Only $5/month ✨\n\nFollow these simple steps:\n1. Click the button below or open the Patreon link: https://www.patreon.com/c/tsio/membership\n2. Subscribe to the membership plan you like.\n3. Come back to this Discord server and click the tick button (✅) to request approval.\n4. Type /premium to see your premium details.\n\nYou will get a notification when your premium plan is enabled.`;
         
         // Get server setup to find configured languages
         const serverSetup = await getServerSetups(serverId);
@@ -184,7 +184,7 @@ async function translatePremiumMessage(serverId) {
             apiKeyPresent: !!process.env.MISTRAL_API_KEY
         });
         // Fallback to English on error
-        return `✨ Unlock Full Access – Only $5/month ✨\n\nGet unlimited access to all bot features 🤖🚀\n\n👉 Tap the card button (💳) below to open the Patreon pricing page and subscribe.\n\nOr click the link: https://www.patreon.com/c/tsio/membership\n\nHave You Already paid?\nSimply press the tick button (✅) below to request approval.\nOur team will review your request and activate Premium on your server shortly 🚀`;
+        return `✨ Unlock Full Access – Only $5/month ✨\n\nFollow these simple steps:\n1. Click the button below or open the Patreon link: https://www.patreon.com/c/tsio/membership\n2. Subscribe to the membership plan you like.\n3. Come back to this Discord server and click the tick button (✅) to request approval.\n4. Type /premium to see your premium details.\n\nYou will get a notification when your premium plan is enabled.`;
     }
 }
 
