@@ -829,6 +829,50 @@ async function setCustomLimit() {
     }
 }
 
+// Save premium join date for a server (used to calculate monthly renewal date)
+async function savePremiumJoinDate(serverId) {
+    const input = document.getElementById(`premiumJoinDate_${serverId}`);
+    if (!input) {
+        showNotification('Join date input not found for this server', 'error');
+        return;
+    }
+
+    const joinDate = (input.value || '').trim();
+
+    if (!joinDate) {
+        const shouldClear = confirm('No date selected. Do you want to clear the premium join date for this server?');
+        if (!shouldClear) return;
+    }
+
+    try {
+        const res = await fetch('/admin/monetization/premium/join-date', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                serverId,
+                joinDate: joinDate || null
+            })
+        });
+
+        const data = await res.json();
+        if (data.success) {
+            if (data.nextRenewalDate) {
+                const nextRenewal = new Date(data.nextRenewalDate).toLocaleDateString();
+                showNotification(`Premium join date saved. Next renewal: ${nextRenewal}`, 'success');
+            } else {
+                showNotification('Premium join date cleared', 'success');
+            }
+            setTimeout(() => window.location.reload(), 900);
+        } else {
+            showNotification('Failed: ' + (data.message || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Error saving premium join date:', error);
+        showNotification('Error saving premium join date', 'error');
+    }
+}
+
 // Approve premium request
 async function approvePremium(requestId, serverId) {
     try {

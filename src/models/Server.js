@@ -105,6 +105,10 @@ const serverSchema = new mongoose.Schema({
             type: Date,
             default: null
         },
+        premiumJoinedAt: {
+            type: Date,
+            default: null
+        },
         lastReset: {
             type: Date,
             default: Date.now

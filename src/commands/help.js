@@ -59,7 +59,10 @@ module.exports = {
                         '   📊 View server statistics & usage\n' +
                         '   🎁 **Get 30 FREE bonus translations!**\n' +
                         '   ⏰ Vote every 12 hours for rewards\n' +
-                        '   💡 Example: `/votestatus`',
+                        '   💡 Example: `/votestatus`\n\n' +
+                        '▫️ **`/premium`** ➤ *Premium status for this server*\n' +
+                        '   📅 Shows premium join date and next renewal date\n' +
+                        '   💡 Example: `/premium`',
                     inline: false
                 },
                 {

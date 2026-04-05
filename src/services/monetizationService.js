@@ -11,6 +11,58 @@ class MonetizationService {
     }
 
     /**
+     * Normalize any date-like input to UTC date-only precision (00:00:00)
+     */
+    normalizeDateOnly(dateInput) {
+        if (!dateInput) return null;
+
+        const parsed = new Date(dateInput);
+        if (Number.isNaN(parsed.getTime())) return null;
+
+        return new Date(Date.UTC(
+            parsed.getUTCFullYear(),
+            parsed.getUTCMonth(),
+            parsed.getUTCDate()
+        ));
+    }
+
+    /**
+     * Calculate the next monthly renewal date using the same day-of-month as premium join date.
+     */
+    calculateNextRenewalDate(premiumJoinedAt, fromDate = new Date()) {
+        const joined = this.normalizeDateOnly(premiumJoinedAt);
+        if (!joined) return null;
+
+        const reference = this.normalizeDateOnly(fromDate) || new Date();
+        const renewalDay = joined.getUTCDate();
+
+        if (joined.getTime() > reference.getTime()) {
+            return joined;
+        }
+
+        const buildUtcDate = (year, month) => {
+            const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+            const safeDay = Math.min(renewalDay, daysInMonth);
+            return new Date(Date.UTC(year, month, safeDay));
+        };
+
+        let candidate = buildUtcDate(reference.getUTCFullYear(), reference.getUTCMonth());
+
+        // If today is renewal day, next renewal is the following month.
+        if (candidate.getTime() <= reference.getTime()) {
+            let nextMonth = reference.getUTCMonth() + 1;
+            let year = reference.getUTCFullYear();
+            if (nextMonth > 11) {
+                nextMonth = 0;
+                year += 1;
+            }
+            candidate = buildUtcDate(year, nextMonth);
+        }
+
+        return candidate;
+    }
+
+    /**
      * Load global monetization settings from database (lazy loading)
      */
     async loadSettings() {
@@ -65,6 +117,7 @@ class MonetizationService {
                     freeTranslationLimit: this.globalSettings.defaultFreeTranslationLimit,
                     isRestricted: this.globalSettings.enableGlobalRestriction,
                     isExempt: false,
+                    premiumJoinedAt: null,
                     lastReset: new Date(),
                     customLimit: null
                 };
@@ -82,6 +135,7 @@ class MonetizationService {
                 freeTranslationLimit: this.globalSettings.defaultFreeTranslationLimit,
                 isRestricted: true,
                 isExempt: false,
+                premiumJoinedAt: null,
                 lastReset: new Date(),
                 customLimit: null
             };
@@ -161,12 +215,16 @@ class MonetizationService {
         try {
             const server = await databaseService.getServer(serverId);
             const serverSettings = await this.getServerSettings(serverId);
+            const premiumJoinedAt = serverSettings.premiumJoinedAt || null;
+            const nextRenewalDate = this.calculateNextRenewalDate(premiumJoinedAt);
             
             return {
                 translationCount: server?.translationCount || 0,
                 isRestricted: serverSettings.isRestricted || this.globalSettings.enableGlobalRestriction,
                 isExempt: serverSettings.isExempt,
                 exemptUntil: serverSettings.exemptUntil || null,
+                premiumJoinedAt,
+                nextRenewalDate,
                 canTranslate: await this.canTranslate(serverId),
                 freeTranslationLimit: serverSettings.customLimit || this.globalSettings.defaultFreeTranslationLimit,
                 lastReset: serverSettings.lastReset
@@ -177,11 +235,37 @@ class MonetizationService {
                 translationCount: 0,
                 isRestricted: false,
                 isExempt: false,
+                premiumJoinedAt: null,
+                nextRenewalDate: null,
                 canTranslate: true,
                 freeTranslationLimit: this.globalSettings.defaultFreeTranslationLimit,
                 lastReset: new Date()
             };
         }
+    }
+
+    /**
+     * Set or clear premium join date for a server.
+     */
+    async setPremiumJoinDate(serverId, joinDate = null) {
+        const serverSettings = await this.getServerSettings(serverId);
+
+        if (joinDate) {
+            const normalizedDate = this.normalizeDateOnly(joinDate);
+            if (!normalizedDate) {
+                throw new Error('Invalid premium join date');
+            }
+            serverSettings.premiumJoinedAt = normalizedDate;
+        } else {
+            serverSettings.premiumJoinedAt = null;
+        }
+
+        await this.updateServerSettings(serverId, serverSettings);
+
+        return {
+            premiumJoinedAt: serverSettings.premiumJoinedAt || null,
+            nextRenewalDate: this.calculateNextRenewalDate(serverSettings.premiumJoinedAt)
+        };
     }
 
     /**
@@ -281,6 +365,7 @@ class MonetizationService {
                     freeTranslationLimit: this.globalSettings.defaultFreeTranslationLimit,
                     isRestricted: this.globalSettings.enableGlobalRestriction,
                     isExempt: false,
+                    premiumJoinedAt: null,
                     lastReset: new Date(),
                     customLimit: null
                 };
@@ -290,6 +375,8 @@ class MonetizationService {
                 const effectiveLimit = sMon.customLimit || this.globalSettings.defaultFreeTranslationLimit;
                 const isRestricted = sMon.isRestricted || this.globalSettings.enableGlobalRestriction;
                 const canTranslate = sMon.isExempt ? true : (isRestricted ? translationCount < effectiveLimit : true);
+                const premiumJoinedAt = sMon.premiumJoinedAt || null;
+                const nextRenewalDate = this.calculateNextRenewalDate(premiumJoinedAt);
 
                 const info = {
                     id: server.server_id,
@@ -301,6 +388,8 @@ class MonetizationService {
                     freeTranslationLimit: effectiveLimit,
                     lastReset: sMon.lastReset,
                     exemptUntil: sMon.exemptUntil || null,
+                    premiumJoinedAt,
+                    nextRenewalDate,
                     memberCount: undefined
                 };
 
@@ -324,6 +413,8 @@ class MonetizationService {
                             freeTranslationLimit: effectiveLimit,
                             lastReset: new Date(),
                             exemptUntil: null,
+                            premiumJoinedAt: null,
+                            nextRenewalDate: null,
                             memberCount: guild.memberCount
                         };
                         merged.push(info);

@@ -847,6 +847,20 @@ async function generateMonetizationTab() {
         
         return actions.join('');
     }
+
+    function formatCalendarDate(dateValue) {
+        if (!dateValue) return '—';
+        const parsed = new Date(dateValue);
+        if (Number.isNaN(parsed.getTime())) return '—';
+        return parsed.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    function formatDateInputValue(dateValue) {
+        if (!dateValue) return '';
+        const parsed = new Date(dateValue);
+        if (Number.isNaN(parsed.getTime())) return '';
+        return parsed.toISOString().slice(0, 10);
+    }
     
     return `
     <div class="tab-content" id="monetization-tab">
@@ -996,6 +1010,8 @@ async function generateMonetizationTab() {
                                 <th>Translations</th>
                                 <th>Status</th>
                                 <th>Exemption</th>
+                                <th>Premium Joined</th>
+                                <th>Next Renewal</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -1026,7 +1042,33 @@ async function generateMonetizationTab() {
                                             return '<span class="badge badge-secondary">—</span>';
                                         })()}
                                     </td>
-                                    <td>${generateServerActions(server)}</td>
+                                    <td>
+                                        ${server.premiumJoinedAt
+                                            ? `<span class="badge badge-info">${formatCalendarDate(server.premiumJoinedAt)}</span>`
+                                            : '<span class="badge badge-secondary">Not set</span>'
+                                        }
+                                    </td>
+                                    <td>
+                                        ${server.nextRenewalDate
+                                            ? `<span class="badge badge-success" title="Renews monthly on the same day">${formatCalendarDate(server.nextRenewalDate)}</span>`
+                                            : '<span class="badge badge-secondary">—</span>'
+                                        }
+                                    </td>
+                                    <td>
+                                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                                            <div>${generateServerActions(server)}</div>
+                                            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                                                <input
+                                                    type="date"
+                                                    id="premiumJoinDate_${server.id}"
+                                                    class="form-control"
+                                                    value="${formatDateInputValue(server.premiumJoinedAt)}"
+                                                    style="height: 30px; max-width: 170px; padding: 4px 8px; font-size: 12px;"
+                                                />
+                                                <button class="btn-sm btn-info" onclick="savePremiumJoinDate('${server.id}')">Save Join Date</button>
+                                            </div>
+                                        </div>
+                                    </td>
                                 </tr>
                             `).join('')}
                         </tbody>

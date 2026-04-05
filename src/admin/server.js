@@ -388,6 +388,11 @@ const server = http.createServer(async (req, res) => {
             await monetizationHandler.setCustomLimit(req, res);
             return;
         }
+
+        if (pathname === '/admin/monetization/premium/join-date' && req.method === 'POST') {
+            await monetizationHandler.setPremiumJoinDate(req, res);
+            return;
+        }
         
         if (pathname === '/admin/monetization/premium/approve' && req.method === 'POST') {
             await monetizationHandler.approvePremiumRequest(req, res, sessionToken, auth.getSession);

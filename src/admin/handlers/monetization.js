@@ -174,6 +174,36 @@ async function setCustomLimit(req, res) {
 }
 
 /**
+ * Set or clear premium join date for a server
+ */
+async function setPremiumJoinDate(req, res) {
+    try {
+        const data = await parsePostData(req);
+        const payload = typeof data === 'string' ? JSON.parse(data) : data;
+        const { serverId, joinDate } = payload;
+
+        if (!serverId) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, message: 'Server ID is required' }));
+            return;
+        }
+
+        const result = await monetizationService.setPremiumJoinDate(serverId, joinDate || null);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            success: true,
+            premiumJoinedAt: result.premiumJoinedAt || null,
+            nextRenewalDate: result.nextRenewalDate || null
+        }));
+    } catch (error) {
+        console.error('Error setting premium join date:', error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: error.message }));
+    }
+}
+
+/**
  * Approve premium request
  */
 async function approvePremiumRequest(req, res, sessionToken, getSession) {
@@ -633,6 +663,7 @@ module.exports = {
     removeRestrictedServer,
     resetServerCount,
     setCustomLimit,
+    setPremiumJoinDate,
     approvePremiumRequest,
     rejectPremiumRequest,
     deleteVoteRecord,
