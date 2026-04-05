@@ -62,6 +62,42 @@ function createLogger(scope) {
 
 const logger = createLogger('bot');
 
+const TOPGG_VOTE_BONUS_AMOUNT = 35;
+const PENDING_VOTE_TARGET_TTL_MS = 60 * 60 * 1000;
+
+function trackTopggVoteTarget(userId, serverId) {
+    if (!userId || !serverId) return;
+
+    if (!global.pendingTopggVoteTargets) {
+        global.pendingTopggVoteTargets = new Map();
+    }
+
+    const now = Date.now();
+    const normalizedUserId = String(userId);
+    const normalizedServerId = String(serverId);
+
+    global.pendingTopggVoteTargets.set(normalizedUserId, {
+        serverId: normalizedServerId,
+        timestamp: now,
+    });
+
+    // Keep legacy map in sync for existing fallback logic in other modules.
+    if (!global.userServerTracking) {
+        global.userServerTracking = new Map();
+    }
+    global.userServerTracking.set(normalizedUserId, normalizedServerId);
+
+    if (!global.pendingTopggVoteTargetsLastCleanup || now - global.pendingTopggVoteTargetsLastCleanup > PENDING_VOTE_TARGET_TTL_MS) {
+        const cutoff = now - PENDING_VOTE_TARGET_TTL_MS;
+        for (const [trackedUserId, entry] of global.pendingTopggVoteTargets.entries()) {
+            if (!entry?.timestamp || entry.timestamp < cutoff) {
+                global.pendingTopggVoteTargets.delete(trackedUserId);
+            }
+        }
+        global.pendingTopggVoteTargetsLastCleanup = now;
+    }
+}
+
 async function fetchTopGgBotStats(botId) {
   if (!botId || !process.env.TOPGG_TOKEN) {
     return null;
@@ -304,7 +340,7 @@ async function translateVoteMessage(serverId) {
         const originalText = `Select where you want to vote to support Air Translator:
 
     🔵 Vote on Top.gg
-    Get 30 free translations by clicking the button below.
+    Get ${TOPGG_VOTE_BONUS_AMOUNT} free translations by clicking the button below.
     You'll be redirected to the Top.gg bot page 🚀`;
         
         // Get server setup to find configured languages
@@ -386,7 +422,7 @@ async function translateVoteMessage(serverId) {
         return `Select where you want to vote to support Air Translator:
 
     🔵 Vote on Top.gg
-    Get 30 free translations by clicking the button below.
+    Get ${TOPGG_VOTE_BONUS_AMOUNT} free translations by clicking the button below.
     You'll be redirected to the Top.gg bot page 🚀`;
     }
 }
@@ -748,6 +784,8 @@ client.on(Events.InteractionCreate, async interaction => {
                         return;
                     }
 
+                    trackTopggVoteTarget(interaction.user?.id, serverId);
+
                     // Get translated vote message
                     const voteContent = await translateVoteMessage(serverId);
 
@@ -779,7 +817,7 @@ client.on(Events.InteractionCreate, async interaction => {
             if (customId.startsWith('vote_choice_topgg')) {
                 try {
                     const source = 'topgg';
-                    const BONUS = 30;
+                    const BONUS = TOPGG_VOTE_BONUS_AMOUNT;
                     const SITE_NAME = 'Top.gg';
                     const DELAY_MS = 60 * 1000;
                     
@@ -793,6 +831,8 @@ client.on(Events.InteractionCreate, async interaction => {
                         await interaction.reply({ content: '❌ Could not determine the target server.', flags: MessageFlags.Ephemeral });
                         return;
                     }
+
+                    trackTopggVoteTarget(interaction.user?.id, serverId);
 
                     // Check cooldown before showing the link (per server)
                     console.log(`🗳️ Checking vote cooldown for user ${interaction.user.id} on server ${serverId} (${source})`);

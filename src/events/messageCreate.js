@@ -316,7 +316,7 @@ async function translateVoteMessage(serverId) {
         const originalText = `Select where you want to vote to support Air Translator:
 
 🔵 Vote on Top.gg
-Get 30 free translations by clicking the button below.
+Get 35 free translations by clicking the button below.
 You'll be redirected to the Top.gg bot page 🚀`;
         
         // Get server setup to find configured languages
@@ -390,11 +390,8 @@ You'll be redirected to the Top.gg bot page 🚀`;
         // Fallback to English on error
         return `Select where you want to vote to support AirTranslator:
 
-**Official Site**
-Get 20 free translations
-
-**Top.gg**
-Get 30 free translations`;
+🔵 Vote on Top.gg
+Get 35 free translations`;
     }
 }
 
@@ -406,7 +403,7 @@ const LIMIT_MESSAGE_COOLDOWN = 0; // No cooldown - show message every time
 // Vote tracking system for automatic credit granting
 const pendingVotes = new Map(); // serverId -> { timestamp, timeout }
 const VOTE_CREDIT_DELAY = 15 * 1000; // 15 seconds
-const VOTE_BONUS_AMOUNT = 20; // Free translations to grant
+const VOTE_BONUS_AMOUNT = 35; // Free translations to grant
 
 // Function to start vote tracking and auto-grant credits
 function startVoteTracking(serverId, userInfo = null, client = null) {

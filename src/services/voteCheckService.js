@@ -2,6 +2,38 @@ const axios = require('axios');
 const monetizationService = require('./monetizationService');
 const databaseService = require('./databaseService');
 
+const TOPGG_VOTE_BONUS_AMOUNT = 35;
+const TOPGG_VOTE_TARGET_TTL_MS = 60 * 60 * 1000;
+
+function parseServerIdFromVoteQuery(queryValue) {
+    if (!queryValue) return null;
+
+    try {
+        const params = new URLSearchParams(String(queryValue));
+        return params.get('guild') || params.get('serverId') || params.get('server_id') || null;
+    } catch {
+        return null;
+    }
+}
+
+function getPendingTopggVoteTarget(userId) {
+    if (!userId || !global.pendingTopggVoteTargets) return null;
+
+    const key = String(userId);
+    const entry = global.pendingTopggVoteTargets.get(key);
+    if (!entry?.serverId) {
+        return null;
+    }
+
+    const timestamp = Number(entry.timestamp) || 0;
+    if (timestamp && Date.now() - timestamp > TOPGG_VOTE_TARGET_TTL_MS) {
+        global.pendingTopggVoteTargets.delete(key);
+        return null;
+    }
+
+    return String(entry.serverId);
+}
+
 class VoteCheckService {
     constructor() {
         this.client = null;
@@ -110,7 +142,7 @@ class VoteCheckService {
 
             for (const vote of votes) {
                 const userId = vote.id || vote.user;
-                const voteTimestamp = new Date(vote.timestamp).getTime();
+                const voteTimestamp = new Date(vote.timestamp).getTime() || now;
                 
                 // Only process votes from the last 5 minutes that we haven't already processed
                 const lastChecked = this.checkedVotes.get(userId) || 0;
@@ -125,7 +157,25 @@ class VoteCheckService {
                         // Guild-specific vote - use the guild ID from the vote
                         targetServerId = vote.guild;
                         console.log(`📍 Vote for specific guild: ${targetServerId}`);
-                    } else {
+                    }
+
+                    if (!targetServerId) {
+                        const queryServerId = parseServerIdFromVoteQuery(vote.query);
+                        if (queryServerId) {
+                            targetServerId = queryServerId;
+                            console.log(`🧭 Resolved target server from vote query: ${targetServerId}`);
+                        }
+                    }
+
+                    if (!targetServerId) {
+                        const pendingServerId = getPendingTopggVoteTarget(userId);
+                        if (pendingServerId) {
+                            targetServerId = pendingServerId;
+                            console.log(`🧭 Resolved target server from pending vote target map: ${targetServerId}`);
+                        }
+                    }
+
+                    if (!targetServerId) {
                         // Fallback to recent interaction tracking for generic votes
                         targetServerId = global.userServerTracking?.get(userId);
                         if (targetServerId) {
@@ -142,32 +192,35 @@ class VoteCheckService {
                     const canReward = now - lastRewarded >= twelveHoursMs;
 
                     if (targetServerId && canReward) {
-                        console.log(`⏳ Scheduling 30 free translations for user ${userId} in server ${targetServerId} after 1 minute`);
-
-                        // Persist cooldown immediately to avoid duplicate scheduling
-                        try {
-                            // Upsert new cooldown timestamp for this user+server combination
-                            await databaseService.upsertUserVoteCooldown(userId, targetServerId, new Date(now), 'topgg');
-                        } catch (err) {
-                            console.error('Failed to upsert cooldown before scheduling:', err.message);
-                        }
+                        console.log(`⏳ Scheduling ${TOPGG_VOTE_BONUS_AMOUNT} free translations for user ${userId} in server ${targetServerId} after 1 minute`);
 
                         setTimeout(async () => {
                             try {
-                                const result = await monetizationService.handleVoteReward(userId, targetServerId, 30, null, 'topgg');
+                                const fallbackUsername = `user_${String(userId).slice(-4)}`;
+                                const userInfo = {
+                                    id: String(userId),
+                                    username: vote?.username || fallbackUsername,
+                                    displayName: vote?.username || fallbackUsername,
+                                };
+
+                                const result = await monetizationService.handleVoteReward(
+                                    userId,
+                                    targetServerId,
+                                    TOPGG_VOTE_BONUS_AMOUNT,
+                                    userInfo,
+                                    'topgg'
+                                );
                                 if (result && result.success) {
-                                    console.log(`✅ Vote reward (30 translations) granted to server ${targetServerId} by user ${userId}`);
-                                    await this.sendVoteConfirmation(userId, targetServerId, 30);
-                                    // Refresh cooldown to actual grant time for this server
-                                    try { await databaseService.upsertUserVoteCooldown(userId, targetServerId, new Date(), 'topgg'); } catch (_) {}
+                                    console.log(`✅ Vote reward (${TOPGG_VOTE_BONUS_AMOUNT} translations) granted to server ${targetServerId} by user ${userId}`);
+                                    await this.sendVoteConfirmation(userId, targetServerId, TOPGG_VOTE_BONUS_AMOUNT);
+                                    if (global.pendingTopggVoteTargets) {
+                                        global.pendingTopggVoteTargets.delete(String(userId));
+                                    }
                                 } else {
                                     console.log(`⚠️ Failed to grant vote reward for user ${userId}: ${result.error || 'unknown error'}`);
-                                    // Roll back cooldown to allow retry next cycle for this server
-                                    try { await databaseService.deleteUserVoteCooldown(userId, targetServerId, 'topgg'); } catch (_) {}
                                 }
                             } catch (err) {
                                 console.error('Error during delayed vote reward:', err);
-                                try { await databaseService.deleteUserVoteCooldown(userId, targetServerId, 'topgg'); } catch (_) {}
                             }
                         }, ONE_MINUTE_MS);
 
@@ -211,7 +264,7 @@ class VoteCheckService {
     /**
      * Send vote confirmation message to Discord
      */
-    async sendVoteConfirmation(userId, serverId, amount = 30) {
+    async sendVoteConfirmation(userId, serverId, amount = TOPGG_VOTE_BONUS_AMOUNT) {
         try {
             if (!this.client) return;
 

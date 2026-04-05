@@ -15,6 +15,9 @@ const { generateDashboard } = require('./templates/dashboard');
 const analyticsService = require('../services/analyticsService');
 const monetizationService = require('../services/monetizationService');
 
+const TOPGG_VOTE_BONUS_AMOUNT = 35;
+const TOPGG_VOTE_TARGET_TTL_MS = 60 * 60 * 1000;
+
 // Dashboard cache
 const ANALYTICS_CACHE_TTL_MS = 60 * 1000; // 60s
 let dashboardCache = { html: null, ts: 0 };
@@ -46,6 +49,33 @@ function parsePostData(req) {
             }
         });
     });
+}
+
+function parseServerIdFromTopggQuery(queryValue) {
+    if (!queryValue) return null;
+    try {
+        const params = new URLSearchParams(String(queryValue));
+        return params.get('guild') || params.get('serverId') || params.get('server_id') || null;
+    } catch {
+        return null;
+    }
+}
+
+function getPendingTopggVoteTarget(userId) {
+    if (!userId || !global.pendingTopggVoteTargets) return null;
+
+    const entry = global.pendingTopggVoteTargets.get(String(userId));
+    if (!entry?.serverId) {
+        return null;
+    }
+
+    const timestamp = Number(entry.timestamp) || 0;
+    if (timestamp && Date.now() - timestamp > TOPGG_VOTE_TARGET_TTL_MS) {
+        global.pendingTopggVoteTargets.delete(String(userId));
+        return null;
+    }
+
+    return String(entry.serverId);
 }
 
 /**
@@ -191,18 +221,37 @@ const server = http.createServer(async (req, res) => {
                     return;
                 }
                 
-                const { user: userId, type, isWeekend } = body;
+                const { user: userId, type, isWeekend, guild, query } = body;
                 
                 if (type === 'upvote') {
                     console.log(`📊 Received vote from user ${userId}${isWeekend ? ' (Weekend vote)' : ''}`);
-                    
-                    const recentServerId = global.userServerTracking?.get(userId);
-                    
-                    if (recentServerId) {
-                        const result = await monetizationService.handleVoteReward(userId, recentServerId, 30);
+
+                    const targetServerId = guild
+                        || parseServerIdFromTopggQuery(query)
+                        || getPendingTopggVoteTarget(userId)
+                        || global.userServerTracking?.get(userId);
+
+                    if (targetServerId) {
+                        const fallbackUsername = `user_${String(userId).slice(-4)}`;
+                        const userInfo = {
+                            id: String(userId),
+                            username: fallbackUsername,
+                            displayName: fallbackUsername,
+                        };
+
+                        const result = await monetizationService.handleVoteReward(
+                            userId,
+                            targetServerId,
+                            TOPGG_VOTE_BONUS_AMOUNT,
+                            userInfo,
+                            'topgg'
+                        );
                         
                         if (result.success) {
-                            console.log(`✅ Vote reward processed for user ${userId} in server ${recentServerId}`);
+                            console.log(`✅ Vote reward (${TOPGG_VOTE_BONUS_AMOUNT} translations) processed for user ${userId} in server ${targetServerId}`);
+                            if (global.pendingTopggVoteTargets) {
+                                global.pendingTopggVoteTargets.delete(String(userId));
+                            }
                         }
                     } else {
                         console.log(`⚠️ No recent server found for user ${userId}`);

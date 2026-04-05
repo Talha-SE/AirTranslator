@@ -1,6 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const monetizationService = require('../services/monetizationService');
 
+const TOPGG_VOTE_BONUS_AMOUNT = 35;
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('votestatus')
@@ -35,7 +37,7 @@ module.exports = {
             const embed = new EmbedBuilder()
                 .setTitle(`🗳️ Vote Status`)
                 .setColor(statusColor)
-                .setDescription(serverStats.isExempt ? '💎 **Premium Server** - Unlimited translations!' : `Vote every 12 hours to get **+30 bonus translations**!`)
+                .setDescription(serverStats.isExempt ? '💎 **Premium Server** - Unlimited translations!' : `Vote every 12 hours to get **+${TOPGG_VOTE_BONUS_AMOUNT} bonus translations**!`)
                 .addFields(
                     {
                         name: `${statusEmoji} Translation Status`,
@@ -47,10 +49,23 @@ module.exports = {
             if (!serverStats.isExempt) {
                 embed.addFields({
                     name: '🎁 Vote Reward',
-                    value: '**+30 translations** every 12 hours\nRewards are automatic & instant!',
+                    value: `**+${TOPGG_VOTE_BONUS_AMOUNT} translations** every 12 hours\nRewards are automatic & instant!`,
                     inline: false
                 });
             }
+
+            if (!global.pendingTopggVoteTargets) {
+                global.pendingTopggVoteTargets = new Map();
+            }
+            global.pendingTopggVoteTargets.set(String(interaction.user.id), {
+                serverId: String(serverId),
+                timestamp: Date.now(),
+            });
+
+            if (!global.userServerTracking) {
+                global.userServerTracking = new Map();
+            }
+            global.userServerTracking.set(String(interaction.user.id), String(serverId));
             
             embed.setFooter({
                 text: 'Click the button below to vote on Top.gg',

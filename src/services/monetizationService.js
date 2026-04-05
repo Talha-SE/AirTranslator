@@ -449,7 +449,7 @@ class MonetizationService {
     /**
      * Handle vote reward - grant additional translations
      */
-    async handleVoteReward(userId, serverId = null, bonusAmount = 30, userInfo = null, source = 'topgg') {
+    async handleVoteReward(userId, serverId = null, bonusAmount = 35, userInfo = null, source = 'topgg') {
         try {
             if (!serverId) {
                 console.error('handleVoteReward: serverId is required');
