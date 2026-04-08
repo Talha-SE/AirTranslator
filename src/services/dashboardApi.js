@@ -19,6 +19,8 @@ const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
 const REDIRECT_URI = process.env.DASHBOARD_REDIRECT_URI || 'http://localhost:3001/api/auth/callback';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const DISCORD_API = 'https://discord.com/api/v10';
+const MANAGE_GUILD_PERMISSION = BigInt(0x0000000000000020);
+const DEFAULT_INVITE_PERMISSIONS = process.env.BOT_INVITE_PERMISSIONS || '8';
 
 // Session storage (file-backed for persistence)
 const SESSIONS_FILE = path.join(__dirname, '../data/sessions.json');
@@ -55,6 +57,78 @@ function saveSessions() {
 // Helper to generate session ID
 function generateSessionId() {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+
+function hasManageGuildPermission(permissions) {
+  try {
+    return (BigInt(permissions || 0) & MANAGE_GUILD_PERMISSION) !== BigInt(0);
+  } catch {
+    return false;
+  }
+}
+
+function buildBotInviteUrl(guildId) {
+  const params = new URLSearchParams({
+    client_id: DISCORD_CLIENT_ID,
+    permissions: DEFAULT_INVITE_PERMISSIONS,
+    scope: 'bot applications.commands'
+  });
+
+  if (guildId) {
+    params.set('guild_id', guildId);
+  }
+
+  return `https://discord.com/oauth2/authorize?${params.toString()}`;
+}
+
+async function buildAccessibleGuilds(session, client, { fetchMissingGuilds = false } = {}) {
+  if (!session?.accessToken || !client) {
+    return session?.guilds || [];
+  }
+
+  const guildsResponse = await axios.get(`${DISCORD_API}/users/@me/guilds`, {
+    headers: { Authorization: `Bearer ${session.accessToken}` }
+  });
+
+  const userGuilds = guildsResponse.data || [];
+  const manageableGuilds = userGuilds.filter(guild => hasManageGuildPermission(guild.permissions));
+  const botGuildIds = new Set(client.guilds.cache.map(g => g.id));
+
+  const accessibleMap = new Map();
+  manageableGuilds.forEach(guild => {
+    if (botGuildIds.has(guild.id)) {
+      accessibleMap.set(guild.id, guild);
+    }
+  });
+
+  if (fetchMissingGuilds) {
+    const missingGuilds = manageableGuilds.filter(guild => !accessibleMap.has(guild.id)).slice(0, 30);
+    const recoveredGuilds = await Promise.all(
+      missingGuilds.map(async guild => {
+        const fetched = await client.guilds.fetch(guild.id).catch(() => null);
+        return fetched ? guild : null;
+      })
+    );
+
+    recoveredGuilds.forEach(guild => {
+      if (guild) {
+        accessibleMap.set(guild.id, guild);
+      }
+    });
+  }
+
+  return Array.from(accessibleMap.values());
+}
+
+async function refreshSessionGuilds(session, options = {}) {
+  const client = router.botClient;
+  if (!session || !client) {
+    return session?.guilds || [];
+  }
+
+  const refreshedGuilds = await buildAccessibleGuilds(session, client, options);
+  session.guilds = refreshedGuilds;
+  return refreshedGuilds;
 }
 
 // Discord OAuth - Start authentication
@@ -101,11 +175,6 @@ router.get('/auth/callback', async (req, res) => {
       headers: { Authorization: `Bearer ${access_token}` }
     });
 
-    // Get user guilds
-    const guildsResponse = await axios.get(`${DISCORD_API}/users/@me/guilds`, {
-      headers: { Authorization: `Bearer ${access_token}` }
-    });
-
     // Get bot client from global scope
     const client = router.botClient;
     
@@ -113,19 +182,8 @@ router.get('/auth/callback', async (req, res) => {
       return res.redirect(`${FRONTEND_URL}/login?error=bot_not_ready`);
     }
 
-    // Filter guilds: only show where user is member AND bot is in AND user has MANAGE_GUILD permission
-    const userGuilds = guildsResponse.data;
-    const botGuildIds = new Set(client.guilds.cache.map(g => g.id));
-    
-    const accessibleGuilds = userGuilds.filter(guild => {
-      // Check if bot is in this guild
-      const botInGuild = botGuildIds.has(guild.id);
-      
-      // Check if user has MANAGE_GUILD permission (0x0000000000000020)
-      const hasManagePermission = (BigInt(guild.permissions) & BigInt(0x0000000000000020)) !== BigInt(0);
-      
-      return botInGuild && hasManagePermission;
-    });
+    const sessionSeed = { accessToken: access_token, guilds: [] };
+    const accessibleGuilds = await buildAccessibleGuilds(sessionSeed, client, { fetchMissingGuilds: true });
 
     // Create session
     const sessionId = generateSessionId();
@@ -150,7 +208,7 @@ router.get('/auth/callback', async (req, res) => {
 });
 
 // Get current user session
-router.get('/auth/user', (req, res) => {
+router.get('/auth/user', async (req, res) => {
   const sessionId = req.headers['x-session-id'];
   
   if (!sessionId || !sessions.has(sessionId)) {
@@ -165,10 +223,37 @@ router.get('/auth/user', (req, res) => {
     return res.status(401).json({ error: 'Session expired' });
   }
 
+  if (req.query.refresh === '1') {
+    try {
+      await refreshSessionGuilds(session, { fetchMissingGuilds: true });
+      saveSessions();
+    } catch (error) {
+      console.warn('Failed to refresh guild list from Discord API:', error.message || error);
+    }
+  }
+
   res.json({
     user: session.user,
-    guilds: session.guilds
+    guilds: session.guilds || []
   });
+});
+
+// Refresh session guild access list
+router.post('/auth/refresh-guilds', verifySession, async (req, res) => {
+  try {
+    const guilds = await refreshSessionGuilds(req.userSession, { fetchMissingGuilds: true });
+    saveSessions();
+    res.json({ guilds });
+  } catch (error) {
+    console.error('Error refreshing guild list:', error);
+    res.status(500).json({ error: 'Failed to refresh guilds' });
+  }
+});
+
+// Build bot invite URL for adding to more servers
+router.get('/auth/invite-url', verifySession, async (req, res) => {
+  const guildId = req.query.guildId;
+  res.json({ inviteUrl: buildBotInviteUrl(guildId) });
 });
 
 // Logout
@@ -210,12 +295,22 @@ function verifySession(req, res, next) {
 }
 
 // Middleware to verify user has access to specific server
-function verifyServerAccess(req, res, next) {
+async function verifyServerAccess(req, res, next) {
   const { serverId } = req.params;
   const session = req.userSession;
   
   // Check if user has access to this server
-  const hasAccess = session.guilds.some(guild => guild.id === serverId);
+  let hasAccess = (session.guilds || []).some(guild => guild.id === serverId);
+
+  if (!hasAccess) {
+    try {
+      await refreshSessionGuilds(session, { fetchMissingGuilds: true });
+      saveSessions();
+      hasAccess = (session.guilds || []).some(guild => guild.id === serverId);
+    } catch (error) {
+      console.warn('verifyServerAccess refresh failed:', error.message || error);
+    }
+  }
   
   if (!hasAccess) {
     return res.status(403).json({ error: 'Access denied to this server' });
@@ -257,7 +352,32 @@ router.get('/servers/:serverId', async (req, res) => {
     let serverData = await getServerSettings(serverId);
 
     if (!serverData) {
-      return res.status(404).json({ error: 'Server not found' });
+      serverData = {
+        serverId,
+        setups: [],
+        serverWideTranslation: false,
+        serverWideLanguages: [],
+        serverWideExcludedChannels: [],
+        toneEnabledChannels: [],
+        threadStyleEnabled: false,
+        threadStyleChannels: [],
+        autoCleanup: {
+          serverWide: {
+            enabled: false,
+            delay: 0
+          },
+          channels: {}
+        },
+        monetization: {
+          freeTranslationLimit: 20,
+          isRestricted: true,
+          isExempt: false,
+          exemptUntil: null,
+          premiumJoinedAt: null,
+          lastReset: new Date(),
+          customLimit: null
+        }
+      };
     }
 
     if (serverData.toObject) {
@@ -288,13 +408,17 @@ router.get('/servers/:serverId', async (req, res) => {
 
     // Get bot client to fetch channel names
     const client = router.botClient;
-    const guild = client.guilds.cache.get(serverId);
+    const guild = client?.guilds.cache.get(serverId) || await client?.guilds.fetch(serverId).catch(() => null);
     
     if (guild) {
+      await guild.channels.fetch().catch(() => null);
+
       // Enrich setups with channel names
       if (serverData.setups && serverData.setups.length > 0) {
         serverData.setups = serverData.setups.map(setup => {
-          const enrichedChannels = setup.channels.map(channelId => {
+          const setupValue = setup.toObject ? setup.toObject() : setup;
+          const enrichedChannels = (setupValue.channels || []).map(channelRef => {
+            const channelId = typeof channelRef === 'string' ? channelRef : channelRef.id;
             const channel = guild.channels.cache.get(channelId);
             return {
               id: channelId,
@@ -304,7 +428,7 @@ router.get('/servers/:serverId', async (req, res) => {
           });
           
           return {
-            ...setup.toObject ? setup.toObject() : setup,
+            ...setupValue,
             channels: enrichedChannels
           };
         });
@@ -326,6 +450,12 @@ router.get('/servers/:serverId', async (req, res) => {
       serverData.guildName = guild.name;
       serverData.guildIcon = guild.icon;
       serverData.memberCount = guild.memberCount;
+    } else {
+      const guildFromSession = (req.userSession.guilds || []).find(g => g.id === serverId);
+      if (guildFromSession) {
+        serverData.guildName = guildFromSession.name;
+        serverData.guildIcon = guildFromSession.icon || null;
+      }
     }
 
     res.json(serverData);
@@ -345,10 +475,12 @@ router.get('/servers/:serverId/channels', async (req, res) => {
       return res.status(503).json({ error: 'Bot not ready' });
     }
 
-    const guild = client.guilds.cache.get(serverId);
+    const guild = client.guilds.cache.get(serverId) || await client.guilds.fetch(serverId).catch(() => null);
     if (!guild) {
       return res.status(404).json({ error: 'Guild not found in bot cache' });
     }
+
+    await guild.channels.fetch().catch(() => null);
 
     // Return text and voice channels (filter out categories, threads, etc.)
     const channels = guild.channels.cache
@@ -377,7 +509,7 @@ router.post('/servers/:serverId/setups', async (req, res) => {
 
     // Get guild from bot client for server name
     const client = router.botClient;
-    const guild = client?.guilds.cache.get(serverId);
+    const guild = client?.guilds.cache.get(serverId) || await client?.guilds.fetch(serverId).catch(() => null);
     const serverName = guild ? guild.name : 'Unknown Server';
 
     // Create paired arrays: each channel gets AUTO_DETECT + each language
