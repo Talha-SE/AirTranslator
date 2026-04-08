@@ -279,7 +279,7 @@ const parseModelJsonObject = (rawText, context = 'model-response') => {
 
         try {
             const parsed = JSON.parse(withoutTrailingCommas);
-            console.warn(`⚠️ [Translation] Recovered malformed JSON in ${context} via sanitizer.`);
+            console.log(`ℹ️ [Translation] Recovered malformed JSON in ${context} via sanitizer.`);
             return parsed;
         } catch (_) {
             throw firstError;
@@ -1193,8 +1193,17 @@ For Korean translations, you MUST add cute chatting elements:
     }
 };
 
-const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLanguage = null, useToneUnderstanding = false, apiKey = MISTRAL_API_KEY, modelOverride = null) => {
+const translateTextToMultipleLanguages = async (
+    text,
+    targetLanguages,
+    sourceLanguage = null,
+    useToneUnderstanding = false,
+    apiKey = MISTRAL_API_KEY,
+    modelOverride = null,
+    translationContext = 'generic'
+) => {
     const translations = {};
+    const contextSuffix = translationContext ? ` [${translationContext}]` : '';
     
     // If only one language, use the regular single translation
     if (targetLanguages.length === 1) {
@@ -1217,7 +1226,7 @@ const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLan
                 modelOverride
             );
         } catch (error) {
-            console.error(`❌ Error translating to ${targetLanguages[0]}:`, error?.message || error);
+            console.error(`❌ Error translating to ${targetLanguages[0]}${contextSuffix}:`, error?.message || error);
             translations[targetLanguages[0]] = null;
         }
         return translations;
@@ -1225,7 +1234,7 @@ const translateTextToMultipleLanguages = async (text, targetLanguages, sourceLan
     
     // BATCH TRANSLATION: Single API call for multiple languages
     try {
-        console.log(`🚀 [Translation] Starting batch translation for ${targetLanguages.length} languages`);
+        console.log(`🚀 [Translation] Starting batch translation for ${targetLanguages.length} languages${contextSuffix}`);
         
         // Normalize elongated text before translation
         const normalizedText = normalizeElongatedText(text);
@@ -1369,7 +1378,7 @@ Return ONLY the JSON object. Nothing else.`;
         const resultText = response.data.choices[0].message.content.trim();
 
         // Parse JSON response (with recovery for malformed control characters)
-        const parsed = parseModelJsonObject(resultText, 'batch-translation');
+        const parsed = parseModelJsonObject(resultText, `batch-translation:${translationContext || 'generic'}`);
         
         // Get emoji constraints from source
         const sourceHasEmoji = hasEmoji(normalizedText);
@@ -1444,11 +1453,11 @@ Return ONLY the JSON object. Nothing else.`;
             }
         });
         
-        console.log(`✅ [Translation] Batch success: 1 API call for ${languagesToTranslate.length} languages (saved ${languagesToTranslate.length - 1} calls, ${Math.round(((languagesToTranslate.length - 1) / languagesToTranslate.length) * 100)}% cost reduction)`);
+        console.log(`✅ [Translation] Batch success${contextSuffix}: 1 API call for ${languagesToTranslate.length} languages (saved ${languagesToTranslate.length - 1} calls, ${Math.round(((languagesToTranslate.length - 1) / languagesToTranslate.length) * 100)}% cost reduction)`);
         return translations;
         
     } catch (error) {
-        console.warn(`⚠️ [Translation] Batch failed, falling back to individual calls:`, error?.message || error);
+        console.warn(`⚠️ [Translation] Batch failed${contextSuffix}, falling back to individual calls:`, error?.message || error);
         
         // FALLBACK: Individual translations if batch fails
         let detected = sourceLanguage;
@@ -1472,7 +1481,7 @@ Return ONLY the JSON object. Nothing else.`;
                         modelOverride
                     );
                 } catch (error) {
-                    console.error(`❌ Error translating to ${targetLanguage}:`, {
+                    console.error(`❌ Error translating to ${targetLanguage}${contextSuffix}:`, {
                         error: error?.message || error,
                         model: modelOverride || TRANSLATION_MODEL,
                         apiKeyPresent: !!apiKey,
@@ -1489,11 +1498,11 @@ Return ONLY the JSON object. Nothing else.`;
         const hasAny = Object.values(translations).some(v => typeof v === 'string' && v.length > 0);
         if (hasAny) {
             const okCount = Object.values(translations).filter(v => typeof v === 'string' && v.trim().length > 0).length;
-            console.log(`✅ [Translation] Fallback success: ${okCount}/${targetLanguages.length} languages translated individually.`);
+            console.log(`✅ [Translation] Fallback success${contextSuffix}: ${okCount}/${targetLanguages.length} languages translated individually.`);
         }
         if (!hasAny) {
             const fallbackModel = 'mistral-small-latest';
-            console.log(`⚠️ [Translation] Trying fallback model: ${fallbackModel}`);
+            console.log(`⚠️ [Translation] Trying fallback model${contextSuffix}: ${fallbackModel}`);
             await Promise.all(
                 targetLanguages.map(async (targetLanguage) => {
                     try {
@@ -1506,7 +1515,7 @@ Return ONLY the JSON object. Nothing else.`;
                             fallbackModel
                         );
                     } catch (error) {
-                        console.error(`❌ Fallback error translating to ${targetLanguage}:`, error?.message || error);
+                        console.error(`❌ Fallback error translating to ${targetLanguage}${contextSuffix}:`, error?.message || error);
                         translations[targetLanguage] = null;
                     }
                 })
