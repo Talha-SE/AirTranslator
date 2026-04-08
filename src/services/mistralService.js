@@ -271,9 +271,45 @@ const parseModelJsonObject = (rawText, context = 'model-response') => {
         return out;
     };
 
+    const toVisibleControlChars = (input) => {
+        if (!input || typeof input !== 'string') return '';
+        return input
+            .replace(/\\/g, '\\\\')
+            .replace(/\n/g, '\\n')
+            .replace(/\r/g, '\\r')
+            .replace(/\t/g, '\\t')
+            .replace(/[\u0000-\u001F]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+    };
+
+    const logMalformedJsonDiagnostics = (err, input) => {
+        const message = err?.message || String(err);
+        const positionMatch = message.match(/position\s+(\d+)/i);
+        const index = positionMatch ? Number(positionMatch[1]) : -1;
+
+        if (index < 0 || Number.isNaN(index) || index >= input.length) {
+            console.warn(`⚠️ [Translation] Malformed JSON in ${context}: ${message}`);
+            console.warn(`⚠️ [Translation] Raw preview (${context}): ${toVisibleControlChars(input.slice(0, 220))}`);
+            return;
+        }
+
+        const start = Math.max(0, index - 80);
+        const end = Math.min(input.length, index + 80);
+        const offending = input[index];
+        const code = offending.charCodeAt(0);
+        const snippet = toVisibleControlChars(input.slice(start, end));
+        const pointer = ' '.repeat(Math.max(0, index - start)) + '^';
+
+        console.warn(`⚠️ [Translation] Malformed JSON in ${context}: ${message}`);
+        console.warn(`⚠️ [Translation] Offending char (${context}): index=${index}, code=${code}, visible="${toVisibleControlChars(offending)}"`);
+        console.warn(`⚠️ [Translation] Snippet (${context}): ${snippet}`);
+        console.warn(`⚠️ [Translation] Pointer (${context}): ${pointer}`);
+    };
+
     try {
         return JSON.parse(candidate);
     } catch (firstError) {
+        logMalformedJsonDiagnostics(firstError, candidate);
+
         const escaped = escapeControlsInJsonStrings(candidate);
         const withoutTrailingCommas = escaped.replace(/,\s*([}\]])/g, '$1');
 
@@ -1307,6 +1343,7 @@ CRITICAL BATCH TRANSLATION INSTRUCTIONS:
 2. Return ONLY a raw JSON object where keys are language codes and values are translations
 3. NO markdown code blocks (no \`\`\`json), NO explanations, NO prefixes - ONLY the JSON object
 4. Each translation must follow ALL grammatical and formatting rules below
+5. JSON MUST be strictly valid: inside JSON string values, use escaped control characters (\\n, \\r, \\t). Never place literal newlines/tabs inside quoted JSON values.
 
 GRAMMATICAL RULES:
 - Preserve subject-object relationships exactly as in source
@@ -1349,9 +1386,12 @@ FORMATTING & CONTENT RULES:
         }
         
         systemContent += `\n\nOUTPUT FORMAT EXAMPLE:
-{"en": "Hello world", "es": "Hola mundo", "ko": "안녕하세요"}
+    {"en": "Hello world", "es": "Hola mundo", "ko": "안녕하세요"}
 
-Return ONLY the JSON object. Nothing else.`;
+    MULTILINE EXAMPLE (valid JSON escaping):
+    {"en":"Line 1\\nLine 2","de":"Zeile 1\\nZeile 2"}
+
+    Return ONLY the JSON object. Nothing else.`;
         
         // Make single API call for all languages
         const languageCodesStr = languagesToTranslate.join(', ');
@@ -1366,7 +1406,9 @@ Return ONLY the JSON object. Nothing else.`;
                     role: 'user',
                     content: `Translate to language codes [${languageCodesStr}]:
 
-"${processedText}"`
+SOURCE_TEXT_START
+${processedText}
+SOURCE_TEXT_END`
                 }
             ],
             temperature: 0.3,
