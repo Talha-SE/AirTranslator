@@ -312,6 +312,9 @@ function getLanguageDisplayName(language) {
 
 // Helper function to translate premium payment message into server languages
 async function translatePremiumMessage(serverId) {
+    let hasServerSetup = false;
+    let languageCount = 0;
+
     try {
         const originalText = `✨ Unlock Full Access – Only $5/month ✨\n\nFollow these simple steps:\n1. Click the card button (💳) below or open the Patreon link: https://www.patreon.com/c/tsio/membership\n2. Subscribe to the membership plan you like.\n3. Come back to this Discord server and click the tick button (✅) to request approval.\n4. Type /premium to see your premium details.\n\nYour subscription is securely handled by Patreon.com, and we do not process your payment details directly.\n\nYou will get a notification when your premium plan is enabled.`;
         
@@ -320,6 +323,7 @@ async function translatePremiumMessage(serverId) {
         if (!serverSetup) {
             return originalText; // No setup, return English only
         }
+        hasServerSetup = true;
         
         // Collect all unique languages from server setups and server-wide translation
         const allLanguages = new Set();
@@ -348,6 +352,7 @@ async function translatePremiumMessage(serverId) {
         
         // Collect non-English languages for translation (filter out both 'en' code and 'english' full name)
         const targetLanguages = Array.from(allLanguages).filter(lang => lang !== 'en' && lang !== 'english');
+        languageCount = targetLanguages.length;
         
         // If no other languages configured, return original English only
         if (targetLanguages.length === 0) {
@@ -368,7 +373,7 @@ async function translatePremiumMessage(serverId) {
         const formattedParts = [];
         
         // Add English first
-        formattedParts.push(`🇬🇧 **English:**\n${originalText}`);
+        formattedParts.push(`🇬🇧 **English (Default):**\n${originalText}`);
         
         // Add other languages
         for (const lang of targetLanguages) {
@@ -379,6 +384,10 @@ async function translatePremiumMessage(serverId) {
                 formattedParts.push(`${langFlag} **${langName}:**\n${translation}`);
             }
         }
+
+        if (formattedParts.length === 1) {
+            return originalText;
+        }
         
         return formattedParts.join('\n\n');
     } catch (error) {
@@ -386,9 +395,9 @@ async function translatePremiumMessage(serverId) {
             error: error?.message || error,
             stack: error?.stack,
             serverId,
-            hasServerSetup: !!serverSetup,
+            hasServerSetup,
             apiKeyPresent: !!process.env.MISTRAL_API_KEY,
-            languageCount: targetLanguages?.length || 0
+            languageCount
         });
         // Fallback to English on error
         return `✨ Unlock Full Access – Only $5/month ✨\n\nFollow these simple steps:\n1. Click the card button (💳) below or open the Patreon link: https://www.patreon.com/c/tsio/membership\n2. Subscribe to the membership plan you like.\n3. Come back to this Discord server and click the tick button (✅) to request approval.\n4. Type /premium to see your premium details.\n\nYour subscription is securely handled by Patreon.com, and we do not process your payment details directly.\n\nYou will get a notification when your premium plan is enabled.`;
@@ -397,18 +406,22 @@ async function translatePremiumMessage(serverId) {
 
 // Helper function to translate vote message into server languages
 async function translateVoteMessage(serverId) {
+    let hasServerSetup = false;
+    let languageCount = 0;
+
     try {
         const originalText = `Select where you want to vote to support Air Translator:
 
-    🔵 Vote on Top.gg
-    Get ${TOPGG_VOTE_BONUS_AMOUNT} free translations by clicking the button below.
-    You'll be redirected to the Top.gg bot page 🚀`;
+🔵 Vote on Top.gg
+Get ${TOPGG_VOTE_BONUS_AMOUNT} free translations by clicking the button below.
+You'll be redirected to the Top.gg bot page 🚀`;
         
         // Get server setup to find configured languages
         const serverSetup = await databaseService.getServerSetups(serverId);
         if (!serverSetup) {
             return originalText; // No setup, return English only
         }
+        hasServerSetup = true;
         
         // Collect all unique languages from server setups and server-wide translation
         const allLanguages = new Set();
@@ -437,6 +450,7 @@ async function translateVoteMessage(serverId) {
         
         // Collect non-English languages for translation (filter out both 'en' code and 'english' full name)
         const targetLanguages = Array.from(allLanguages).filter(lang => lang !== 'en' && lang !== 'english');
+        languageCount = targetLanguages.length;
         
         // If no other languages configured, return original English only
         if (targetLanguages.length === 0) {
@@ -457,7 +471,7 @@ async function translateVoteMessage(serverId) {
         const formattedParts = [];
         
         // Add English first
-        formattedParts.push(`🇬🇧 **English:**\n${originalText}`);
+        formattedParts.push(`🇬🇧 **English (Default):**\n${originalText}`);
         
         // Add other languages
         for (const lang of targetLanguages) {
@@ -468,6 +482,10 @@ async function translateVoteMessage(serverId) {
                 formattedParts.push(`${langFlag} **${langName}:**\n${translation}`);
             }
         }
+
+        if (formattedParts.length === 1) {
+            return originalText;
+        }
         
         return formattedParts.join('\n\n');
     } catch (error) {
@@ -475,16 +493,16 @@ async function translateVoteMessage(serverId) {
             error: error?.message || error,
             stack: error?.stack,
             serverId,
-            hasServerSetup: !!serverSetup,
+            hasServerSetup,
             apiKeyPresent: !!process.env.MISTRAL_API_KEY,
-            languageCount: targetLanguages?.length || 0
+            languageCount
         });
         // Fallback to English on error
         return `Select where you want to vote to support Air Translator:
 
-    🔵 Vote on Top.gg
-    Get ${TOPGG_VOTE_BONUS_AMOUNT} free translations by clicking the button below.
-    You'll be redirected to the Top.gg bot page 🚀`;
+🔵 Vote on Top.gg
+Get ${TOPGG_VOTE_BONUS_AMOUNT} free translations by clicking the button below.
+You'll be redirected to the Top.gg bot page 🚀`;
     }
 }
 

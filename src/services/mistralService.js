@@ -187,6 +187,107 @@ const escapeRegExp = (string) => {
 };
 
 /**
+ * Extracts and safely parses a JSON object from model output.
+ * Handles common malformed cases such as raw newlines/tabs inside JSON strings.
+ */
+const parseModelJsonObject = (rawText, context = 'model-response') => {
+    if (!rawText || typeof rawText !== 'string') {
+        throw new Error(`Invalid ${context}: empty response`);
+    }
+
+    let candidate = rawText.trim();
+
+    // Remove markdown code fences if present
+    if (candidate.includes('```')) {
+        candidate = candidate
+            .replace(/```json\s*/gi, '')
+            .replace(/```\s*/g, '')
+            .trim();
+    }
+
+    // Keep only the first JSON object block
+    const jsonMatch = candidate.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+        candidate = jsonMatch[0];
+    }
+
+    const escapeControlsInJsonStrings = (input) => {
+        let out = '';
+        let inString = false;
+        let escaped = false;
+
+        for (let i = 0; i < input.length; i += 1) {
+            const ch = input[i];
+
+            if (!inString) {
+                out += ch;
+                if (ch === '"') {
+                    inString = true;
+                }
+                continue;
+            }
+
+            if (escaped) {
+                out += ch;
+                escaped = false;
+                continue;
+            }
+
+            if (ch === '\\') {
+                out += ch;
+                escaped = true;
+                continue;
+            }
+
+            if (ch === '"') {
+                out += ch;
+                inString = false;
+                continue;
+            }
+
+            // Escape raw control chars that break JSON.parse inside string values
+            if (ch === '\n') {
+                out += '\\n';
+                continue;
+            }
+            if (ch === '\r') {
+                out += '\\r';
+                continue;
+            }
+            if (ch === '\t') {
+                out += '\\t';
+                continue;
+            }
+
+            const code = ch.charCodeAt(0);
+            if (code < 0x20) {
+                out += `\\u${code.toString(16).padStart(4, '0')}`;
+                continue;
+            }
+
+            out += ch;
+        }
+
+        return out;
+    };
+
+    try {
+        return JSON.parse(candidate);
+    } catch (firstError) {
+        const escaped = escapeControlsInJsonStrings(candidate);
+        const withoutTrailingCommas = escaped.replace(/,\s*([}\]])/g, '$1');
+
+        try {
+            const parsed = JSON.parse(withoutTrailingCommas);
+            console.warn(`⚠️ [Translation] Recovered malformed JSON in ${context} via sanitizer.`);
+            return parsed;
+        } catch (_) {
+            throw firstError;
+        }
+    }
+};
+
+/**
  * Normalize elongated sequences to improve language detection and translation stability.
  * - Compresses alphabetic character runs of length >= 5 down to 3 (heyyyyy -> heyyy)
  * - Leaves numbers, emojis, URLs, mentions, hashtags, and special tokens unaffected (best-effort)
@@ -1265,21 +1366,10 @@ Return ONLY the JSON object. Nothing else.`;
             max_tokens: Math.min(4096, Math.max(500, Math.ceil(normalizedText.length * languagesToTranslate.length * 1.5)))
         }, 3, apiKey);
         
-        let resultText = response.data.choices[0].message.content.trim();
-        
-        // Clean markdown code blocks if present
-        if (resultText.includes('```')) {
-            resultText = resultText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        }
-        
-        // Remove any leading/trailing text before/after JSON
-        const jsonMatch = resultText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            resultText = jsonMatch[0];
-        }
-        
-        // Parse JSON response
-        const parsed = JSON.parse(resultText);
+        const resultText = response.data.choices[0].message.content.trim();
+
+        // Parse JSON response (with recovery for malformed control characters)
+        const parsed = parseModelJsonObject(resultText, 'batch-translation');
         
         // Get emoji constraints from source
         const sourceHasEmoji = hasEmoji(normalizedText);
@@ -1397,6 +1487,10 @@ Return ONLY the JSON object. Nothing else.`;
         
         // If all results still null/empty, try fallback model once
         const hasAny = Object.values(translations).some(v => typeof v === 'string' && v.length > 0);
+        if (hasAny) {
+            const okCount = Object.values(translations).filter(v => typeof v === 'string' && v.trim().length > 0).length;
+            console.log(`✅ [Translation] Fallback success: ${okCount}/${targetLanguages.length} languages translated individually.`);
+        }
         if (!hasAny) {
             const fallbackModel = 'mistral-small-latest';
             console.log(`⚠️ [Translation] Trying fallback model: ${fallbackModel}`);
@@ -1495,15 +1589,7 @@ CRITICAL RULES:
         // Try to parse JSON response
         try {
             // Clean the result string - remove markdown code blocks if present
-            let cleanResult = result.trim();
-            
-            if (cleanResult.startsWith('```json')) {
-                cleanResult = cleanResult.replace(/```json\n?/, '').replace(/\n?```$/, '');
-            } else if (cleanResult.startsWith('```')) {
-                cleanResult = cleanResult.replace(/```\n?/, '').replace(/\n?```$/, '');
-            }
-            
-            const parsedResult = JSON.parse(cleanResult);
+            const parsedResult = parseModelJsonObject(result, 'vision-translation');
             console.log('✅ Successfully parsed vision response:', parsedResult);
             
             // Validate the response structure
