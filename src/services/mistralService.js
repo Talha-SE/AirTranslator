@@ -1236,10 +1236,12 @@ const translateTextToMultipleLanguages = async (
     useToneUnderstanding = false,
     apiKey = MISTRAL_API_KEY,
     modelOverride = null,
-    translationContext = 'generic'
+    translationContext = 'generic',
+    options = {}
 ) => {
     const translations = {};
     const contextSuffix = translationContext ? ` [${translationContext}]` : '';
+    const forceEscapedLineBreaks = Boolean(options?.forceEscapedLineBreaks);
     
     // If only one language, use the regular single translation
     if (targetLanguages.length === 1) {
@@ -1333,7 +1335,15 @@ const translateTextToMultipleLanguages = async (
         const targetLanguageNames = languagesToTranslate.map(code => `${getLanguageName(code)} (${code})`).join(', ');
         
         // Preserve technical items (URLs, mentions, etc.)
-        const { processedText, nameMap } = markNamesForTransliteration(normalizedText);
+        // For sensitive multiline flows (vote/premium buttons), we can force explicit \n markers.
+        let sourceForModel = normalizedText;
+        if (forceEscapedLineBreaks) {
+            sourceForModel = sourceForModel
+                .replace(/\r\n/g, '\n')
+                .replace(/\r/g, '\n')
+                .replace(/\n/g, '\\n');
+        }
+        const { processedText, nameMap } = markNamesForTransliteration(sourceForModel);
         
         // Build comprehensive system prompt for batch translation
         let systemContent = `You are a professional native translator. Translate text accurately while preserving meaning and style.
@@ -1383,6 +1393,10 @@ FORMATTING & CONTENT RULES:
             systemContent += '\n\nCRITICAL: Keep placeholder text like "__PRESERVE_0_1__" EXACTLY as they appear in ALL translations.';
         } else {
             systemContent += '\n\nDo not create any placeholder text or markers.';
+        }
+
+        if (forceEscapedLineBreaks) {
+            systemContent += '\n\nLINE BREAK MODE (STRICT): The source text may contain literal "\\n" markers. Preserve line breaks using escaped "\\n" sequences in JSON strings. Never emit raw newline characters inside quoted JSON values.';
         }
         
         systemContent += `\n\nOUTPUT FORMAT EXAMPLE:
@@ -1452,6 +1466,15 @@ SOURCE_TEXT_END`
                 
                 // Restore preserved items
                 translation = restorePreservedItems(translation, nameMap);
+
+                // Normalize escaped control sequences for Discord rendering.
+                if (forceEscapedLineBreaks) {
+                    translation = translation
+                        .replace(/\\r\\n/g, '\n')
+                        .replace(/\\n/g, '\n')
+                        .replace(/\\r/g, '\n')
+                        .replace(/\\t/g, '\t');
+                }
                 
                 // Remove unwanted notes
                 translation = removeUnwantedNotes(translation);

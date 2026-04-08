@@ -367,7 +367,8 @@ async function translatePremiumMessage(serverId) {
             false,
             undefined,
             'mistral-medium-2508',
-            'premium-button'
+            'premium-button',
+            { forceEscapedLineBreaks: true }
         );
         
         // Format with language labels
@@ -466,7 +467,8 @@ You'll be redirected to the Top.gg bot page 🚀`;
             false,
             undefined,
             'mistral-medium-2508',
-            'vote-button'
+            'vote-button',
+            { forceEscapedLineBreaks: true }
         );
         
         // Format with language labels
