@@ -7,6 +7,7 @@ const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const FLAG_TRANSLATION_MODEL = 'mistral-large-latest';
 const monetizationService = require('../services/monetizationService');
 const analyticsService = require('../services/analyticsService');
+const { maybeSendUnlimitedUsageOffer } = require('../services/unlimitedUsageCampaignService');
 
 // Local vote tracking (mirrors messageCreate.js behavior) for flag-reaction path
 const VOTE_CREDIT_DELAY = 15 * 1000; // 15 seconds
@@ -788,7 +789,13 @@ async function messageReactionAdd(client, reaction, user) {
         }
 
         // Update usage count
-        await monetizationService.incrementTranslationCount(serverId);
+        const updatedServer = await monetizationService.incrementTranslationCount(serverId);
+
+        await maybeSendUnlimitedUsageOffer({
+            guild: message.guild,
+            preferredChannel: message.channel,
+            serverSnapshot: updatedServer
+        });
         
         // Track analytics
         analyticsService.recordTranslation(detectedLanguage, targetLanguage, message.channel.id, user.id);

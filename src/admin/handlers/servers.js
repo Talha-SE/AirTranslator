@@ -43,7 +43,7 @@ async function getServers(req, res) {
             id: guild.id,
             name: guild.name,
             memberCount: guild.memberCount,
-            joinedAt: guild.joinedAt.toISOString()
+            joinedAt: guild.joinedAt ? guild.joinedAt.toISOString() : null
         }));
         
         res.writeHead(200, { 'Content-Type': 'application/json' });

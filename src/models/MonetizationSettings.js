@@ -13,6 +13,10 @@ const monetizationSettingsSchema = new mongoose.Schema({
     enableGlobalRestriction: {
         type: Boolean,
         default: false
+    },
+    autoUnlimitedUsageCampaignEnabled: {
+        type: Boolean,
+        default: true
     }
 }, { timestamps: true });
 

@@ -574,6 +574,81 @@ const getServer = async (serverId) => {
 };
 
 /**
+ * Mark server as newly joined for auto campaign eligibility
+ * @param {String} serverId - Discord server ID
+ * @param {String} serverName - Discord server name
+ * @param {Date} joinedAt - Date when bot joined server
+ * @returns {Promise<Object>} - Updated server document
+ */
+const markServerAsNewlyJoined = async (serverId, serverName = 'Unknown Server', joinedAt = new Date()) => {
+    try {
+        const normalizedJoinedAt = new Date(joinedAt || new Date());
+        const safeJoinedAt = Number.isNaN(normalizedJoinedAt.getTime()) ? new Date() : normalizedJoinedAt;
+
+        const server = await Server.findOneAndUpdate(
+            { serverId },
+            {
+                $set: {
+                    serverName: serverName || 'Unknown Server',
+                    'campaigns.autoUnlimitedUsage.isEligible': true,
+                    'campaigns.autoUnlimitedUsage.joinedAt': safeJoinedAt,
+                    'campaigns.autoUnlimitedUsage.sentAt': null,
+                    'campaigns.autoUnlimitedUsage.sentAtTranslationCount': null
+                },
+                $setOnInsert: {
+                    serverUniqueId: uuidv4(),
+                    translationCount: 0,
+                    monetization: {
+                        freeTranslationLimit: 20,
+                        isRestricted: true,
+                        isExempt: false,
+                        lastReset: new Date(),
+                        customLimit: null
+                    }
+                }
+            },
+            { new: true, upsert: true }
+        );
+
+        return server;
+    } catch (error) {
+        console.error('Error marking server as newly joined:', error);
+        throw error;
+    }
+};
+
+/**
+ * Mark unlimited usage auto-offer as sent for a server
+ * @param {String} serverId - Discord server ID
+ * @param {Number} translationCount - Count at which message was sent
+ * @returns {Promise<Object>} - Updated server document
+ */
+const markUnlimitedUsageOfferSent = async (serverId, translationCount = null) => {
+    try {
+        const safeCount = Number.isFinite(Number(translationCount))
+            ? Number(translationCount)
+            : null;
+
+        const server = await Server.findOneAndUpdate(
+            { serverId },
+            {
+                $set: {
+                    'campaigns.autoUnlimitedUsage.isEligible': false,
+                    'campaigns.autoUnlimitedUsage.sentAt': new Date(),
+                    'campaigns.autoUnlimitedUsage.sentAtTranslationCount': safeCount
+                }
+            },
+            { new: true }
+        );
+
+        return server;
+    } catch (error) {
+        console.error('Error marking unlimited usage offer as sent:', error);
+        throw error;
+    }
+};
+
+/**
  * Increment translation count for a server
  * @param {String} serverId - The server ID
  * @returns {Promise<Object>} - The updated server
@@ -1083,6 +1158,8 @@ module.exports = {
     getMonetizationSettings,
     saveMonetizationSettings,
     getServer,
+    markServerAsNewlyJoined,
+    markUnlimitedUsageOfferSent,
     incrementTranslationCount,
     resetTranslationCount,
     updateServerTranslationCount,

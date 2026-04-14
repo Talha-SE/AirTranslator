@@ -18,14 +18,14 @@ function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
     notification.textContent = message;
-    
+
     const bgColors = {
         success: 'var(--success)',
         error: 'var(--danger)',
         warn: 'var(--warning)',
         info: 'var(--info)'
     };
-    
+
     notification.style.cssText = `
         position: fixed;
         bottom: 24px;
@@ -41,9 +41,9 @@ function showNotification(message, type = 'info') {
         animation: slideIn 0.3s ease-out;
         max-width: 400px;
     `;
-    
+
     document.body.appendChild(notification);
-    
+
     setTimeout(() => {
         notification.style.animation = 'slideOut 0.3s ease-out';
         setTimeout(() => {
@@ -54,82 +54,79 @@ function showNotification(message, type = 'info') {
     }, 3000);
 }
 
-// Add notification animations to styles
-const notificationStyles = document.createElement('style');
-notificationStyles.textContent = `
-    @keyframes slideIn {
-        from {
-            transform: translateX(400px);
-            opacity: 0;
+if (!document.getElementById('admin-notification-keyframes')) {
+    const notificationStyles = document.createElement('style');
+    notificationStyles.id = 'admin-notification-keyframes';
+    notificationStyles.textContent = `
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
-    }
-    
-    @keyframes slideOut {
-        from {
-            transform: translateX(0);
-            opacity: 1;
-        }
-        to {
-            transform: translateX(400px);
-            opacity: 0;
-        }
-    }
-`;
-document.head.appendChild(notificationStyles);
 
-// ===== Sidebar Management =====
-const sidebar = document.getElementById('sidebar');
-const sidebarToggle = document.getElementById('sidebarToggle');
-const mobileMenuToggle = document.getElementById('mobileMenuToggle');
-const mobileOverlay = document.getElementById('mobileOverlay');
-
-// Load saved sidebar state
-const savedSidebarState = localStorage.getItem('sidebarCollapsed') === 'true';
-if (savedSidebarState && window.innerWidth >= 768) {
-    sidebar?.classList.add('collapsed');
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+    `;
+    document.head.appendChild(notificationStyles);
 }
 
-sidebarToggle?.addEventListener('click', () => {
-    sidebar?.classList.toggle('collapsed');
-    const isCollapsed = sidebar?.classList.contains('collapsed');
-    localStorage.setItem('sidebarCollapsed', isCollapsed);
-});
-
-// Mobile menu toggle
-mobileMenuToggle?.addEventListener('click', () => {
-    sidebar?.classList.add('open');
-    mobileOverlay?.classList.add('active');
-});
-
-mobileOverlay?.addEventListener('click', () => {
-    sidebar?.classList.remove('open');
-    mobileOverlay?.classList.remove('active');
-});
-
-// ===== Character Counter =====
-const messageContent = document.getElementById('messageContent');
-const charCount = document.getElementById('charCount');
-
-messageContent?.addEventListener('input', () => {
-    const count = messageContent.value.length;
-    if (charCount) {
-        charCount.textContent = count;
-        charCount.parentElement.style.color = count > 1500 ? 'var(--danger)' : 'var(--text-secondary)';
-    }
-    updatePreview();
-});
-
 // ===== Message Template Functions =====
+const premiumBroadcastTemplate = {
+    title: '💎 Premium Access',
+    content: `✨ Unlock Full Access – Only $5/month ✨
+
+Follow these simple steps:
+1. Click the card button (💳) below or open the Patreon link: https://www.patreon.com/c/tsio/membership
+2. Subscribe to the membership plan you like.
+3. Come back to this Discord server and click the tick button (✅) to request approval.
+4. Type /premium to see your premium details.
+
+Your subscription is securely handled by Patreon.com, and we do not process your payment details directly.
+
+You will get a notification when your premium plan is enabled.`.trim(),
+    color: '#9b59b6'
+};
+
+const unlimitedUsageBroadcastTemplate = {
+    title: '🚀 Unlimited Usage Offer',
+    content: `🚀 **Unlock Unlimited Usage!**
+
+Get the most out of our service by purchasing a **subscription** and enjoy **unlimited usage every month**.
+
+🔒 **Secure payment via our official Patreon pricing page:**
+https://www.patreon.com/c/tsio/membership
+
+🎁 **Limited-Time Bonus:**
+Subscribe now and claim a **FREE 7-day trial** (limited-time offer):
+https://www.patreon.com/c/tsio/membership
+
+✨ **Note:** If you’ve already subscribed, you can start using the service immediately.`.trim(),
+    color: '#f59e0b'
+};
+
+let messagingServersCache = [];
+let messagingServersLastLoadedAt = 0;
+const selectedServerIds = new Set();
+
 function updateMessageTemplate() {
     const messageType = document.getElementById('messageType')?.value;
     const messageTitle = document.getElementById('messageTitle');
     const messageContent = document.getElementById('messageContent');
     const messageColor = document.getElementById('messageColor');
-    
+
     const templates = {
         announcement: {
             title: '📢 Important Announcement',
@@ -160,9 +157,11 @@ function updateMessageTemplate() {
             title: '🎉 Celebration',
             content: 'We are excited to celebrate this milestone with you...',
             color: '#f39c12'
-        }
+        },
+        premium: premiumBroadcastTemplate,
+        unlimitedUsage: unlimitedUsageBroadcastTemplate
     };
-    
+
     if (messageType !== 'custom' && templates[messageType]) {
         const template = templates[messageType];
         if (messageTitle) messageTitle.value = template.title;
@@ -172,22 +171,289 @@ function updateMessageTemplate() {
     }
 }
 
+function loadPremiumMessageTemplate() {
+    const messageType = document.getElementById('messageType');
+    const targetType = document.getElementById('targetType');
+    const includeFooter = document.getElementById('includeFooter');
+    const urgentMessage = document.getElementById('urgentMessage');
+    const sendAsText = document.getElementById('sendAsText');
+
+    if (messageType) messageType.value = 'premium';
+    if (targetType) targetType.value = 'all';
+    if (includeFooter) includeFooter.checked = true;
+    if (urgentMessage) urgentMessage.checked = false;
+    if (sendAsText) sendAsText.checked = false;
+
+    updateMessageTemplate();
+    updateTargetOptions();
+
+    const titleInput = document.getElementById('messageTitle');
+    if (titleInput) titleInput.focus();
+}
+
+function loadUnlimitedUsageMessageTemplate() {
+    const messageType = document.getElementById('messageType');
+    const targetType = document.getElementById('targetType');
+    const includeFooter = document.getElementById('includeFooter');
+    const urgentMessage = document.getElementById('urgentMessage');
+    const sendAsText = document.getElementById('sendAsText');
+
+    if (messageType) messageType.value = 'unlimitedUsage';
+    if (targetType) targetType.value = 'all';
+    if (includeFooter) includeFooter.checked = true;
+    if (urgentMessage) urgentMessage.checked = false;
+    if (sendAsText) sendAsText.checked = false;
+
+    updateMessageTemplate();
+    updateTargetOptions();
+
+    const titleInput = document.getElementById('messageTitle');
+    if (titleInput) titleInput.focus();
+}
+
+function clearMessageForm() {
+    const messageType = document.getElementById('messageType');
+    const messageTitle = document.getElementById('messageTitle');
+    const messageContent = document.getElementById('messageContent');
+    const messageColor = document.getElementById('messageColor');
+    const targetType = document.getElementById('targetType');
+    const includeFooter = document.getElementById('includeFooter');
+    const urgentMessage = document.getElementById('urgentMessage');
+    const sendAsText = document.getElementById('sendAsText');
+    const sendingProgress = document.getElementById('sendingProgress');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const currentServerStatus = document.getElementById('currentServerStatus');
+    const detailedLogBody = document.getElementById('detailedLogBody');
+    const successCount = document.getElementById('successCount');
+    const failCount = document.getElementById('failCount');
+
+    if (messageType) messageType.value = 'custom';
+    if (messageTitle) messageTitle.value = '';
+    if (messageContent) messageContent.value = '';
+    if (messageColor) messageColor.value = '#3498db';
+    if (targetType) targetType.value = 'all';
+    if (includeFooter) includeFooter.checked = true;
+    if (urgentMessage) urgentMessage.checked = false;
+    if (sendAsText) sendAsText.checked = false;
+
+    selectedServerIds.clear();
+    const selectedServerSearch = document.getElementById('selectedServerSearch');
+    const selectedMinMembers = document.getElementById('selectedMinMembers');
+    const selectedMaxMembers = document.getElementById('selectedMaxMembers');
+    const selectedJoinedAfter = document.getElementById('selectedJoinedAfter');
+    const selectedJoinedBefore = document.getElementById('selectedJoinedBefore');
+
+    if (selectedServerSearch) selectedServerSearch.value = '';
+    if (selectedMinMembers) selectedMinMembers.value = '';
+    if (selectedMaxMembers) selectedMaxMembers.value = '';
+    if (selectedJoinedAfter) selectedJoinedAfter.value = '';
+    if (selectedJoinedBefore) selectedJoinedBefore.value = '';
+
+    if (sendingProgress) sendingProgress.style.display = 'none';
+    if (progressFill) progressFill.style.width = '0%';
+    if (progressText) progressText.textContent = 'Preparing to send...';
+    if (currentServerStatus) currentServerStatus.textContent = '';
+    if (detailedLogBody) detailedLogBody.innerHTML = '';
+    if (successCount) successCount.textContent = '0';
+    if (failCount) failCount.textContent = '0';
+
+    updateTargetOptions();
+    updatePreview();
+}
+
+async function sendPremiumMessage() {
+    loadPremiumMessageTemplate();
+
+    const shouldSend = confirm('Send the premium campaign message now?');
+    if (!shouldSend) return;
+
+    await sendMessage();
+}
+
+async function sendUnlimitedUsageMessage() {
+    loadUnlimitedUsageMessageTemplate();
+
+    const shouldSend = confirm('Send the unlimited usage offer now?');
+    if (!shouldSend) return;
+
+    await sendMessage();
+}
+
 // ===== Target Options =====
 function updateTargetOptions() {
     const targetType = document.getElementById('targetType')?.value;
     const serverSelectGroup = document.getElementById('serverSelectGroup');
-    
+    const selectedServersGroup = document.getElementById('selectedServersGroup');
+
     if (targetType === 'specific') {
         if (serverSelectGroup) serverSelectGroup.style.display = 'block';
+        if (selectedServersGroup) selectedServersGroup.style.display = 'none';
+        loadServersList();
+    } else if (targetType === 'selected') {
+        if (serverSelectGroup) serverSelectGroup.style.display = 'none';
+        if (selectedServersGroup) selectedServersGroup.style.display = 'block';
         loadServersList();
     } else {
         if (serverSelectGroup) serverSelectGroup.style.display = 'none';
+        if (selectedServersGroup) selectedServersGroup.style.display = 'none';
     }
 }
 
-async function loadServersList() {
+function escapeHtml(value) {
+    return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function parseDateInput(value, endOfDay = false) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    if (endOfDay) {
+        date.setHours(23, 59, 59, 999);
+    } else {
+        date.setHours(0, 0, 0, 0);
+    }
+    return date;
+}
+
+function formatJoinedAt(joinedAt) {
+    if (!joinedAt) return 'unknown join date';
+    const date = new Date(joinedAt);
+    if (Number.isNaN(date.getTime())) return 'unknown join date';
+    return date.toLocaleDateString();
+}
+
+function getSelectedServerFilters() {
+    const search = (document.getElementById('selectedServerSearch')?.value || '').trim().toLowerCase();
+    const minMembers = Number(document.getElementById('selectedMinMembers')?.value || 0) || 0;
+    const maxRaw = document.getElementById('selectedMaxMembers')?.value;
+    const maxMembers = maxRaw === '' || maxRaw === null || maxRaw === undefined
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0, Number(maxRaw) || 0);
+    const joinedAfter = parseDateInput(document.getElementById('selectedJoinedAfter')?.value, false);
+    const joinedBefore = parseDateInput(document.getElementById('selectedJoinedBefore')?.value, true);
+
+    return {
+        search,
+        minMembers,
+        maxMembers,
+        joinedAfter,
+        joinedBefore
+    };
+}
+
+function filterServersForSelection(servers) {
+    const filters = getSelectedServerFilters();
+
+    return servers.filter((server) => {
+        const name = String(server.name || '').toLowerCase();
+        const memberCount = Number(server.memberCount || 0);
+        const joinedDate = server.joinedAt ? new Date(server.joinedAt) : null;
+
+        if (filters.search && !name.includes(filters.search)) {
+            return false;
+        }
+
+        if (memberCount < filters.minMembers || memberCount > filters.maxMembers) {
+            return false;
+        }
+
+        if (filters.joinedAfter) {
+            if (!joinedDate || Number.isNaN(joinedDate.getTime()) || joinedDate < filters.joinedAfter) {
+                return false;
+            }
+        }
+
+        if (filters.joinedBefore) {
+            if (!joinedDate || Number.isNaN(joinedDate.getTime()) || joinedDate > filters.joinedBefore) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+}
+
+function toggleSelectedServerSelection(serverId, checked) {
+    const normalizedId = String(serverId || '');
+    if (!normalizedId) return;
+
+    if (checked) {
+        selectedServerIds.add(normalizedId);
+    } else {
+        selectedServerIds.delete(normalizedId);
+    }
+
+    renderSelectedServersList();
+}
+
+function selectAllFilteredServers() {
+    const filtered = filterServersForSelection(messagingServersCache);
+    filtered.forEach((server) => selectedServerIds.add(String(server.id)));
+    renderSelectedServersList();
+}
+
+function clearSelectedServers() {
+    selectedServerIds.clear();
+    renderSelectedServersList();
+}
+
+function renderSelectedServersList() {
+    const selectedServersList = document.getElementById('selectedServersList');
+    const selectedServersMeta = document.getElementById('selectedServersMeta');
+
+    if (!selectedServersList || !selectedServersMeta) return;
+
+    if (!Array.isArray(messagingServersCache) || messagingServersCache.length === 0) {
+        selectedServersMeta.textContent = 'No servers available';
+        selectedServersList.innerHTML = '<div class="selected-servers-empty">No servers found.</div>';
+        return;
+    }
+
+    const filteredServers = filterServersForSelection(messagingServersCache);
+
+    selectedServersMeta.textContent = `${selectedServerIds.size} selected • ${filteredServers.length} visible of ${messagingServersCache.length}`;
+
+    if (filteredServers.length === 0) {
+        selectedServersList.innerHTML = '<div class="selected-servers-empty">No servers match the active filters.</div>';
+        return;
+    }
+
+    selectedServersList.innerHTML = filteredServers
+        .map((server) => {
+            const id = String(server.id || '');
+            const checked = selectedServerIds.has(id) ? 'checked' : '';
+            return `
+                <label class="selected-server-item">
+                    <input type="checkbox" ${checked} onchange="toggleSelectedServerSelection('${id}', this.checked)" />
+                    <div class="selected-server-content">
+                        <div class="selected-server-name">${escapeHtml(server.name)}</div>
+                        <div class="selected-server-subtext">${Number(server.memberCount || 0).toLocaleString()} members • Joined ${formatJoinedAt(server.joinedAt)}</div>
+                    </div>
+                </label>
+            `;
+        })
+        .join('');
+}
+
+async function loadServersList({ force = false } = {}) {
     const targetServer = document.getElementById('targetServer');
-    if (!targetServer) return;
+    const now = Date.now();
+
+    if (!force && Array.isArray(messagingServersCache) && messagingServersCache.length > 0 && (now - messagingServersLastLoadedAt) < 45000) {
+        if (targetServer) {
+            targetServer.innerHTML = messagingServersCache.map((server) =>
+                `<option value="${server.id}">${escapeHtml(server.name)} (${Number(server.memberCount || 0).toLocaleString()} members)</option>`
+            ).join('');
+        }
+        renderSelectedServersList();
+        return messagingServersCache;
+    }
     
     try {
         const response = await fetch('/admin/servers', {
@@ -196,14 +462,33 @@ async function loadServersList() {
         
         if (response.ok) {
             const servers = await response.json();
-            targetServer.innerHTML = servers.map(server => 
-                `<option value="${server.id}">${server.name} (${server.memberCount} members)</option>`
-            ).join('');
+            messagingServersCache = (Array.isArray(servers) ? servers : [])
+                .map((server) => ({
+                    ...server,
+                    memberCount: Number(server.memberCount || 0)
+                }))
+                .sort((a, b) => a.name.localeCompare(b.name));
+            messagingServersLastLoadedAt = now;
+
+            if (targetServer) {
+                targetServer.innerHTML = messagingServersCache.map((server) =>
+                    `<option value="${server.id}">${escapeHtml(server.name)} (${Number(server.memberCount || 0).toLocaleString()} members)</option>`
+                ).join('');
+            }
+
+            renderSelectedServersList();
+            return messagingServersCache;
         }
     } catch (error) {
         console.error('Error loading servers:', error);
-        targetServer.innerHTML = '<option value="">Failed to load servers</option>';
+        if (targetServer) targetServer.innerHTML = '<option value="">Failed to load servers</option>';
+        const selectedServersList = document.getElementById('selectedServersList');
+        if (selectedServersList) {
+            selectedServersList.innerHTML = '<div class="selected-servers-empty">Failed to load servers.</div>';
+        }
     }
+
+    return [];
 }
 
 // ===== Schedule Options =====
@@ -252,6 +537,7 @@ async function sendMessage() {
     const messageData = {
         target: document.getElementById('targetType')?.value || 'all',
         serverId: document.getElementById('targetServer')?.value,
+        selectedServerIds: Array.from(selectedServerIds),
         title: document.getElementById('messageTitle')?.value,
         content: document.getElementById('messageContent')?.value,
         color: document.getElementById('messageColor')?.value,
@@ -262,6 +548,16 @@ async function sendMessage() {
     
     if (!messageData.content) {
         alert('Please enter message content');
+        return;
+    }
+
+    if (messageData.target === 'specific' && !messageData.serverId) {
+        alert('Please select a server for Specific Server targeting.');
+        return;
+    }
+
+    if (messageData.target === 'selected' && messageData.selectedServerIds.length === 0) {
+        alert('Select at least one server in Selected Servers mode.');
         return;
     }
     
@@ -372,6 +668,7 @@ async function scheduleMessage() {
     const messageData = {
         target: document.getElementById('targetType')?.value || 'all',
         serverId: document.getElementById('targetServer')?.value,
+        selectedServerIds: Array.from(selectedServerIds),
         title: document.getElementById('messageTitle')?.value,
         content: document.getElementById('messageContent')?.value,
         color: document.getElementById('messageColor')?.value,
@@ -386,6 +683,16 @@ async function scheduleMessage() {
     
     if (!messageData.content) {
         alert('Please enter message content');
+        return;
+    }
+
+    if (messageData.target === 'specific' && !messageData.serverId) {
+        alert('Please select a server for Specific Server targeting.');
+        return;
+    }
+
+    if (messageData.target === 'selected' && messageData.selectedServerIds.length === 0) {
+        alert('Select at least one server in Selected Servers mode.');
         return;
     }
     
@@ -409,6 +716,102 @@ async function scheduleMessage() {
     } catch (error) {
         console.error('Error scheduling message:', error);
         alert('❌ Error scheduling message');
+    }
+}
+
+function notify(message, type = 'info') {
+    if (typeof showNotification === 'function') {
+        showNotification(message, type);
+        return;
+    }
+    console.log(`[${type}] ${message}`);
+}
+
+function updateAutoCampaignStatus(enabled, triggerCount = 5) {
+    const statusEl = document.getElementById('autoCampaignStatus');
+    const triggerEl = document.getElementById('autoCampaignTriggerCount');
+    if (triggerEl) triggerEl.textContent = String(triggerCount || 5);
+    if (statusEl) {
+        statusEl.textContent = enabled
+            ? `Enabled: newly joined servers get the offer after ${triggerCount} translated messages.`
+            : `Disabled: no auto offer will be sent to newly joined servers.`;
+    }
+}
+
+async function loadAutoCampaignSettings() {
+    const toggle = document.getElementById('autoUnlimitedCampaignEnabled');
+    if (!toggle) return;
+
+    try {
+        const response = await fetch('/admin/messaging/campaign-settings', {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error(`Request failed with ${response.status}`);
+        }
+
+        const data = await response.json();
+        const enabled = Boolean(data.autoUnlimitedUsageCampaignEnabled);
+        const triggerCount = Number(data.triggerCount || 5);
+
+        toggle.checked = enabled;
+        updateAutoCampaignStatus(enabled, triggerCount);
+    } catch (error) {
+        console.error('Error loading campaign settings:', error);
+        updateAutoCampaignStatus(false, 5);
+    }
+}
+
+async function toggleAutoUnlimitedCampaign(enabled) {
+    const toggle = document.getElementById('autoUnlimitedCampaignEnabled');
+    const previous = !enabled;
+
+    try {
+        const response = await fetch('/admin/messaging/campaign-settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({ autoUnlimitedUsageCampaignEnabled: enabled })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Request failed with ${response.status}`);
+        }
+
+        const data = await response.json();
+        const actualEnabled = Boolean(data.autoUnlimitedUsageCampaignEnabled);
+        const triggerCount = Number(data.triggerCount || 5);
+
+        if (toggle) toggle.checked = actualEnabled;
+        updateAutoCampaignStatus(actualEnabled, triggerCount);
+        notify(actualEnabled ? 'Auto campaign enabled' : 'Auto campaign disabled', 'success');
+    } catch (error) {
+        console.error('Error updating campaign settings:', error);
+        if (toggle) toggle.checked = previous;
+        updateAutoCampaignStatus(previous, 5);
+        notify('Failed to update auto campaign setting', 'error');
+    }
+}
+
+async function initializeMessagingTab() {
+    await loadServersList({ force: true });
+    updateTargetOptions();
+    await loadAutoCampaignSettings();
+    updatePreview();
+
+    const messageContent = document.getElementById('messageContent');
+    const charCount = document.getElementById('charCount');
+
+    if (messageContent && charCount && !messageContent.dataset.charCountBound) {
+        const updateCounter = () => {
+            charCount.textContent = String((messageContent.value || '').length);
+        };
+        messageContent.addEventListener('input', updateCounter);
+        messageContent.dataset.charCountBound = 'true';
+        updateCounter();
     }
 }
 
@@ -534,6 +937,14 @@ document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
     }
 });
+
+if (activeTab === 'messaging') {
+    setTimeout(() => {
+        initializeMessagingTab().catch((error) => {
+            console.error('Error initializing messaging tab:', error);
+        });
+    }, 50);
+}
 
 function getLanguageMeta(code) {
     const languageMap = {

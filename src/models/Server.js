@@ -118,6 +118,26 @@ const serverSchema = new mongoose.Schema({
             default: null // null means use global default
         }
     },
+    campaigns: {
+        autoUnlimitedUsage: {
+            isEligible: {
+                type: Boolean,
+                default: false
+            },
+            joinedAt: {
+                type: Date,
+                default: null
+            },
+            sentAt: {
+                type: Date,
+                default: null
+            },
+            sentAtTranslationCount: {
+                type: Number,
+                default: null
+            }
+        }
+    },
     setups: [setupSchema]
 }, { timestamps: true });
 

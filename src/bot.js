@@ -7,6 +7,7 @@ const analyticsService = require('./services/analyticsService');
 const monetizationService = require('./services/monetizationService');
 const translationQueueService = require('./services/translationQueueService');
 const voteCheckService = require('./services/voteCheckService');
+const { markServerAsNewlyJoined } = require('./services/unlimitedUsageCampaignService');
 const { translateTextToMultipleLanguages, detectLanguage } = require('./services/mistralService');
 const { AutoPoster } = require('topgg-autoposter');
 require('dotenv').config();
@@ -672,6 +673,16 @@ setInterval(async () => {
 
 client.on('guildCreate', async (guild) => {
     logger.success(`Joined new server: ${guild.name}`);
+
+    try {
+        await markServerAsNewlyJoined(guild);
+    } catch (error) {
+        logger.warn('Failed to mark server as newly joined for auto campaign', {
+            guildId: guild.id,
+            guildName: guild.name,
+            error: error?.message || error
+        });
+    }
     
     try {
         const botMember = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null);

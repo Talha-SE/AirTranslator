@@ -6,6 +6,7 @@ const fastq = require('fastq');
 const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const analyticsService = require('../services/analyticsService');
 const translationQueueService = require('../services/translationQueueService');
+const { maybeSendUnlimitedUsageOffer } = require('../services/unlimitedUsageCampaignService');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const Server = require('../models/Server');
 
@@ -984,7 +985,14 @@ async function translateAndReply(message, languages, options = {}) {
             }
             
             // Increment translation count after successful translation
-            await monetizationService.incrementTranslationCount(message.guild.id);
+            const updatedServer = await monetizationService.incrementTranslationCount(message.guild.id);
+
+            await maybeSendUnlimitedUsageOffer({
+                guild: message.guild,
+                preferredChannel: message.channel,
+                serverSnapshot: updatedServer
+            });
+
             console.log(`✅ Translation count incremented for server: "${message.guild.name}" (${message.guild.id})`);
         }
     } catch (error) {

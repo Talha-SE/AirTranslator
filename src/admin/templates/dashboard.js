@@ -279,6 +279,8 @@ function generateMessagingTab() {
                                 <option value="feature">✨ New Feature</option>
                                 <option value="warning">⚠️ Important</option>
                                 <option value="celebration">🎉 Celebration</option>
+                                <option value="premium">💎 Premium Campaign</option>
+                                <option value="unlimitedUsage">🚀 Unlimited Usage Offer</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -310,6 +312,7 @@ function generateMessagingTab() {
                             <select class="form-control" id="targetType" onchange="updateTargetOptions()">
                                 <option value="all">All Servers (Broadcast)</option>
                                 <option value="specific">Specific Server</option>
+                                <option value="selected">Selected Servers</option>
                                 <option value="large">Large Servers Only (1000+ members)</option>
                                 <option value="active">Active Servers Only</option>
                             </select>
@@ -317,6 +320,33 @@ function generateMessagingTab() {
                         <div class="form-group" id="serverSelectGroup" style="display:none;">
                             <label class="form-label">Select Server</label>
                             <select class="form-control" id="targetServer"></select>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="selectedServersGroup" style="display:none;">
+                        <label class="form-label">Select Multiple Servers</label>
+                        <div class="selected-servers-panel">
+                            <div class="selected-servers-toolbar">
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="selectedServerSearch"
+                                    placeholder="Search servers by name..."
+                                    oninput="renderSelectedServersList()"
+                                />
+                                <div class="selected-servers-actions">
+                                    <button type="button" class="btn btn-outline btn-sm" onclick="selectAllFilteredServers()">Select Visible</button>
+                                    <button type="button" class="btn btn-outline btn-sm" onclick="clearSelectedServers()">Clear</button>
+                                </div>
+                            </div>
+                            <div class="selected-servers-filters">
+                                <input type="number" class="form-control" id="selectedMinMembers" placeholder="Min members" min="0" oninput="renderSelectedServersList()" />
+                                <input type="number" class="form-control" id="selectedMaxMembers" placeholder="Max members" min="0" oninput="renderSelectedServersList()" />
+                                <input type="date" class="form-control" id="selectedJoinedAfter" onchange="renderSelectedServersList()" />
+                                <input type="date" class="form-control" id="selectedJoinedBefore" onchange="renderSelectedServersList()" />
+                            </div>
+                            <div class="selected-servers-meta" id="selectedServersMeta">0 selected</div>
+                            <div class="selected-servers-list" id="selectedServersList"></div>
                         </div>
                     </div>
                     
@@ -364,6 +394,101 @@ function generateMessagingTab() {
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
                                 Send Test
                             </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="content-card" style="border: 1px solid rgba(139, 92, 246, 0.2); box-shadow: 0 18px 40px rgba(99, 102, 241, 0.08);">
+                    <div class="card-header" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(245, 158, 11, 0.08));">
+                        <div class="card-title-group">
+                            <h3 class="card-title">💎 Premium Message</h3>
+                            <p class="card-subtitle">Ready-made copy for premium onboarding and upgrades</p>
+                        </div>
+                        <span class="badge badge-warning">Campaign Ready</span>
+                    </div>
+                    <div class="card-body">
+                        <div style="padding: 16px; border-radius: 14px; border: 1px solid var(--border-color); background: linear-gradient(180deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.04));">
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                                <span class="badge badge-info">Patreon ready</span>
+                                <span class="badge badge-success">Embed friendly</span>
+                                <span class="badge badge-warning">One-click preset</span>
+                            </div>
+                            <div style="white-space: pre-line; max-height: 240px; overflow-y: auto; font-size: 13px; line-height: 1.7; color: var(--text-secondary);">✨ Unlock Full Access – Only $5/month ✨
+
+Follow these simple steps:
+1. Click the card button (💳) below or open the Patreon link: https://www.patreon.com/c/tsio/membership
+2. Subscribe to the membership plan you like.
+3. Come back to this Discord server and click the tick button (✅) to request approval.
+4. Type /premium to see your premium details.
+
+Your subscription is securely handled by Patreon.com, and we do not process your payment details directly.
+
+You will get a notification when your premium plan is enabled.</div>
+                        </div>
+                        <div class="button-group" style="margin-top: 16px;">
+                            <button type="button" class="btn btn-outline btn-sm" style="flex: 1;" onclick="loadPremiumMessageTemplate()">
+                                Load Copy
+                            </button>
+                            <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="sendPremiumMessage()">
+                                Send Premium
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="content-card" style="border: 1px solid rgba(245, 158, 11, 0.24); box-shadow: 0 18px 40px rgba(245, 158, 11, 0.10);">
+                    <div class="card-header" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(16, 185, 129, 0.08));">
+                        <div class="card-title-group">
+                            <h3 class="card-title">🚀 Unlimited Usage Offer</h3>
+                            <p class="card-subtitle">A direct subscription pitch with trial bonus copy</p>
+                        </div>
+                        <span class="badge badge-info">New Campaign</span>
+                    </div>
+                    <div class="card-body">
+                        <div style="padding: 16px; border-radius: 14px; border: 1px solid var(--border-color); background: linear-gradient(180deg, rgba(245, 158, 11, 0.08), rgba(16, 185, 129, 0.04));">
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                                <span class="badge badge-warning">Subscription push</span>
+                                <span class="badge badge-success">Free trial bonus</span>
+                                <span class="badge badge-info">Patreon link</span>
+                            </div>
+                            <div style="white-space: pre-line; max-height: 260px; overflow-y: auto; font-size: 13px; line-height: 1.7; color: var(--text-secondary);">🚀 **Unlock Unlimited Usage!**
+
+Get the most out of our service by purchasing a **subscription** and enjoy **unlimited usage every month**.
+
+🔒 **Secure payment via our official Patreon pricing page:**
+https://www.patreon.com/c/tsio/membership
+
+🎁 **Limited-Time Bonus:**
+Subscribe now and claim a **FREE 7-day trial** (limited-time offer):
+https://www.patreon.com/c/tsio/membership
+
+✨ **Note:** If you’ve already subscribed, you can start using the service immediately.</div>
+                        </div>
+                        <div class="button-group" style="margin-top: 16px;">
+                            <button type="button" class="btn btn-outline btn-sm" style="flex: 1;" onclick="loadUnlimitedUsageMessageTemplate()">
+                                Load Copy
+                            </button>
+                            <button type="button" class="btn btn-primary btn-sm" style="flex: 1;" onclick="sendUnlimitedUsageMessage()">
+                                Send Offer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="content-card auto-campaign-card">
+                    <div class="card-header">
+                        <div class="card-title-group">
+                            <h3 class="card-title">🤖 Auto Campaign</h3>
+                            <p class="card-subtitle">Send unlimited usage offer to newly joined servers after first <span id="autoCampaignTriggerCount">5</span> translated messages.</p>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <label class="toggle-label" style="justify-content: space-between; width: 100%;">
+                            <span style="font-weight: 600; color: var(--text-primary);">Enable Auto Offer</span>
+                            <input type="checkbox" id="autoUnlimitedCampaignEnabled" onchange="toggleAutoUnlimitedCampaign(this.checked)" />
+                        </label>
+                        <div class="form-hint" id="autoCampaignStatus" style="justify-content: flex-start; margin-top: 12px;">
+                            Loading campaign status...
                         </div>
                     </div>
                 </div>

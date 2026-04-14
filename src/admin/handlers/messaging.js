@@ -1,5 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const nodeCron = require('node-cron');
+const monetizationService = require('../../services/monetizationService');
+const { CAMPAIGN_TRIGGER_COUNT } = require('../../services/unlimitedUsageCampaignService');
 
 // Scheduled messages storage
 const scheduledMessages = new Map(); // job metadata only (JSON-safe)
@@ -71,7 +73,17 @@ async function sendServerMessage(messageData, onProgress) {
         return { success: false, message: 'Bot not ready' };
     }
     
-    const { target, serverId, title, content, color, includeFooter, urgentMessage, sendAsText } = messageData;
+    const {
+        target,
+        serverId,
+        selectedServerIds,
+        title,
+        content,
+        color,
+        includeFooter,
+        urgentMessage,
+        sendAsText
+    } = messageData;
     
     if (!content) {
         return { success: false, message: 'Message content is required' };
@@ -117,6 +129,14 @@ async function sendServerMessage(messageData, onProgress) {
         if (guild) {
             targetGuilds = [guild];
         }
+    } else if (target === 'selected') {
+        const serverIds = Array.isArray(selectedServerIds)
+            ? [...new Set(selectedServerIds.map((id) => String(id || '').trim()).filter(Boolean))]
+            : [];
+
+        targetGuilds = serverIds
+            .map((id) => client.guilds.cache.get(id))
+            .filter(Boolean);
     } else if (target === 'large') {
         targetGuilds = Array.from(client.guilds.cache.values()).filter(g => g.memberCount >= 1000);
     } else if (target === 'active') {
@@ -246,7 +266,21 @@ async function handleSendMessage(req, res) {
  * Schedules a message to be sent at specific times
  */
 function scheduleMessage(messageConfig) {
-    const { schedule, time, timezone, customSchedule, target, content, title, color, includeFooter, urgentMessage, sendAsText } = messageConfig;
+    const {
+        schedule,
+        time,
+        timezone,
+        customSchedule,
+        target,
+        serverId,
+        selectedServerIds,
+        content,
+        title,
+        color,
+        includeFooter,
+        urgentMessage,
+        sendAsText
+    } = messageConfig;
     
     let cronSchedule = customSchedule;
     
@@ -264,7 +298,17 @@ function scheduleMessage(messageConfig) {
     const jobId = `sched_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     const job = nodeCron.schedule(cronSchedule, async () => {
-        await sendServerMessage({ target, content, title, color, includeFooter, urgentMessage, sendAsText });
+        await sendServerMessage({
+            target,
+            serverId,
+            selectedServerIds,
+            content,
+            title,
+            color,
+            includeFooter,
+            urgentMessage,
+            sendAsText
+        });
     }, {
         timezone: timezone || 'UTC'
     });
@@ -450,10 +494,63 @@ async function handleAutoSetup(req, res) {
     }
 }
 
+/**
+ * Get auto campaign settings for messaging tab
+ */
+async function getCampaignSettings(req, res) {
+    try {
+        await monetizationService.ensureSettingsLoaded();
+        const settings = monetizationService.getSettings();
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            success: true,
+            autoUnlimitedUsageCampaignEnabled: Boolean(settings.autoUnlimitedUsageCampaignEnabled),
+            triggerCount: CAMPAIGN_TRIGGER_COUNT
+        }));
+    } catch (error) {
+        console.error('Error getting campaign settings:', error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Server error' }));
+    }
+}
+
+/**
+ * Update auto campaign settings for messaging tab
+ */
+async function updateCampaignSettings(req, res) {
+    try {
+        const postData = await parsePostData(req);
+        const payload = typeof postData === 'string' ? JSON.parse(postData) : postData;
+
+        const rawEnabled = payload?.autoUnlimitedUsageCampaignEnabled;
+        const enabled = typeof rawEnabled === 'string'
+            ? rawEnabled.toLowerCase() === 'true'
+            : Boolean(rawEnabled);
+
+        await monetizationService.updateGlobalSettings({
+            autoUnlimitedUsageCampaignEnabled: enabled
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            success: true,
+            autoUnlimitedUsageCampaignEnabled: enabled,
+            triggerCount: CAMPAIGN_TRIGGER_COUNT
+        }));
+    } catch (error) {
+        console.error('Error updating campaign settings:', error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Server error' }));
+    }
+}
+
 module.exports = {
     handleSendMessage,
     handleScheduleMessage,
     getScheduledMessages,
     handleCancelScheduled,
-    handleAutoSetup
+    handleAutoSetup,
+    getCampaignSettings,
+    updateCampaignSettings
 };

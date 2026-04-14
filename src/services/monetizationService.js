@@ -4,7 +4,8 @@ class MonetizationService {
     constructor() {
         this.globalSettings = {
             defaultFreeTranslationLimit: 50,
-            enableGlobalRestriction: false
+            enableGlobalRestriction: false,
+            autoUnlimitedUsageCampaignEnabled: true
         };
         this.settingsLoaded = false;
         // Vote tracking will now use database instead of in-memory storage
@@ -202,9 +203,10 @@ class MonetizationService {
      */
     async incrementTranslationCount(serverId) {
         try {
-            await databaseService.incrementTranslationCount(serverId);
+            return await databaseService.incrementTranslationCount(serverId);
         } catch (error) {
             console.error('Error incrementing translation count:', error);
+            return null;
         }
     }
 

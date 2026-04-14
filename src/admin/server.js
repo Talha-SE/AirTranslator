@@ -401,6 +401,16 @@ const server = http.createServer(async (req, res) => {
             await messagingHandler.handleAutoSetup(req, res);
             return;
         }
+
+        if (pathname === '/admin/messaging/campaign-settings' && req.method === 'GET') {
+            await messagingHandler.getCampaignSettings(req, res);
+            return;
+        }
+
+        if (pathname === '/admin/messaging/campaign-settings' && req.method === 'POST') {
+            await messagingHandler.updateCampaignSettings(req, res);
+            return;
+        }
         
         // Monetization endpoints
         if (pathname === '/admin/monetization/settings' && req.method === 'POST') {
