@@ -5,6 +5,7 @@ const VoteCooldown = require('../models/VoteCooldown');
 const VoteEvent = require('../models/VoteEvent');
 const PersonalTranslation = require('../models/PersonalTranslation');
 const PremiumRequest = require('../models/PremiumRequest');
+const Feedback = require('../models/Feedback');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
@@ -62,6 +63,14 @@ const connectDB = async () => {
             console.log('VoteEvent indexes synced (24h TTL active)');
         } catch (syncErr) {
             console.warn('VoteEvent index sync warning:', syncErr.message || syncErr);
+        }
+
+        // Sync Feedback indexes
+        try {
+            await require('../models/Feedback').syncIndexes();
+            console.log('Feedback indexes synced');
+        } catch (syncErr) {
+            console.warn('Feedback index sync warning:', syncErr.message || syncErr);
         }
     } catch (error) {
         console.error('MongoDB connection error:', error);
@@ -555,6 +564,154 @@ const saveMonetizationSettings = async (settings) => {
     } catch (error) {
         console.error('Error saving monetization settings:', error);
         throw error;
+    }
+};
+
+/**
+ * Get feedback settings
+ * @returns {Promise<Object>} - Feedback settings
+ */
+const getFeedbackSettings = async () => {
+    try {
+        const settings = await MonetizationSettings.findOne({ settingsId: 'global' }).lean();
+        return {
+            feedbackCollectionEnabled: settings?.feedbackCollectionEnabled !== false
+        };
+    } catch (error) {
+        console.error('Error getting feedback settings:', error);
+        return { feedbackCollectionEnabled: true };
+    }
+};
+
+/**
+ * Update feedback collection toggle
+ * @param {boolean} enabled
+ * @returns {Promise<Object>} updated settings
+ */
+const setFeedbackCollectionEnabled = async (enabled) => {
+    try {
+        const doc = await MonetizationSettings.findOneAndUpdate(
+            { settingsId: 'global' },
+            { $set: { feedbackCollectionEnabled: !!enabled } },
+            { new: true, upsert: true }
+        ).lean();
+
+        return {
+            feedbackCollectionEnabled: doc?.feedbackCollectionEnabled !== false
+        };
+    } catch (error) {
+        console.error('Error updating feedback settings:', error);
+        throw error;
+    }
+};
+
+/**
+ * Check if a user has already submitted dashboard feedback
+ * @param {string} userId
+ * @returns {Promise<boolean>}
+ */
+const hasSubmittedFeedback = async (userId) => {
+    try {
+        if (!userId) return false;
+        const exists = await Feedback.exists({ userId: String(userId) });
+        return !!exists;
+    } catch (error) {
+        console.error('Error checking feedback status:', error);
+        return false;
+    }
+};
+
+/**
+ * Save dashboard feedback (one per user)
+ * @param {Object} payload
+ * @returns {Promise<Object>}
+ */
+const createUserFeedback = async (payload) => {
+    try {
+        const userId = String(payload?.userId || '');
+        if (!userId) {
+            throw new Error('userId is required');
+        }
+
+        const existing = await Feedback.findOne({ userId }).lean();
+        if (existing) {
+            const error = new Error('FEEDBACK_ALREADY_SUBMITTED');
+            error.code = 'FEEDBACK_ALREADY_SUBMITTED';
+            throw error;
+        }
+
+        const doc = await Feedback.create({
+            userId,
+            username: payload.username || null,
+            globalName: payload.globalName || null,
+            avatar: payload.avatar || null,
+            answers: payload.answers,
+            meta: {
+                locale: payload.meta?.locale || null,
+                userAgent: payload.meta?.userAgent || null
+            }
+        });
+
+        return doc.toObject();
+    } catch (error) {
+        throw error;
+    }
+};
+
+/**
+ * Get feedback entries for admin dashboard
+ * @param {number} limit
+ * @returns {Promise<Array>}
+ */
+const getRecentFeedback = async (limit = 200) => {
+    try {
+        const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 200));
+        return await Feedback.find({
+            'answers.dashboardExperience': { $in: ['love_it', 'okay', 'needs_work'] },
+            'answers.planType': { $in: ['free', 'paid', 'trial'] },
+            'answers.usageReason': { $in: ['community', 'gaming', 'business', 'friends', 'other'] },
+            'answers.recommendScore': { $in: ['yes', 'maybe', 'no'] }
+        })
+            .sort({ createdAt: -1 })
+            .limit(safeLimit)
+            .lean();
+    } catch (error) {
+        console.error('Error fetching feedback entries:', error);
+        return [];
+    }
+};
+
+/**
+ * Delete feedback entries by IDs
+ * @param {Array<string>} feedbackIds
+ * @returns {Promise<number>}
+ */
+const deleteFeedbackByIds = async (feedbackIds = []) => {
+    try {
+        const ids = Array.isArray(feedbackIds)
+            ? feedbackIds.map((id) => String(id || '').trim()).filter(Boolean)
+            : [];
+        if (ids.length === 0) return 0;
+
+        const res = await Feedback.deleteMany({ _id: { $in: ids } });
+        return Number(res?.deletedCount || 0);
+    } catch (error) {
+        console.error('Error deleting feedback entries by ids:', error);
+        return 0;
+    }
+};
+
+/**
+ * Delete all feedback entries
+ * @returns {Promise<number>}
+ */
+const deleteAllFeedback = async () => {
+    try {
+        const res = await Feedback.deleteMany({});
+        return Number(res?.deletedCount || 0);
+    } catch (error) {
+        console.error('Error deleting all feedback entries:', error);
+        return 0;
     }
 };
 
@@ -1157,6 +1314,13 @@ module.exports = {
     getToneSettings,
     getMonetizationSettings,
     saveMonetizationSettings,
+    getFeedbackSettings,
+    setFeedbackCollectionEnabled,
+    hasSubmittedFeedback,
+    createUserFeedback,
+    getRecentFeedback,
+    deleteFeedbackByIds,
+    deleteAllFeedback,
     getServer,
     markServerAsNewlyJoined,
     markUnlimitedUsageOfferSent,

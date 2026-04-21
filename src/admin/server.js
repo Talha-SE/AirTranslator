@@ -10,6 +10,7 @@ const messagingHandler = require('./handlers/messaging');
 const monetizationHandler = require('./handlers/monetization');
 const paymentsHandler = require('./handlers/payments');
 const serversHandler = require('./handlers/servers');
+const feedbackHandler = require('./handlers/feedback');
 const { generateLoginPage } = require('./templates/login');
 const { generateDashboard } = require('./templates/dashboard');
 const analyticsService = require('../services/analyticsService');
@@ -355,6 +356,26 @@ const server = http.createServer(async (req, res) => {
         // Analytics endpoints
         if (pathname === '/admin/metrics' && req.method === 'GET') {
             await analyticsHandler.getMetrics(req, res);
+            return;
+        }
+
+        if (pathname === '/admin/feedback/data' && req.method === 'GET') {
+            await feedbackHandler.getFeedbackData(req, res);
+            return;
+        }
+
+        if (pathname === '/admin/feedback/settings' && req.method === 'POST') {
+            await feedbackHandler.updateFeedbackSettings(req, res);
+            return;
+        }
+
+        if (pathname === '/admin/feedback/delete' && req.method === 'POST') {
+            await feedbackHandler.deleteSelectedFeedback(req, res);
+            return;
+        }
+
+        if (pathname === '/admin/feedback/delete-all' && req.method === 'POST') {
+            await feedbackHandler.deleteAllFeedback(req, res);
             return;
         }
         

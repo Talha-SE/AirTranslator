@@ -1,4 +1,4 @@
-// ===== Theme Management =====
+﻿// ===== Theme Management =====
 const themeToggle = document.getElementById('themeToggle');
 const html = document.documentElement;
 
@@ -85,13 +85,13 @@ if (!document.getElementById('admin-notification-keyframes')) {
 
 // ===== Message Template Functions =====
 const premiumBroadcastTemplate = {
-    title: '💎 Premium Access',
-    content: `✨ Unlock Full Access – Only $5/month ✨
+    title: 'ðŸ’Ž Premium Access',
+    content: `âœ¨ Unlock Full Access â€“ Only $5/month âœ¨
 
 Follow these simple steps:
-1. Click the card button (💳) below or open the Patreon link: https://www.patreon.com/c/tsio/membership
+1. Click the card button (ðŸ’³) below or open the Patreon link: https://www.patreon.com/c/tsio/membership
 2. Subscribe to the membership plan you like.
-3. Come back to this Discord server and click the tick button (✅) to request approval.
+3. Come back to this Discord server and click the tick button (âœ…) to request approval.
 4. Type /premium to see your premium details.
 
 Your subscription is securely handled by Patreon.com, and we do not process your payment details directly.
@@ -101,17 +101,17 @@ You will get a notification when your premium plan is enabled.`.trim(),
 };
 
 const unlimitedUsageBroadcastTemplate = {
-    title: '🚀 Unlimited Usage Offer',
+    title: 'ðŸš€ Unlimited Usage Offer',
     content: `Get the most out of our service by purchasing a **subscription** and enjoy **unlimited usage every month**.
 
-🔒 **Secure payment via our official Patreon pricing page:**
+ðŸ”’ **Secure payment via our official Patreon pricing page:**
 https://www.patreon.com/c/tsio/membership
 
-🎁 **Limited-Time Bonus:**
+ðŸŽ **Limited-Time Bonus:**
 Subscribe now and claim a **FREE 7-day trial** (limited-time offer):
 https://www.patreon.com/c/tsio/membership
 
-✨ **Note:** If you’ve already subscribed, you can start using the service immediately.`.trim(),
+âœ¨ **Note:** If youâ€™ve already subscribed, you can start using the service immediately.`.trim(),
     color: '#f59e0b'
 };
 
@@ -127,32 +127,32 @@ function updateMessageTemplate() {
 
     const templates = {
         announcement: {
-            title: '📢 Important Announcement',
+            title: 'ðŸ“¢ Important Announcement',
             content: 'We have an important announcement to share with you...',
             color: '#3498db'
         },
         update: {
-            title: '🔄 Bot Update',
+            title: 'ðŸ”„ Bot Update',
             content: 'AirTranslator has been updated with new features and improvements...',
             color: '#9b59b6'
         },
         maintenance: {
-            title: '🔧 Scheduled Maintenance',
+            title: 'ðŸ”§ Scheduled Maintenance',
             content: 'We will be performing scheduled maintenance on...',
             color: '#ffa500'
         },
         feature: {
-            title: '✨ New Feature',
+            title: 'âœ¨ New Feature',
             content: 'Check out our exciting new feature...',
             color: '#00ff88'
         },
         warning: {
-            title: '⚠️ Important Notice',
+            title: 'âš ï¸ Important Notice',
             content: 'Please pay attention to this important information...',
             color: '#ff6b6b'
         },
         celebration: {
-            title: '🎉 Celebration',
+            title: 'ðŸŽ‰ Celebration',
             content: 'We are excited to celebrate this milestone with you...',
             color: '#f39c12'
         },
@@ -241,12 +241,14 @@ function clearMessageForm() {
     const selectedMaxMembers = document.getElementById('selectedMaxMembers');
     const selectedJoinedAfter = document.getElementById('selectedJoinedAfter');
     const selectedJoinedBefore = document.getElementById('selectedJoinedBefore');
+    const excludeExemptServers = document.getElementById('excludeExemptServers');
 
     if (selectedServerSearch) selectedServerSearch.value = '';
     if (selectedMinMembers) selectedMinMembers.value = '';
     if (selectedMaxMembers) selectedMaxMembers.value = '';
     if (selectedJoinedAfter) selectedJoinedAfter.value = '';
     if (selectedJoinedBefore) selectedJoinedBefore.value = '';
+    if (excludeExemptServers) excludeExemptServers.checked = false;
 
     if (sendingProgress) sendingProgress.style.display = 'none';
     if (progressFill) progressFill.style.width = '0%';
@@ -335,13 +337,15 @@ function getSelectedServerFilters() {
         : Math.max(0, Number(maxRaw) || 0);
     const joinedAfter = parseDateInput(document.getElementById('selectedJoinedAfter')?.value, false);
     const joinedBefore = parseDateInput(document.getElementById('selectedJoinedBefore')?.value, true);
+    const excludeExemptServers = document.getElementById('excludeExemptServers')?.checked === true;
 
     return {
         search,
         minMembers,
         maxMembers,
         joinedAfter,
-        joinedBefore
+        joinedBefore,
+        excludeExemptServers
     };
 }
 
@@ -352,8 +356,13 @@ function filterServersForSelection(servers) {
         const name = String(server.name || '').toLowerCase();
         const memberCount = Number(server.memberCount || 0);
         const joinedDate = server.joinedAt ? new Date(server.joinedAt) : null;
+        const isExempt = server?.isExempt === true;
 
         if (filters.search && !name.includes(filters.search)) {
+            return false;
+        }
+
+        if (filters.excludeExemptServers && isExempt) {
             return false;
         }
 
@@ -375,6 +384,66 @@ function filterServersForSelection(servers) {
 
         return true;
     });
+}
+
+function getFilteredSelectedServerIds() {
+    const allIds = Array.from(selectedServerIds);
+    const excludeExempt = document.getElementById('excludeExemptServers')?.checked === true;
+
+    if (!excludeExempt || !Array.isArray(messagingServersCache) || messagingServersCache.length === 0) {
+        return allIds;
+    }
+
+    const exemptIds = new Set(
+        messagingServersCache
+            .filter((server) => server?.isExempt === true)
+            .map((server) => String(server.id))
+    );
+
+    return allIds.filter((id) => !exemptIds.has(String(id)));
+}
+
+function renderTargetServerOptions() {
+    const targetServer = document.getElementById('targetServer');
+    if (!targetServer) return;
+
+    const currentValue = targetServer.value;
+    const excludeExempt = document.getElementById('excludeExemptServers')?.checked === true;
+    const visibleServers = (Array.isArray(messagingServersCache) ? messagingServersCache : []).filter((server) =>
+        !(excludeExempt && server?.isExempt === true)
+    );
+
+    if (visibleServers.length === 0) {
+        targetServer.innerHTML = '<option value="">No eligible servers found</option>';
+        return;
+    }
+
+    targetServer.innerHTML = visibleServers.map((server) =>
+        `<option value="${server.id}">${escapeHtml(server.name)} (${Number(server.memberCount || 0).toLocaleString()} members)</option>`
+    ).join('');
+
+    if (currentValue && visibleServers.some((server) => String(server.id) === String(currentValue))) {
+        targetServer.value = currentValue;
+    }
+}
+
+function handleExcludeExemptServersChange() {
+    const excludeExempt = document.getElementById('excludeExemptServers')?.checked === true;
+    if (excludeExempt) {
+        const exemptIds = new Set(
+            (Array.isArray(messagingServersCache) ? messagingServersCache : [])
+                .filter((server) => server?.isExempt === true)
+                .map((server) => String(server.id))
+        );
+        Array.from(selectedServerIds).forEach((id) => {
+            if (exemptIds.has(String(id))) {
+                selectedServerIds.delete(String(id));
+            }
+        });
+    }
+
+    renderTargetServerOptions();
+    renderSelectedServersList();
 }
 
 function toggleSelectedServerSelection(serverId, checked) {
@@ -415,7 +484,7 @@ function renderSelectedServersList() {
 
     const filteredServers = filterServersForSelection(messagingServersCache);
 
-    selectedServersMeta.textContent = `${selectedServerIds.size} selected • ${filteredServers.length} visible of ${messagingServersCache.length}`;
+    selectedServersMeta.textContent = `${selectedServerIds.size} selected â€¢ ${filteredServers.length} visible of ${messagingServersCache.length}`;
 
     if (filteredServers.length === 0) {
         selectedServersList.innerHTML = '<div class="selected-servers-empty">No servers match the active filters.</div>';
@@ -426,12 +495,13 @@ function renderSelectedServersList() {
         .map((server) => {
             const id = String(server.id || '');
             const checked = selectedServerIds.has(id) ? 'checked' : '';
+            const exemptTag = server?.isExempt === true ? ' • Exempt' : '';
             return `
                 <label class="selected-server-item">
                     <input type="checkbox" ${checked} onchange="toggleSelectedServerSelection('${id}', this.checked)" />
                     <div class="selected-server-content">
                         <div class="selected-server-name">${escapeHtml(server.name)}</div>
-                        <div class="selected-server-subtext">${Number(server.memberCount || 0).toLocaleString()} members • Joined ${formatJoinedAt(server.joinedAt)}</div>
+                        <div class="selected-server-subtext">${Number(server.memberCount || 0).toLocaleString()} members â€¢ Joined ${formatJoinedAt(server.joinedAt)}${exemptTag}</div>
                     </div>
                 </label>
             `;
@@ -440,15 +510,10 @@ function renderSelectedServersList() {
 }
 
 async function loadServersList({ force = false } = {}) {
-    const targetServer = document.getElementById('targetServer');
     const now = Date.now();
 
     if (!force && Array.isArray(messagingServersCache) && messagingServersCache.length > 0 && (now - messagingServersLastLoadedAt) < 45000) {
-        if (targetServer) {
-            targetServer.innerHTML = messagingServersCache.map((server) =>
-                `<option value="${server.id}">${escapeHtml(server.name)} (${Number(server.memberCount || 0).toLocaleString()} members)</option>`
-            ).join('');
-        }
+        renderTargetServerOptions();
         renderSelectedServersList();
         return messagingServersCache;
     }
@@ -463,22 +528,19 @@ async function loadServersList({ force = false } = {}) {
             messagingServersCache = (Array.isArray(servers) ? servers : [])
                 .map((server) => ({
                     ...server,
-                    memberCount: Number(server.memberCount || 0)
+                    memberCount: Number(server.memberCount || 0),
+                    isExempt: server?.isExempt === true
                 }))
                 .sort((a, b) => a.name.localeCompare(b.name));
             messagingServersLastLoadedAt = now;
 
-            if (targetServer) {
-                targetServer.innerHTML = messagingServersCache.map((server) =>
-                    `<option value="${server.id}">${escapeHtml(server.name)} (${Number(server.memberCount || 0).toLocaleString()} members)</option>`
-                ).join('');
-            }
-
+            renderTargetServerOptions();
             renderSelectedServersList();
             return messagingServersCache;
         }
     } catch (error) {
         console.error('Error loading servers:', error);
+        const targetServer = document.getElementById('targetServer');
         if (targetServer) targetServer.innerHTML = '<option value="">Failed to load servers</option>';
         const selectedServersList = document.getElementById('selectedServersList');
         if (selectedServersList) {
@@ -523,7 +585,7 @@ function updatePreview() {
     if (previewContent) previewContent.textContent = content;
     if (previewFooter) {
         previewFooter.style.display = includeFooter ? 'block' : 'none';
-        previewFooter.textContent = 'AirTranslator Bot • ' + new Date().toLocaleString();
+        previewFooter.textContent = 'AirTranslator Bot â€¢ ' + new Date().toLocaleString();
     }
     if (embedPreview) {
         embedPreview.style.borderLeftColor = color;
@@ -532,10 +594,11 @@ function updatePreview() {
 
 // ===== Message Sending =====
 async function sendMessage() {
+    const filteredSelectedServerIds = getFilteredSelectedServerIds();
     const messageData = {
         target: document.getElementById('targetType')?.value || 'all',
         serverId: document.getElementById('targetServer')?.value,
-        selectedServerIds: Array.from(selectedServerIds),
+        selectedServerIds: filteredSelectedServerIds,
         title: document.getElementById('messageTitle')?.value,
         content: document.getElementById('messageContent')?.value,
         color: document.getElementById('messageColor')?.value,
@@ -622,7 +685,7 @@ async function sendMessage() {
                                 const row = document.createElement('tr');
                                 row.style.borderBottom = '1px solid var(--border-color)';
                                 const statusColor = detail.status === 'sent' ? 'var(--success)' : 'var(--danger)';
-                                const statusIcon = detail.status === 'sent' ? '✅' : '❌';
+                                const statusIcon = detail.status === 'sent' ? 'âœ…' : 'âŒ';
                                 
                                 row.innerHTML = `
                                     <td style="padding: 8px;">${detail.serverName}</td>
@@ -641,10 +704,10 @@ async function sendMessage() {
                         } else if (data.type === 'complete') {
                             const result = data.result;
                             if (progressFill) progressFill.style.width = '100%';
-                            if (progressText) progressText.textContent = `✅ Completed! Sent: ${result.sent}, Failed: ${result.failed}`;
+                            if (progressText) progressText.textContent = `âœ… Completed! Sent: ${result.sent}, Failed: ${result.failed}`;
                             if (currentServerStatus) currentServerStatus.textContent = 'Broadcast Complete';
                         } else if (data.type === 'error') {
-                            if (progressText) progressText.textContent = `❌ Error: ${data.message}`;
+                            if (progressText) progressText.textContent = `âŒ Error: ${data.message}`;
                         }
                     } catch (e) {
                         console.error('Error parsing SSE data:', e);
@@ -654,7 +717,7 @@ async function sendMessage() {
         }
     } catch (error) {
         console.error('Error sending message:', error);
-        if (progressText) progressText.textContent = '❌ Network error occurred';
+        if (progressText) progressText.textContent = 'âŒ Network error occurred';
     }
 }
 
@@ -663,10 +726,11 @@ async function sendTestMessage() {
 }
 
 async function scheduleMessage() {
+    const filteredSelectedServerIds = getFilteredSelectedServerIds();
     const messageData = {
         target: document.getElementById('targetType')?.value || 'all',
         serverId: document.getElementById('targetServer')?.value,
-        selectedServerIds: Array.from(selectedServerIds),
+        selectedServerIds: filteredSelectedServerIds,
         title: document.getElementById('messageTitle')?.value,
         content: document.getElementById('messageContent')?.value,
         color: document.getElementById('messageColor')?.value,
@@ -707,13 +771,13 @@ async function scheduleMessage() {
         const result = await response.json();
         
         if (result.success) {
-            alert(`✅ Message scheduled successfully! Job ID: ${result.jobId}`);
+            alert(`âœ… Message scheduled successfully! Job ID: ${result.jobId}`);
         } else {
-            alert(`❌ Failed to schedule message: ${result.message}`);
+            alert(`âŒ Failed to schedule message: ${result.message}`);
         }
     } catch (error) {
         console.error('Error scheduling message:', error);
-        alert('❌ Error scheduling message');
+        alert('âŒ Error scheduling message');
     }
 }
 
@@ -851,16 +915,16 @@ async function leaveServer(serverId, serverName) {
         const result = await response.json();
         
         if (result.success) {
-            alert(`✅ Successfully left ${serverName}`);
+            alert(`âœ… Successfully left ${serverName}`);
             // Remove the row from the table
             const row = document.querySelector(`tr[data-server-id="${serverId}"]`);
             if (row) row.remove();
         } else {
-            alert(`❌ Failed to leave server: ${result.message}`);
+            alert(`âŒ Failed to leave server: ${result.message}`);
         }
     } catch (error) {
         console.error('Error leaving server:', error);
-        alert('❌ Error leaving server');
+        alert('âŒ Error leaving server');
     }
 }
 
@@ -925,6 +989,7 @@ if (document.getElementById('recentVotesTbody')) {
 // ===== Tab Navigation =====
 const urlParams = new URLSearchParams(window.location.search);
 const activeTab = urlParams.get('tab') || 'analytics';
+let latestAllLanguages = [];
 
 // Highlight active nav item
 document.querySelectorAll('.nav-item').forEach(item => {
@@ -944,34 +1009,40 @@ if (activeTab === 'messaging') {
     }, 50);
 }
 
+if (activeTab === 'feedback') {
+    setTimeout(() => {
+        syncFeedbackSelectionState();
+    }, 40);
+}
+
 function getLanguageMeta(code) {
     const languageMap = {
-        en: { name: 'English', flag: '🇬🇧' },
-        es: { name: 'Spanish', flag: '🇪🇸' },
-        fr: { name: 'French', flag: '🇫🇷' },
-        de: { name: 'German', flag: '🇩🇪' },
-        it: { name: 'Italian', flag: '🇮🇹' },
-        pt: { name: 'Portuguese', flag: '🇵🇹' },
-        ja: { name: 'Japanese', flag: '🇯🇵' },
-        ko: { name: 'Korean', flag: '🇰🇷' },
-        zh: { name: 'Chinese', flag: '🇨🇳' },
-        ru: { name: 'Russian', flag: '🇷🇺' },
-        ar: { name: 'Arabic', flag: '🇸🇦' },
-        hi: { name: 'Hindi', flag: '🇮🇳' },
-        ur: { name: 'Urdu', flag: '🇵🇰' },
-        tr: { name: 'Turkish', flag: '🇹🇷' },
-        nl: { name: 'Dutch', flag: '🇳🇱' },
-        pl: { name: 'Polish', flag: '🇵🇱' },
-        vi: { name: 'Vietnamese', flag: '🇻🇳' },
-        id: { name: 'Indonesian', flag: '🇮🇩' },
-        uk: { name: 'Ukrainian', flag: '🇺🇦' },
-        ro: { name: 'Romanian', flag: '🇷🇴' },
-        fa: { name: 'Persian', flag: '🇮🇷' },
-        bn: { name: 'Bengali', flag: '🇧🇩' }
+        en: { name: 'English', flag: 'ðŸ‡¬ðŸ‡§' },
+        es: { name: 'Spanish', flag: 'ðŸ‡ªðŸ‡¸' },
+        fr: { name: 'French', flag: 'ðŸ‡«ðŸ‡·' },
+        de: { name: 'German', flag: 'ðŸ‡©ðŸ‡ª' },
+        it: { name: 'Italian', flag: 'ðŸ‡®ðŸ‡¹' },
+        pt: { name: 'Portuguese', flag: 'ðŸ‡µðŸ‡¹' },
+        ja: { name: 'Japanese', flag: 'ðŸ‡¯ðŸ‡µ' },
+        ko: { name: 'Korean', flag: 'ðŸ‡°ðŸ‡·' },
+        zh: { name: 'Chinese', flag: 'ðŸ‡¨ðŸ‡³' },
+        ru: { name: 'Russian', flag: 'ðŸ‡·ðŸ‡º' },
+        ar: { name: 'Arabic', flag: 'ðŸ‡¸ðŸ‡¦' },
+        hi: { name: 'Hindi', flag: 'ðŸ‡®ðŸ‡³' },
+        ur: { name: 'Urdu', flag: 'ðŸ‡µðŸ‡°' },
+        tr: { name: 'Turkish', flag: 'ðŸ‡¹ðŸ‡·' },
+        nl: { name: 'Dutch', flag: 'ðŸ‡³ðŸ‡±' },
+        pl: { name: 'Polish', flag: 'ðŸ‡µðŸ‡±' },
+        vi: { name: 'Vietnamese', flag: 'ðŸ‡»ðŸ‡³' },
+        id: { name: 'Indonesian', flag: 'ðŸ‡®ðŸ‡©' },
+        uk: { name: 'Ukrainian', flag: 'ðŸ‡ºðŸ‡¦' },
+        ro: { name: 'Romanian', flag: 'ðŸ‡·ðŸ‡´' },
+        fa: { name: 'Persian', flag: 'ðŸ‡®ðŸ‡·' },
+        bn: { name: 'Bengali', flag: 'ðŸ‡§ðŸ‡©' }
     };
 
     const normalized = (code || '').toLowerCase();
-    return languageMap[normalized] || { name: normalized.toUpperCase() || 'Unknown', flag: '🌐' };
+    return languageMap[normalized] || { name: normalized.toUpperCase() || 'Unknown', flag: 'ðŸŒ' };
 }
 
 function renderTopLanguages(topLanguages = [], totalLanguageUsages = 0) {
@@ -1009,12 +1080,64 @@ function renderTopLanguages(topLanguages = [], totalLanguageUsages = 0) {
     }).join('');
 }
 
+function showAllLanguagesModal() {
+    const modal = document.getElementById('languagesDetailsModal');
+    const overlay = document.getElementById('languagesModalOverlay');
+    const tbody = document.getElementById('allLanguagesTableBody');
+
+    if (!modal || !overlay || !tbody) return;
+
+    if (!Array.isArray(latestAllLanguages) || latestAllLanguages.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="4" style="text-align: center; padding: 24px; color: var(--text-tertiary);">
+                    No language activity found yet.
+                </td>
+            </tr>
+        `;
+    } else {
+        tbody.innerHTML = latestAllLanguages.map((item) => {
+            const meta = getLanguageMeta(item.code);
+            const count = Number(item.count) || 0;
+            const percentage = Math.max(0, Number(item.percentage) || 0);
+            const safeCode = escapeHtml(item.code);
+            const safeName = escapeHtml(meta.name);
+            return `
+                <tr>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span>${meta.flag}</span>
+                            <span>${safeName}</span>
+                        </div>
+                    </td>
+                    <td><code class="code-snippet">${safeCode}</code></td>
+                    <td>${count.toLocaleString()}</td>
+                    <td>${percentage.toFixed(1)}%</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    overlay.classList.add('active');
+    modal.classList.add('active');
+}
+
+function hideAllLanguagesModal() {
+    const modal = document.getElementById('languagesDetailsModal');
+    const overlay = document.getElementById('languagesModalOverlay');
+    if (!modal || !overlay) return;
+
+    overlay.classList.remove('active');
+    modal.classList.remove('active');
+}
+
 async function refreshAnalyticsMetrics() {
     const response = await fetch('/admin/metrics', { credentials: 'include' });
     if (!response.ok) {
         throw new Error(`metrics request failed with ${response.status}`);
     }
     const data = await response.json();
+    latestAllLanguages = Array.isArray(data.allLanguages) ? data.allLanguages : [];
     renderTopLanguages(data.topLanguages || [], data.totalLanguageUsages || 0);
 }
 
@@ -1026,7 +1149,7 @@ if (activeTab === 'analytics') {
     }, 30000);
 }
 
-console.log('🚀 AirTranslator Admin Panel loaded successfully');
+console.log('ðŸš€ AirTranslator Admin Panel loaded successfully');
 
 // ===== Utility Functions =====
 
@@ -1037,6 +1160,114 @@ function debounce(fn, delay) {
         clearTimeout(timeoutId);
         timeoutId = setTimeout(() => fn.apply(this, args), delay);
     };
+}
+
+async function toggleFeedbackCollection(enabled) {
+    try {
+        const response = await fetch('/admin/feedback/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                feedbackCollectionEnabled: !!enabled
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Failed to update feedback settings');
+        }
+
+        const toggle = document.getElementById('feedbackCollectionToggle');
+        const labelText = toggle?.closest('.toggle-label')?.querySelector('span');
+        if (labelText) {
+            labelText.textContent = `Feedback popup ${enabled ? 'enabled' : 'disabled'}`;
+        }
+
+        showNotification(`Feedback popup ${enabled ? 'enabled' : 'disabled'} successfully`, 'success');
+    } catch (error) {
+        console.error('Failed to update feedback settings:', error);
+        const toggle = document.getElementById('feedbackCollectionToggle');
+        if (toggle) toggle.checked = !enabled;
+        showNotification('Could not update feedback setting', 'error');
+    }
+}
+
+function toggleAllFeedbackRows(checked) {
+    const rowCheckboxes = document.querySelectorAll('.feedback-row-checkbox');
+    rowCheckboxes.forEach((checkbox) => {
+        checkbox.checked = !!checked;
+    });
+    syncFeedbackSelectionState();
+}
+
+function syncFeedbackSelectionState() {
+    const master = document.getElementById('feedbackSelectAll');
+    const rowCheckboxes = Array.from(document.querySelectorAll('.feedback-row-checkbox'));
+    if (!master || rowCheckboxes.length === 0) return;
+
+    const selectedCount = rowCheckboxes.filter((checkbox) => checkbox.checked).length;
+    master.checked = selectedCount > 0 && selectedCount === rowCheckboxes.length;
+    master.indeterminate = selectedCount > 0 && selectedCount < rowCheckboxes.length;
+}
+
+function getSelectedFeedbackIds() {
+    return Array.from(document.querySelectorAll('.feedback-row-checkbox:checked'))
+        .map((checkbox) => String(checkbox.value || '').trim())
+        .filter(Boolean);
+}
+
+async function deleteSelectedFeedback() {
+    const feedbackIds = getSelectedFeedbackIds();
+    if (feedbackIds.length === 0) {
+        showNotification('Select at least one feedback entry', 'warn');
+        return;
+    }
+
+    const confirmed = confirm(`Delete ${feedbackIds.length} selected feedback entries?`);
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch('/admin/feedback/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ feedbackIds })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Delete failed');
+        }
+
+        showNotification(`Deleted ${Number(data.deletedCount || 0)} feedback entries`, 'success');
+        setTimeout(() => window.location.reload(), 450);
+    } catch (error) {
+        console.error('Failed to delete selected feedback:', error);
+        showNotification('Failed to delete selected feedback', 'error');
+    }
+}
+
+async function deleteAllFeedback() {
+    const confirmed = confirm('Delete all feedback entries? This cannot be undone.');
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch('/admin/feedback/delete-all', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Delete all failed');
+        }
+
+        showNotification(`Deleted ${Number(data.deletedCount || 0)} feedback entries`, 'success');
+        setTimeout(() => window.location.reload(), 450);
+    } catch (error) {
+        console.error('Failed to delete all feedback:', error);
+        showNotification('Failed to delete all feedback', 'error');
+    }
 }
 
 // ===== Monetization Functions =====
@@ -1548,3 +1779,5 @@ if (new URLSearchParams(window.location.search).get('tab') === 'monetization') {
     // Wait for DOM to be ready
     setTimeout(() => initializeVoteFilters(), 100);
 }
+
+

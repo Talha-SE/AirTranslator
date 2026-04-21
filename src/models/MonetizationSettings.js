@@ -17,6 +17,10 @@ const monetizationSettingsSchema = new mongoose.Schema({
     autoUnlimitedUsageCampaignEnabled: {
         type: Boolean,
         default: true
+    },
+    feedbackCollectionEnabled: {
+        type: Boolean,
+        default: true
     }
 }, { timestamps: true });
 

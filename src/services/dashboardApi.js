@@ -6,8 +6,19 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { EmbedBuilder } = require('discord.js');
-const { getServerSettings, updateServerSettings, createSetup, deleteSetup, createServerSetup, deleteServerSetup } = require('./databaseService');
-const { getPersonalTranslationSettings, togglePersonalTranslation } = require('./databaseService');
+const {
+  getServerSettings,
+  updateServerSettings,
+  createSetup,
+  deleteSetup,
+  createServerSetup,
+  deleteServerSetup,
+  getPersonalTranslationSettings,
+  togglePersonalTranslation,
+  getFeedbackSettings,
+  hasSubmittedFeedback,
+  createUserFeedback
+} = require('./databaseService');
 const STTSettings = require('../models/STTSettings');
 const monetizationService = require('./monetizationService');
 
@@ -340,6 +351,24 @@ function verifyApiSecret(req, res, next) {
   }
 
   next();
+}
+
+const FEEDBACK_OPTIONS = {
+  dashboardExperience: new Set(['love_it', 'okay', 'needs_work']),
+  planType: new Set(['free', 'paid', 'trial']),
+  usageReason: new Set(['community', 'gaming', 'business', 'friends', 'other']),
+  recommendScore: new Set(['yes', 'maybe', 'no'])
+};
+
+function normalizeFeedbackValue(value) {
+  return (value || '').toString().trim().toLowerCase();
+}
+
+function sanitizeFeedbackText(value, maxLength = 500) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
 }
 
 // Apply session verification to all /servers routes
@@ -730,6 +759,86 @@ router.post('/servers/:serverId/stt', async (req, res) => {
   } catch (error) {
     console.error('Error updating STT settings:', error);
     res.status(500).json({ error: 'Failed to update STT settings' });
+  }
+});
+
+// Get feedback prompt state for current dashboard user
+router.get('/feedback/config', verifySession, async (req, res) => {
+  try {
+    const userId = req.userSession?.user?.id;
+    const [settings, submitted] = await Promise.all([
+      getFeedbackSettings(),
+      hasSubmittedFeedback(userId)
+    ]);
+
+    res.json({
+      enabled: settings.feedbackCollectionEnabled !== false,
+      hasSubmitted: !!submitted
+    });
+  } catch (error) {
+    console.error('Error fetching feedback config:', error);
+    res.status(500).json({ error: 'Failed to fetch feedback config' });
+  }
+});
+
+// Submit feedback for current dashboard user (one submission per user)
+router.post('/feedback/submit', verifySession, async (req, res) => {
+  try {
+    const settings = await getFeedbackSettings();
+    if (settings.feedbackCollectionEnabled === false) {
+      return res.status(403).json({ error: 'Feedback is currently disabled' });
+    }
+
+    const dashboardExperience = normalizeFeedbackValue(req.body?.dashboardExperience);
+    const planType = normalizeFeedbackValue(req.body?.planType);
+    const usageReason = normalizeFeedbackValue(req.body?.usageReason);
+    const recommendScore = normalizeFeedbackValue(req.body?.recommendScore);
+    const improvementSuggestion = sanitizeFeedbackText(req.body?.improvementSuggestion, 500);
+
+    if (!FEEDBACK_OPTIONS.dashboardExperience.has(dashboardExperience)) {
+      return res.status(400).json({ error: 'Invalid dashboardExperience value' });
+    }
+    if (!FEEDBACK_OPTIONS.planType.has(planType)) {
+      return res.status(400).json({ error: 'Invalid planType value' });
+    }
+    if (!FEEDBACK_OPTIONS.usageReason.has(usageReason)) {
+      return res.status(400).json({ error: 'Invalid usageReason value' });
+    }
+    if (!FEEDBACK_OPTIONS.recommendScore.has(recommendScore)) {
+      return res.status(400).json({ error: 'Invalid recommendScore value' });
+    }
+
+    const user = req.userSession?.user || {};
+    await createUserFeedback({
+      userId: user.id,
+      username: user.username || null,
+      globalName: user.global_name || user.globalName || null,
+      avatar: user.avatar || null,
+      answers: {
+        dashboardExperience,
+        planType,
+        usageReason,
+        recommendScore,
+        improvementSuggestion
+      },
+      meta: {
+        locale: sanitizeFeedbackText(req.body?.locale, 64) || null,
+        userAgent: sanitizeFeedbackText(req.headers['user-agent'], 255) || null
+      }
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    if (
+      error?.code === 'FEEDBACK_ALREADY_SUBMITTED' ||
+      error?.message === 'FEEDBACK_ALREADY_SUBMITTED' ||
+      error?.code === 11000
+    ) {
+      return res.status(409).json({ error: 'Feedback already submitted' });
+    }
+
+    console.error('Error saving feedback submission:', error);
+    res.status(500).json({ error: 'Failed to save feedback' });
   }
 });
 

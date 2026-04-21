@@ -1,3 +1,5 @@
+const Server = require('../../models/Server');
+
 /**
  * Parse POST data helper
  */
@@ -38,12 +40,27 @@ async function getServers(req, res) {
             res.end(JSON.stringify({ error: 'Bot not ready' }));
             return;
         }
-        
-        const servers = client.guilds.cache.map(guild => ({
+
+        const guildSnapshots = client.guilds.cache.map(guild => ({
             id: guild.id,
             name: guild.name,
             memberCount: guild.memberCount,
             joinedAt: guild.joinedAt ? guild.joinedAt.toISOString() : null
+        }));
+
+        const guildIds = guildSnapshots.map((guild) => guild.id);
+        const serverDocs = await Server.find({ serverId: { $in: guildIds } })
+            .select('serverId monetization.isExempt')
+            .lean();
+
+        const exemptMap = new Map(
+            (Array.isArray(serverDocs) ? serverDocs : [])
+                .map((doc) => [String(doc.serverId), doc?.monetization?.isExempt === true])
+        );
+
+        const servers = guildSnapshots.map((guild) => ({
+            ...guild,
+            isExempt: exemptMap.get(String(guild.id)) === true
         }));
         
         res.writeHead(200, { 'Content-Type': 'application/json' });

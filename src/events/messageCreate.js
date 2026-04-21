@@ -157,6 +157,12 @@ function buildTrackedPricingUrl({ serverId, serverName, userId, username, source
     return `${websiteBaseUrl}/patreon-redirect?${params.toString()}`;
 }
 
+function buildDashboardUrl() {
+    const raw = (process.env.DASHBOARD_URL || 'https://airtranslator.brevios.com').trim();
+    const base = raw.replace(/\/+$/, '');
+    return base.endsWith('/dashboard') ? base : `${base}/dashboard`;
+}
+
 // Helper function to translate premium payment message into server languages
 async function translatePremiumMessage(serverId) {
     try {
@@ -686,6 +692,15 @@ async function translateAndReply(message, languages, options = {}) {
     try {
         const { forQuickSetup = false } = options;
         const botMessages = [];
+
+        let isServerExempt = false;
+        try {
+            const serverStats = await monetizationService.getServerStats(message.guild.id);
+            isServerExempt = Boolean(serverStats?.isExempt);
+        } catch (error) {
+            console.warn(`Failed to fetch monetization status for ${message.guild.id}:`, error?.message || error);
+        }
+
         // Check if this channel should use thread-based translation
         const useThreadTranslation = await shouldUseThreadTranslation(message.guild.id, message.channel.id);
         
@@ -844,17 +859,25 @@ async function translateAndReply(message, languages, options = {}) {
                 };
                 
                 // Add interactive buttons only to the last embed
-                    if (i === chunks.length - 1) {
-                    const buttons = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder()
-                            .setCustomId(`vote_on_topgg:${message.guild.id}`)
-                            .setLabel('Free (Vote)')
-                            .setStyle(ButtonStyle.Success),
-                        new ButtonBuilder()
-                            .setCustomId(`see_payment_options:${message.guild.id}`)
-                            .setLabel('Paid Options')
-                            .setStyle(ButtonStyle.Primary)
-                    );
+                if (i === chunks.length - 1) {
+                    const buttons = isServerExempt
+                        ? new ActionRowBuilder().addComponents(
+                            new ButtonBuilder()
+                                .setLabel('Dashboard')
+                                .setStyle(ButtonStyle.Link)
+                                .setURL(buildDashboardUrl())
+                        )
+                        : new ActionRowBuilder().addComponents(
+                            new ButtonBuilder()
+                                .setCustomId(`vote_on_topgg:${message.guild.id}`)
+                                .setLabel('Free (Vote)')
+                                .setStyle(ButtonStyle.Success),
+                            new ButtonBuilder()
+                                .setCustomId(`see_payment_options:${message.guild.id}`)
+                                .setLabel('Paid Options')
+                                .setStyle(ButtonStyle.Primary)
+                        );
+
                     replyOptions.components = [buttons];
                 }
                 

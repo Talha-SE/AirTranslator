@@ -84,11 +84,11 @@ function generateLayout(title, content, activeTab = 'analytics') {
                     <span class="nav-text">Servers</span>
                 </a>
 
-                <a href="/admin?tab=logs" class="nav-item ${activeTab === 'logs' ? 'active' : ''}" data-tab="logs">
+                <a href="/admin?tab=feedback" class="nav-item ${activeTab === 'feedback' ? 'active' : ''}" data-tab="feedback">
                     <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path d="M9 2H4a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V9M16 2l2 2M10 10l6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M4 4h12a2 2 0 012 2v8a2 2 0 01-2 2H9l-4 3v-3H4a2 2 0 01-2-2V6a2 2 0 012-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                    <span class="nav-text">Activity Log</span>
+                    <span class="nav-text">Feedback</span>
                 </a>
             </nav>
 

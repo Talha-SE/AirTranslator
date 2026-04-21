@@ -21,20 +21,22 @@ async function getMetrics(req, res) {
             totalLanguageUsages += safeCount;
         });
 
-        const topLanguages = Object.entries(languagePopularity)
+        const sortedLanguages = Object.entries(languagePopularity)
             .sort((a, b) => b[1] - a[1])
-            .slice(0, 6)
             .map(([code, count]) => ({
                 code,
                 count,
                 percentage: totalLanguageUsages > 0 ? Number(((count / totalLanguageUsages) * 100).toFixed(1)) : 0
             }));
 
+        const topLanguages = sortedLanguages.slice(0, 6);
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
             totalTranslations: analytics.totalTranslations,
             totalServers: analytics.totalServers,
             topLanguages,
+            allLanguages: sortedLanguages,
             totalLanguageUsages,
             timestamp: Date.now()
         }));

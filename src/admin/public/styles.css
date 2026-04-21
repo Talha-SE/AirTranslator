@@ -1670,6 +1670,45 @@ textarea.form-control {
     padding: 12px;
 }
 
+.languages-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    z-index: 2200;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-fast);
+}
+
+.languages-modal-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.languages-modal {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: min(860px, calc(100vw - 24px));
+    max-height: calc(100vh - 48px);
+    overflow: auto;
+    transform: translate(-50%, -50%) scale(0.96);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+    z-index: 2300;
+    opacity: 0;
+    pointer-events: none;
+    transition: transform var(--transition-fast), opacity var(--transition-fast);
+}
+
+.languages-modal.active {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, -50%) scale(1);
+}
+
 /* Modern Activity List */
 .modern-activity-list {
     display: flex;
