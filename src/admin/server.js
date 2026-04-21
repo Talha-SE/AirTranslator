@@ -83,13 +83,21 @@ function getPendingTopggVoteTarget(userId) {
  * Serve static files
  */
 function serveStatic(res, filePath, contentType) {
+    const normalizedContentType = (() => {
+        if (!contentType || contentType.includes('charset=')) return contentType;
+        if (contentType.startsWith('text/') || contentType === 'application/javascript' || contentType === 'application/json') {
+            return `${contentType}; charset=utf-8`;
+        }
+        return contentType;
+    })();
+
     fs.readFile(filePath, (err, data) => {
         if (err) {
-            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
             res.end('Not Found');
             return;
         }
-        res.writeHead(200, { 'Content-Type': contentType });
+        res.writeHead(200, { 'Content-Type': normalizedContentType });
         res.end(data);
     });
 }
@@ -154,7 +162,7 @@ const server = http.createServer(async (req, res) => {
         }
         
         if (pathname === '/ping') {
-            res.writeHead(200, { 'Content-Type': 'text/plain' });
+            res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
             res.end('pong');
             return;
         }
@@ -178,12 +186,12 @@ const server = http.createServer(async (req, res) => {
                     res.end();
                 } else {
                     const loginPage = generateLoginPage('Invalid username or password');
-                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
                     res.end(loginPage);
                 }
             } catch (error) {
                 console.error('Login error:', error);
-                res.writeHead(500, { 'Content-Type': 'text/plain' });
+                res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
                 res.end('Server Error');
             }
             return;
@@ -207,16 +215,16 @@ const server = http.createServer(async (req, res) => {
         
         // Vote webhook endpoint
         if ((pathname === '/webhook/vote' || pathname === '/webhooks/topgg') && req.method === 'POST') {
-            console.log(`🔔 Webhook received at ${pathname}`);
+            console.log(`Webhook received at ${pathname}`);
             try {
                 const data = await parsePostData(req);
                 const body = typeof data === 'string' ? JSON.parse(data) : data;
                 
-                console.log('📊 Webhook data received:', body);
+                console.log(' Webhook data received:', body);
                 
                 const authHeader = req.headers.authorization;
                 if (process.env.TOPGG_WEBHOOK_SECRET && authHeader !== process.env.TOPGG_WEBHOOK_SECRET) {
-                    console.log('❌ Unauthorized webhook attempt');
+                    console.log(' Unauthorized webhook attempt');
                     res.writeHead(401, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ error: 'Unauthorized' }));
                     return;
@@ -225,7 +233,7 @@ const server = http.createServer(async (req, res) => {
                 const { user: userId, type, isWeekend, guild, query } = body;
                 
                 if (type === 'upvote') {
-                    console.log(`📊 Received vote from user ${userId}${isWeekend ? ' (Weekend vote)' : ''}`);
+                    console.log(` Received vote from user ${userId}${isWeekend ? ' (Weekend vote)' : ''}`);
 
                     const targetServerId = guild
                         || parseServerIdFromTopggQuery(query)
@@ -249,13 +257,13 @@ const server = http.createServer(async (req, res) => {
                         );
                         
                         if (result.success) {
-                            console.log(`✅ Vote reward (${TOPGG_VOTE_BONUS_AMOUNT} translations) processed for user ${userId} in server ${targetServerId}`);
+                            console.log(` Vote reward (${TOPGG_VOTE_BONUS_AMOUNT} translations) processed for user ${userId} in server ${targetServerId}`);
                             if (global.pendingTopggVoteTargets) {
                                 global.pendingTopggVoteTargets.delete(String(userId));
                             }
                         }
                     } else {
-                        console.log(`⚠️ No recent server found for user ${userId}`);
+                        console.log(` No recent server found for user ${userId}`);
                     }
                 }
                 
@@ -271,12 +279,12 @@ const server = http.createServer(async (req, res) => {
         
         // Payment webhook endpoint (public, no auth required)
         if (pathname === '/webhook/payment' && req.method === 'POST') {
-            console.log('💳 Payment webhook received');
+            console.log(' Payment webhook received');
             try {
                 const data = await parsePostData(req);
                 const body = typeof data === 'string' ? JSON.parse(data) : data;
                 
-                console.log('💰 Payment data received:', body);
+                console.log(' Payment data received:', body);
                 
                 // Create payment record with CORS headers
                 await paymentsHandler.createPaymentFromBody(body, res);
@@ -294,12 +302,12 @@ const server = http.createServer(async (req, res) => {
         
         // Payment completion webhook (public, no auth required)
         if (pathname === '/webhook/payment-complete' && req.method === 'POST') {
-            console.log('✅ Payment completion webhook received');
+            console.log(' Payment completion webhook received');
             try {
                 const data = await parsePostData(req);
                 const body = typeof data === 'string' ? JSON.parse(data) : data;
                 
-                console.log('💰 Payment completion data:', body);
+                console.log(' Payment completion data:', body);
                 
                 // Update payment status with CORS headers
                 await paymentsHandler.updatePaymentStatusFromBody(body, res);
@@ -323,14 +331,14 @@ const server = http.createServer(async (req, res) => {
             if (pathname === '/admin' || pathname.startsWith('/admin/')) {
                 if (pathname === '/admin') {
                     const loginPage = generateLoginPage();
-                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
                     res.end(loginPage);
                 } else {
                     res.writeHead(401, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ error: 'Unauthorized' }));
                 }
             } else {
-                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
                 res.end('Not Found');
             }
             return;
@@ -348,7 +356,7 @@ const server = http.createServer(async (req, res) => {
             const client = global.discordClient;
             const html = await generateDashboard(analytics, client, tab);
             
-            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
             res.end(html);
             return;
         }
@@ -536,13 +544,13 @@ const server = http.createServer(async (req, res) => {
         }
         
         // 404 - Not Found
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Not Found');
         
     } catch (error) {
         console.error('Server error:', error);
         try {
-            res.writeHead(500, { 'Content-Type': 'text/plain' });
+            res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
             res.end('Internal Server Error');
         } catch (err) {
             // Response already sent
@@ -558,14 +566,14 @@ const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`\n${'='.repeat(60)}`);
-    console.log('🚀 AirTranslator Admin Panel Started');
+    console.log(' AirTranslator Admin Panel Started');
     console.log(`${'='.repeat(60)}`);
-    console.log(`📊 Dashboard: http://localhost:${PORT}/admin`);
-    console.log(`🏥 Health Check: http://localhost:${PORT}/health`);
+    console.log(` Dashboard: http://localhost:${PORT}/admin`);
+    console.log(` Health Check: http://localhost:${PORT}/health`);
     
     if (process.env.NODE_ENV === 'production') {
         const renderUrl = process.env.RENDER_EXTERNAL_URL || 'https://airtranslator.onrender.com';
-        console.log(`🌐 Public URL: ${renderUrl}/admin`);
+        console.log(` Public URL: ${renderUrl}/admin`);
     }
     
     console.log(`${'='.repeat(60)}\n`);
@@ -574,21 +582,21 @@ server.listen(PORT, '0.0.0.0', () => {
 // Periodic exemption expiry checker - runs every 5 minutes
 const exemptionExpiryJob = nodeCron.schedule('*/5 * * * *', async () => {
     try {
-        console.log('⏰ Running periodic exemption expiry check...');
+        console.log(' Running periodic exemption expiry check...');
         await monetizationService.checkAndExpireExemptions();
     } catch (error) {
-        console.error('❌ Error in exemption expiry job:', error);
+        console.error(' Error in exemption expiry job:', error);
     }
 });
 
-console.log('✅ Exemption expiry checker scheduled (every 5 minutes)');
+console.log(' Exemption expiry checker scheduled (every 5 minutes)');
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-    console.log('🛑 Received SIGTERM, shutting down gracefully');
+    console.log(' Received SIGTERM, shutting down gracefully');
     exemptionExpiryJob.stop();
     server.close(() => {
-        console.log('✅ Server closed');
+        console.log(' Server closed');
         process.exit(0);
     });
 });

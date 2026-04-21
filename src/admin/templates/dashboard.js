@@ -1,4 +1,4 @@
-﻿const { generateLayout } = require('./layout');
+const { generateLayout } = require('./layout');
 const analyticsService = require('../../services/analyticsService');
 const monetizationService = require('../../services/monetizationService');
 const databaseService = require('../../services/databaseService');
@@ -16,7 +16,7 @@ async function generateAnalyticsTab(analytics, client) {
     Object.entries(analytics.languageUsage || {}).forEach(([pair, count]) => {
         const safeCount = Number(count) || 0;
         if (safeCount <= 0) return;
-        const parts = pair.split('â†’');
+        const parts = String(pair || '').split(/\s*(?:->|\u2192)\s*/);
         const target = normalizeLanguageCode(parts.length > 1 ? parts[1] : pair);
         if (!target) return;
         languagePopularity[target] = (languagePopularity[target] || 0) + safeCount;
@@ -165,7 +165,7 @@ async function generateAnalyticsTab(analytics, client) {
                         <div class="language-ranking" id="top-languages-list">
                             <div class="lang-item">
                                 <div class="lang-meta">
-                                    <span class="lang-flag">ðŸ‡ªðŸ‡¸</span>
+                                    <span class="lang-flag">ES</span>
                                     <span class="lang-name">Spanish</span>
                                     <span class="lang-percent">34%</span>
                                 </div>
@@ -175,7 +175,7 @@ async function generateAnalyticsTab(analytics, client) {
                             </div>
                             <div class="lang-item">
                                 <div class="lang-meta">
-                                    <span class="lang-flag">ðŸ‡«ðŸ‡·</span>
+                                    <span class="lang-flag">FR</span>
                                     <span class="lang-name">French</span>
                                     <span class="lang-percent">21%</span>
                                 </div>
@@ -185,7 +185,7 @@ async function generateAnalyticsTab(analytics, client) {
                             </div>
                             <div class="lang-item">
                                 <div class="lang-meta">
-                                    <span class="lang-flag">ðŸ‡©ðŸ‡ª</span>
+                                    <span class="lang-flag">DE</span>
                                     <span class="lang-name">German</span>
                                     <span class="lang-percent">18%</span>
                                 </div>
@@ -195,7 +195,7 @@ async function generateAnalyticsTab(analytics, client) {
                             </div>
                             <div class="lang-item">
                                 <div class="lang-meta">
-                                    <span class="lang-flag">ðŸ‡¯ðŸ‡µ</span>
+                                    <span class="lang-flag">JA</span>
                                     <span class="lang-name">Japanese</span>
                                     <span class="lang-percent">15%</span>
                                 </div>
@@ -296,7 +296,7 @@ function generateMessagingTab() {
             <div class="content-card">
                 <div class="card-header">
                     <div class="card-title-group">
-                        <h3 class="card-title">âœï¸ Compose Message</h3>
+                        <h3 class="card-title">Compose Message</h3>
                         <p class="card-subtitle">Design your announcement embed</p>
                     </div>
                     <span class="badge badge-info">Draft Mode</span>
@@ -307,14 +307,14 @@ function generateMessagingTab() {
                             <label class="form-label">Message Type</label>
                             <select class="form-control" id="messageType" onchange="updateMessageTemplate()">
                                 <option value="custom">Custom Message</option>
-                                <option value="announcement">ðŸ“¢ Announcement</option>
-                                <option value="update">ðŸ”„ Bot Update</option>
-                                <option value="maintenance">ðŸ”§ Maintenance</option>
-                                <option value="feature">âœ¨ New Feature</option>
-                                <option value="warning">âš ï¸ Important</option>
-                                <option value="celebration">ðŸŽ‰ Celebration</option>
-                                <option value="premium">ðŸ’Ž Premium Campaign</option>
-                                <option value="unlimitedUsage">ðŸš€ Unlimited Usage Offer</option>
+                                <option value="announcement">Announcement</option>
+                                <option value="update">Bot Update</option>
+                                <option value="maintenance">Maintenance</option>
+                                <option value="feature">New Feature</option>
+                                <option value="warning">Important</option>
+                                <option value="celebration">Celebration</option>
+                                <option value="premium">Premium Campaign</option>
+                                <option value="unlimitedUsage">Unlimited Usage Offer</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -412,7 +412,7 @@ function generateMessagingTab() {
                 <div class="content-card">
                     <div class="card-header">
                         <div class="card-title-group">
-                            <h3 class="card-title">ðŸ“ Live Preview</h3>
+                            <h3 class="card-title">Live Preview</h3>
                             <p class="card-subtitle">How it will look in Discord</p>
                         </div>
                         <span class="badge badge-success">Live</span>
@@ -422,7 +422,7 @@ function generateMessagingTab() {
                             <div class="embed-preview">
                                 <div id="previewTitle" class="embed-title">Title will appear here</div>
                                 <div id="previewContent" class="embed-description">Message content will appear here</div>
-                                <div id="previewFooter" class="embed-footer">AirTranslator Bot â€¢ Now</div>
+                                <div id="previewFooter" class="embed-footer">AirTranslator Bot - Now</div>
                             </div>
                         </div>
                         <div class="button-group">
@@ -441,7 +441,7 @@ function generateMessagingTab() {
                 <div class="content-card" style="border: 1px solid rgba(139, 92, 246, 0.2); box-shadow: 0 18px 40px rgba(99, 102, 241, 0.08);">
                     <div class="card-header" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(245, 158, 11, 0.08));">
                         <div class="card-title-group">
-                            <h3 class="card-title">ðŸ’Ž Premium Message</h3>
+                            <h3 class="card-title">Premium Message</h3>
                             <p class="card-subtitle">Ready-made copy for premium onboarding and upgrades</p>
                         </div>
                         <span class="badge badge-warning">Campaign Ready</span>
@@ -453,12 +453,12 @@ function generateMessagingTab() {
                                 <span class="badge badge-success">Embed friendly</span>
                                 <span class="badge badge-warning">One-click preset</span>
                             </div>
-                            <div style="white-space: pre-line; max-height: 240px; overflow-y: auto; font-size: 13px; line-height: 1.7; color: var(--text-secondary);">âœ¨ Unlock Full Access â€“ Only $5/month âœ¨
+                            <div style="white-space: pre-line; max-height: 240px; overflow-y: auto; font-size: 13px; line-height: 1.7; color: var(--text-secondary);">Unlock Full Access - Only $5/month
 
 Follow these simple steps:
-1. Click the card button (ðŸ’³) below or open the Patreon link: https://www.patreon.com/c/tsio/membership
+1. Click the card button below or open the Patreon link: https://www.patreon.com/c/tsio/membership
 2. Subscribe to the membership plan you like.
-3. Come back to this Discord server and click the tick button (âœ…) to request approval.
+3. Come back to this Discord server and click the approval button to request access.
 4. Type /premium to see your premium details.
 
 Your subscription is securely handled by Patreon.com, and we do not process your payment details directly.
@@ -477,7 +477,7 @@ You will get a notification when your premium plan is enabled.</div>
                 </div>                <div class="content-card auto-campaign-card">
                     <div class="card-header">
                         <div class="card-title-group">
-                            <h3 class="card-title">ðŸ¤– Auto Campaign</h3>
+                            <h3 class="card-title">Auto Campaign</h3>
                             <p class="card-subtitle">Send unlimited usage offer to newly joined servers after first <span id="autoCampaignTriggerCount">5</span> translated messages.</p>
                         </div>
                     </div>
@@ -495,7 +495,7 @@ You will get a notification when your premium plan is enabled.</div>
                 <div class="content-card">
                     <div class="card-header">
                         <div class="card-title-group">
-                            <h3 class="card-title">ðŸš€ Deployment</h3>
+                            <h3 class="card-title">Deployment</h3>
                             <p class="card-subtitle">Global broadcast actions</p>
                         </div>
                     </div>
@@ -518,7 +518,7 @@ You will get a notification when your premium plan is enabled.</div>
         <div id="sendingProgress" class="content-card" style="display:none; margin-top: 24px;">
             <div class="card-header">
                 <div class="card-title-group">
-                    <h3 class="card-title">ðŸ“¡ Sending Progress</h3>
+                    <h3 class="card-title">Sending Progress</h3>
                     <p class="card-subtitle">Global delivery in progress</p>
                 </div>
             </div>
@@ -681,7 +681,7 @@ async function generateVoteTrackingTab() {
         <div class="content-card">
             <div class="card-header">
                 <div class="card-title-group">
-                    <h3 class="card-title">ðŸ—³ï¸ Vote Activity Feed</h3>
+                    <h3 class="card-title"> Vote Activity Feed</h3>
                     <p class="card-subtitle">Detailed log of all votes in the last 24 hours</p>
                 </div>
                 <div class="card-actions">
@@ -825,7 +825,7 @@ async function generatePremiumRequestsTab() {
         <div class="content-card">
             <div class="card-header">
                 <div class="card-title-group">
-                    <h3 class="card-title">ðŸ’³ Request Queue</h3>
+                    <h3 class="card-title"> Request Queue</h3>
                     <p class="card-subtitle">Review each request carefully before approval</p>
                 </div>
                 <div class="card-actions">
@@ -973,9 +973,9 @@ async function generateMonetizationTab() {
     }
 
     function formatCalendarDate(dateValue) {
-        if (!dateValue) return 'â€”';
+        if (!dateValue) return '-';
         const parsed = new Date(dateValue);
-        if (Number.isNaN(parsed.getTime())) return 'â€”';
+        if (Number.isNaN(parsed.getTime())) return '-';
         return parsed.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
     }
 
@@ -990,8 +990,8 @@ async function generateMonetizationTab() {
     <div class="tab-content" id="monetization-tab">
         <div class="content-card">
             <div class="card-header">
-                <h3 class="card-title">ðŸ’° Monetization Management</h3>
-                <span class="badge badge-info">Admin â€¢ Secure</span>
+                <h3 class="card-title">Monetization Management</h3>
+                <span class="badge badge-info">Admin - Secure</span>
             </div>
         </div>
         
@@ -1054,7 +1054,7 @@ async function generateMonetizationTab() {
         <div class="charts-grid">
             <!-- Global Settings -->
             <div class="content-card">
-                <div class="card-header"><h3 class="card-title">âš™ï¸ Global Settings</h3></div>
+                <div class="card-header"><h3 class="card-title">Global Settings</h3></div>
                 <div class="card-body">
                     <div class="form-grid">
                         <div class="form-group">
@@ -1077,7 +1077,7 @@ async function generateMonetizationTab() {
             
             <!-- Quick Actions -->
             <div class="content-card">
-                <div class="card-header"><h3 class="card-title">âš¡ Quick Actions</h3></div>
+                <div class="card-header"><h3 class="card-title">Quick Actions</h3></div>
                 <div class="card-body">
                     <div class="form-group">
                         <input type="text" id="serverIdInput" placeholder="Enter Server ID" class="form-control" />
@@ -1097,13 +1097,13 @@ async function generateMonetizationTab() {
         
         <!-- Bulk Actions -->
         <div class="content-card">
-            <div class="card-header"><h3 class="card-title">ðŸ”„ Bulk Server Actions</h3></div>
+            <div class="card-header"><h3 class="card-title">Bulk Server Actions</h3></div>
             <div class="card-body">
                 <p style="color: var(--text-secondary); margin-bottom: 16px;">Apply restrictions or exemptions to multiple servers. Use carefully!</p>
                 <div class="action-buttons">
-                    <button class="btn btn-danger" onclick="bulkRestrictAll()">ðŸ”’ Restrict All Servers</button>
-                    <button class="btn btn-warning" onclick="bulkRemoveRestrictions()">ðŸ”“ Remove All Restrictions</button>
-                    <button class="btn btn-info" onclick="bulkResetCounts()">â†» Reset All Counts</button>
+                    <button class="btn btn-danger" onclick="bulkRestrictAll()">Restrict All Servers</button>
+                    <button class="btn btn-warning" onclick="bulkRemoveRestrictions()">Remove All Restrictions</button>
+                    <button class="btn btn-info" onclick="bulkResetCounts()">Reset All Counts</button>
                 </div>
             </div>
         </div>
@@ -1111,12 +1111,12 @@ async function generateMonetizationTab() {
         <!-- Server Management Table -->
         <div class="content-card">
             <div class="card-header">
-                <h3 class="card-title">ðŸ–¥ï¸ Server Management</h3>
+                <h3 class="card-title">Server Management</h3>
                 <span class="badge badge-info">${serversStatus.length} servers</span>
             </div>
             <div class="card-body">
                 <div style="display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; justify-content: space-between;">
-                    <input type="text" id="monetizationSearchInput" class="search-input" placeholder="ðŸ” Search servers..." onkeyup="searchMonetizationServers()" />
+                    <input type="text" id="monetizationSearchInput" class="search-input" placeholder="Search servers..." onkeyup="searchMonetizationServers()" />
                     <div class="filter-group">
                         <button class="filter-btn active" onclick="filterServers('all')">All</button>
                         <button class="filter-btn" onclick="filterServers('restricted')">Restricted</button>
@@ -1163,7 +1163,7 @@ async function generateMonetizationTab() {
                                                 }
                                                 return `<span class="badge badge-success">Unlimited</span>`;
                                             }
-                                            return '<span class="badge badge-secondary">â€”</span>';
+                                            return '<span class="badge badge-secondary">-</span>';
                                         })()}
                                     </td>
                                     <td>
@@ -1175,7 +1175,7 @@ async function generateMonetizationTab() {
                                     <td>
                                         ${server.nextRenewalDate
                                             ? `<span class="badge badge-success" title="Renews monthly on the same day">${formatCalendarDate(server.nextRenewalDate)}</span>`
-                                            : '<span class="badge badge-secondary">â€”</span>'
+                                            : '<span class="badge badge-secondary">-</span>'
                                         }
                                     </td>
                                     <td>
@@ -1278,7 +1278,7 @@ async function generateServersTab(client) {
         <div class="content-card">
             <div class="card-header">
                 <div class="card-title-group">
-                    <h3 class="card-title">ðŸ–¥ï¸ Server Directory</h3>
+                    <h3 class="card-title"> Server Directory</h3>
                     <p class="card-subtitle">Comprehensive list of all connected servers</p>
                 </div>
                 <div class="card-actions">
@@ -1375,7 +1375,7 @@ function generateLogsTab() {
         <div class="content-card">
             <div class="card-header">
                 <div class="card-title-group">
-                    <h3 class="card-title">ðŸ“‹ System Events</h3>
+                    <h3 class="card-title"> System Events</h3>
                     <p class="card-subtitle">Detailed audit trail of bot operations</p>
                 </div>
                 <div class="card-actions">
@@ -1417,7 +1417,7 @@ function generateLogsTab() {
                                 <span class="timeline-time">14:28:12</span>
                             </div>
                             <div class="timeline-body">
-                                <span class="badge badge-info">EN â†’ ES</span> processed for server <span class="highlight">"Gaming Hub"</span>
+                                <span class="badge badge-info">EN -> ES</span> processed for server <span class="highlight">"Gaming Hub"</span>
                             </div>
                             <div class="timeline-footer">Feb 11, 2024</div>
                         </div>
@@ -1799,7 +1799,7 @@ async function generatePaymentsTab() {
         <!-- Welcome Section -->
         <div class="welcome-section">
             <div class="welcome-text">
-                <h2>ðŸ’³ Payment Tracking</h2>
+                <h2>Payment Tracking</h2>
                 <p>Monitor subscriptions, trials, and revenue from your users.</p>
             </div>
             <div class="welcome-actions">

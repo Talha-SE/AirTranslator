@@ -1,4 +1,4 @@
-﻿// ===== Theme Management =====
+// ===== Theme Management =====
 const themeToggle = document.getElementById('themeToggle');
 const html = document.documentElement;
 
@@ -85,13 +85,13 @@ if (!document.getElementById('admin-notification-keyframes')) {
 
 // ===== Message Template Functions =====
 const premiumBroadcastTemplate = {
-    title: 'ðŸ’Ž Premium Access',
-    content: `âœ¨ Unlock Full Access â€“ Only $5/month âœ¨
+    title: 'Premium Access',
+    content: `Unlock Full Access - Only $5/month
 
 Follow these simple steps:
-1. Click the card button (ðŸ’³) below or open the Patreon link: https://www.patreon.com/c/tsio/membership
+1. Click the card button below or open the Patreon link: https://www.patreon.com/c/tsio/membership
 2. Subscribe to the membership plan you like.
-3. Come back to this Discord server and click the tick button (âœ…) to request approval.
+3. Come back to this Discord server and click the approval button to request access.
 4. Type /premium to see your premium details.
 
 Your subscription is securely handled by Patreon.com, and we do not process your payment details directly.
@@ -101,17 +101,17 @@ You will get a notification when your premium plan is enabled.`.trim(),
 };
 
 const unlimitedUsageBroadcastTemplate = {
-    title: 'ðŸš€ Unlimited Usage Offer',
+    title: 'Unlimited Usage Offer',
     content: `Get the most out of our service by purchasing a **subscription** and enjoy **unlimited usage every month**.
 
-ðŸ”’ **Secure payment via our official Patreon pricing page:**
+ **Secure payment via our official Patreon pricing page:**
 https://www.patreon.com/c/tsio/membership
 
-ðŸŽ **Limited-Time Bonus:**
+ **Limited-Time Bonus:**
 Subscribe now and claim a **FREE 7-day trial** (limited-time offer):
 https://www.patreon.com/c/tsio/membership
 
-âœ¨ **Note:** If youâ€™ve already subscribed, you can start using the service immediately.`.trim(),
+ **Note:** If you've already subscribed, you can start using the service immediately.`.trim(),
     color: '#f59e0b'
 };
 
@@ -127,32 +127,32 @@ function updateMessageTemplate() {
 
     const templates = {
         announcement: {
-            title: 'ðŸ“¢ Important Announcement',
+            title: 'Important Announcement',
             content: 'We have an important announcement to share with you...',
             color: '#3498db'
         },
         update: {
-            title: 'ðŸ”„ Bot Update',
+            title: 'Bot Update',
             content: 'AirTranslator has been updated with new features and improvements...',
             color: '#9b59b6'
         },
         maintenance: {
-            title: 'ðŸ”§ Scheduled Maintenance',
+            title: 'Scheduled Maintenance',
             content: 'We will be performing scheduled maintenance on...',
             color: '#ffa500'
         },
         feature: {
-            title: 'âœ¨ New Feature',
+            title: 'New Feature',
             content: 'Check out our exciting new feature...',
             color: '#00ff88'
         },
         warning: {
-            title: 'âš ï¸ Important Notice',
+            title: 'Important Notice',
             content: 'Please pay attention to this important information...',
             color: '#ff6b6b'
         },
         celebration: {
-            title: 'ðŸŽ‰ Celebration',
+            title: 'Celebration',
             content: 'We are excited to celebrate this milestone with you...',
             color: '#f39c12'
         },
@@ -484,7 +484,7 @@ function renderSelectedServersList() {
 
     const filteredServers = filterServersForSelection(messagingServersCache);
 
-    selectedServersMeta.textContent = `${selectedServerIds.size} selected â€¢ ${filteredServers.length} visible of ${messagingServersCache.length}`;
+    selectedServersMeta.textContent = `${selectedServerIds.size} selected - ${filteredServers.length} visible of ${messagingServersCache.length}`;
 
     if (filteredServers.length === 0) {
         selectedServersList.innerHTML = '<div class="selected-servers-empty">No servers match the active filters.</div>';
@@ -495,13 +495,13 @@ function renderSelectedServersList() {
         .map((server) => {
             const id = String(server.id || '');
             const checked = selectedServerIds.has(id) ? 'checked' : '';
-            const exemptTag = server?.isExempt === true ? ' • Exempt' : '';
+            const exemptTag = server?.isExempt === true ? ' - Exempt' : '';
             return `
                 <label class="selected-server-item">
                     <input type="checkbox" ${checked} onchange="toggleSelectedServerSelection('${id}', this.checked)" />
                     <div class="selected-server-content">
                         <div class="selected-server-name">${escapeHtml(server.name)}</div>
-                        <div class="selected-server-subtext">${Number(server.memberCount || 0).toLocaleString()} members â€¢ Joined ${formatJoinedAt(server.joinedAt)}${exemptTag}</div>
+                        <div class="selected-server-subtext">${Number(server.memberCount || 0).toLocaleString()} members - Joined ${formatJoinedAt(server.joinedAt)}${exemptTag}</div>
                     </div>
                 </label>
             `;
@@ -585,7 +585,7 @@ function updatePreview() {
     if (previewContent) previewContent.textContent = content;
     if (previewFooter) {
         previewFooter.style.display = includeFooter ? 'block' : 'none';
-        previewFooter.textContent = 'AirTranslator Bot â€¢ ' + new Date().toLocaleString();
+        previewFooter.textContent = 'AirTranslator Bot - ' + new Date().toLocaleString();
     }
     if (embedPreview) {
         embedPreview.style.borderLeftColor = color;
@@ -685,7 +685,7 @@ async function sendMessage() {
                                 const row = document.createElement('tr');
                                 row.style.borderBottom = '1px solid var(--border-color)';
                                 const statusColor = detail.status === 'sent' ? 'var(--success)' : 'var(--danger)';
-                                const statusIcon = detail.status === 'sent' ? 'âœ…' : 'âŒ';
+                                const statusIcon = detail.status === 'sent' ? 'OK' : 'ERR';
                                 
                                 row.innerHTML = `
                                     <td style="padding: 8px;">${detail.serverName}</td>
@@ -704,10 +704,10 @@ async function sendMessage() {
                         } else if (data.type === 'complete') {
                             const result = data.result;
                             if (progressFill) progressFill.style.width = '100%';
-                            if (progressText) progressText.textContent = `âœ… Completed! Sent: ${result.sent}, Failed: ${result.failed}`;
+                            if (progressText) progressText.textContent = `Completed! Sent: ${result.sent}, Failed: ${result.failed}`;
                             if (currentServerStatus) currentServerStatus.textContent = 'Broadcast Complete';
                         } else if (data.type === 'error') {
-                            if (progressText) progressText.textContent = `âŒ Error: ${data.message}`;
+                            if (progressText) progressText.textContent = `Error: ${data.message}`;
                         }
                     } catch (e) {
                         console.error('Error parsing SSE data:', e);
@@ -717,7 +717,7 @@ async function sendMessage() {
         }
     } catch (error) {
         console.error('Error sending message:', error);
-        if (progressText) progressText.textContent = 'âŒ Network error occurred';
+        if (progressText) progressText.textContent = 'Network error occurred';
     }
 }
 
@@ -771,13 +771,13 @@ async function scheduleMessage() {
         const result = await response.json();
         
         if (result.success) {
-            alert(`âœ… Message scheduled successfully! Job ID: ${result.jobId}`);
+            alert(`Message scheduled successfully! Job ID: ${result.jobId}`);
         } else {
-            alert(`âŒ Failed to schedule message: ${result.message}`);
+            alert(`Failed to schedule message: ${result.message}`);
         }
     } catch (error) {
         console.error('Error scheduling message:', error);
-        alert('âŒ Error scheduling message');
+        alert('Error scheduling message');
     }
 }
 
@@ -915,16 +915,16 @@ async function leaveServer(serverId, serverName) {
         const result = await response.json();
         
         if (result.success) {
-            alert(`âœ… Successfully left ${serverName}`);
+            alert(`Successfully left ${serverName}`);
             // Remove the row from the table
             const row = document.querySelector(`tr[data-server-id="${serverId}"]`);
             if (row) row.remove();
         } else {
-            alert(`âŒ Failed to leave server: ${result.message}`);
+            alert(`Failed to leave server: ${result.message}`);
         }
     } catch (error) {
         console.error('Error leaving server:', error);
-        alert('âŒ Error leaving server');
+        alert('Error leaving server');
     }
 }
 
@@ -1017,32 +1017,32 @@ if (activeTab === 'feedback') {
 
 function getLanguageMeta(code) {
     const languageMap = {
-        en: { name: 'English', flag: 'ðŸ‡¬ðŸ‡§' },
-        es: { name: 'Spanish', flag: 'ðŸ‡ªðŸ‡¸' },
-        fr: { name: 'French', flag: 'ðŸ‡«ðŸ‡·' },
-        de: { name: 'German', flag: 'ðŸ‡©ðŸ‡ª' },
-        it: { name: 'Italian', flag: 'ðŸ‡®ðŸ‡¹' },
-        pt: { name: 'Portuguese', flag: 'ðŸ‡µðŸ‡¹' },
-        ja: { name: 'Japanese', flag: 'ðŸ‡¯ðŸ‡µ' },
-        ko: { name: 'Korean', flag: 'ðŸ‡°ðŸ‡·' },
-        zh: { name: 'Chinese', flag: 'ðŸ‡¨ðŸ‡³' },
-        ru: { name: 'Russian', flag: 'ðŸ‡·ðŸ‡º' },
-        ar: { name: 'Arabic', flag: 'ðŸ‡¸ðŸ‡¦' },
-        hi: { name: 'Hindi', flag: 'ðŸ‡®ðŸ‡³' },
-        ur: { name: 'Urdu', flag: 'ðŸ‡µðŸ‡°' },
-        tr: { name: 'Turkish', flag: 'ðŸ‡¹ðŸ‡·' },
-        nl: { name: 'Dutch', flag: 'ðŸ‡³ðŸ‡±' },
-        pl: { name: 'Polish', flag: 'ðŸ‡µðŸ‡±' },
-        vi: { name: 'Vietnamese', flag: 'ðŸ‡»ðŸ‡³' },
-        id: { name: 'Indonesian', flag: 'ðŸ‡®ðŸ‡©' },
-        uk: { name: 'Ukrainian', flag: 'ðŸ‡ºðŸ‡¦' },
-        ro: { name: 'Romanian', flag: 'ðŸ‡·ðŸ‡´' },
-        fa: { name: 'Persian', flag: 'ðŸ‡®ðŸ‡·' },
-        bn: { name: 'Bengali', flag: 'ðŸ‡§ðŸ‡©' }
+        en: { name: 'English', flag: 'EN' },
+        es: { name: 'Spanish', flag: 'ES' },
+        fr: { name: 'French', flag: 'FR' },
+        de: { name: 'German', flag: 'DE' },
+        it: { name: 'Italian', flag: 'IT' },
+        pt: { name: 'Portuguese', flag: 'PT' },
+        ja: { name: 'Japanese', flag: 'JA' },
+        ko: { name: 'Korean', flag: 'KO' },
+        zh: { name: 'Chinese', flag: 'ZH' },
+        ru: { name: 'Russian', flag: 'RU' },
+        ar: { name: 'Arabic', flag: 'AR' },
+        hi: { name: 'Hindi', flag: 'HI' },
+        ur: { name: 'Urdu', flag: 'UR' },
+        tr: { name: 'Turkish', flag: 'TR' },
+        nl: { name: 'Dutch', flag: 'NL' },
+        pl: { name: 'Polish', flag: 'PL' },
+        vi: { name: 'Vietnamese', flag: 'VI' },
+        id: { name: 'Indonesian', flag: 'ID' },
+        uk: { name: 'Ukrainian', flag: 'UK' },
+        ro: { name: 'Romanian', flag: 'RO' },
+        fa: { name: 'Persian', flag: 'FA' },
+        bn: { name: 'Bengali', flag: 'BN' }
     };
 
     const normalized = (code || '').toLowerCase();
-    return languageMap[normalized] || { name: normalized.toUpperCase() || 'Unknown', flag: 'ðŸŒ' };
+    return languageMap[normalized] || { name: normalized.toUpperCase() || 'Unknown', flag: 'NA' };
 }
 
 function renderTopLanguages(topLanguages = [], totalLanguageUsages = 0) {
@@ -1149,7 +1149,7 @@ if (activeTab === 'analytics') {
     }, 30000);
 }
 
-console.log('ðŸš€ AirTranslator Admin Panel loaded successfully');
+console.log('AirTranslator Admin Panel loaded successfully');
 
 // ===== Utility Functions =====
 
