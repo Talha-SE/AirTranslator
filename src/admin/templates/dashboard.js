@@ -451,9 +451,7 @@ You will get a notification when your premium plan is enabled.</div>
                                 <span class="badge badge-success">Free trial bonus</span>
                                 <span class="badge badge-info">Patreon link</span>
                             </div>
-                            <div style="white-space: pre-line; max-height: 260px; overflow-y: auto; font-size: 13px; line-height: 1.7; color: var(--text-secondary);">🚀 **Unlock Unlimited Usage!**
-
-Get the most out of our service by purchasing a **subscription** and enjoy **unlimited usage every month**.
+                            <div style="white-space: pre-line; max-height: 260px; overflow-y: auto; font-size: 13px; line-height: 1.7; color: var(--text-secondary);">Get the most out of our service by purchasing a **subscription** and enjoy **unlimited usage every month**.
 
 🔒 **Secure payment via our official Patreon pricing page:**
 https://www.patreon.com/c/tsio/membership

@@ -102,9 +102,7 @@ You will get a notification when your premium plan is enabled.`.trim(),
 
 const unlimitedUsageBroadcastTemplate = {
     title: '🚀 Unlimited Usage Offer',
-    content: `🚀 **Unlock Unlimited Usage!**
-
-Get the most out of our service by purchasing a **subscription** and enjoy **unlimited usage every month**.
+    content: `Get the most out of our service by purchasing a **subscription** and enjoy **unlimited usage every month**.
 
 🔒 **Secure payment via our official Patreon pricing page:**
 https://www.patreon.com/c/tsio/membership
