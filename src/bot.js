@@ -63,7 +63,7 @@ function createLogger(scope) {
 
 const logger = createLogger('bot');
 
-const TOPGG_VOTE_BONUS_AMOUNT = 35;
+const TOPGG_VOTE_BONUS_AMOUNT = 25;
 const PENDING_VOTE_TARGET_TTL_MS = 60 * 60 * 1000;
 const TOPGG_CLICK_REWARD_DELAY_MS = 60 * 1000;
 

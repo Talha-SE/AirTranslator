@@ -923,7 +923,7 @@ router.post('/vote/confirm', async (req, res) => {
       }
     }
 
-    const result = await monetizationService.handleVoteReward(userId, serverId, 35, requester, 'topgg');
+    const result = await monetizationService.handleVoteReward(userId, serverId, 25, requester, 'topgg');
 
     if (result.success) {
       // Send notification to the server if possible

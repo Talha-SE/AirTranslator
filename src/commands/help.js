@@ -54,10 +54,10 @@ module.exports = {
                 },
                 {
                     name: '🎁 **\n\n━━━ REWARDS & STATUS ━━━**',
-                    value: '```fix\n━━━ Earn bonus translations daily! ━━━\n💎 Your translation dashboard\n🎁 Get 35 FREE bonus translations!\n⏰ Vote every 12 hours for rewards\n```\n' +
+                    value: '```fix\n━━━ Earn bonus translations daily! ━━━\n💎 Your translation dashboard\n🎁 Get 25 FREE bonus translations!\n⏰ Vote every 12 hours for rewards\n```\n' +
                         '▫️ **`/votestatus`** ➤ *Your translation dashboard*\n' +
                         '   📊 View server statistics & usage\n' +
-                        '   🎁 **Get 35 FREE bonus translations!**\n' +
+                        '   🎁 **Get 25 FREE bonus translations!**\n' +
                         '   ⏰ Vote every 12 hours for rewards\n' +
                         '   💡 Example: `/votestatus`\n\n' +
                         '▫️ **`/premium`** ➤ *Premium status for this server*\n' +
