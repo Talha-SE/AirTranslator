@@ -17,7 +17,8 @@ const {
   togglePersonalTranslation,
   getFeedbackSettings,
   hasSubmittedFeedback,
-  createUserFeedback
+  createUserFeedback,
+  getVoteEventCountByUser
 } = require('./databaseService');
 const STTSettings = require('../models/STTSettings');
 const monetizationService = require('./monetizationService');
@@ -915,19 +916,73 @@ router.post('/personalbuddy/:userId', async (req, res) => {
   }
 });
 
-// Get vote status
-router.get('/vote/status/:userId', async (req, res) => {
+// Get vote status for all user's servers (session-based)
+router.get('/vote/status', verifySession, async (req, res) => {
   try {
-    const { userId } = req.params;
-    // Implement vote status check logic here
-    // This should check Top.gg API or your vote tracking system
+    const session = req.userSession;
+    const userId = session.user.id;
+    const guilds = session.guilds || [];
+    const client = router.botClient;
+
+    const serversData = await Promise.all(guilds.map(async (g) => {
+      const serverId = g.id;
+      const serverName = client?.guilds?.cache?.get(serverId)?.name || g.name || serverId;
+      
+      try {
+        const stats = await monetizationService.getServerStats(serverId);
+        const cooldownRemaining = await monetizationService.getUserCooldownRemaining(userId, serverId, 'topgg');
+        const isOnCooldown = cooldownRemaining > 0;
+
+        // Determine premium type
+        let premiumType = 'none';
+        if (stats.isExempt) {
+          premiumType = stats.premiumJoinedAt ? 'paid' : 'permanent';
+        } else if (stats.isExempt === false && !stats.isRestricted) {
+          // If not exempt and not restricted — might be vote-boosted
+          premiumType = 'none';
+        }
+
+        return {
+          id: serverId,
+          name: serverName,
+          translationCount: stats.translationCount,
+          freeTranslationLimit: stats.freeTranslationLimit,
+          isExempt: stats.isExempt,
+          isRestricted: stats.isRestricted,
+          premiumJoinedAt: stats.premiumJoinedAt,
+          nextRenewalDate: stats.nextRenewalDate,
+          premiumType,
+          canTranslate: stats.canTranslate,
+          cooldown: {
+            active: isOnCooldown,
+            remainingMs: cooldownRemaining,
+            remainingHours: Math.ceil(cooldownRemaining / (60 * 60 * 1000))
+          }
+        };
+      } catch {
+        return {
+          id: serverId,
+          name: serverName,
+          error: true
+        };
+      }
+    }));
+
+    // Get total vote count for this user
+    let totalUserVotes = 0;
+    try {
+      totalUserVotes = await getVoteEventCountByUser(userId) || 0;
+    } catch {}
+
+    const premiumServers = serversData.filter(s => s.isExempt);
+    const totalTranslations = serversData.reduce((sum, s) => sum + (s.translationCount || 0), 0);
 
     res.json({
-      hasVoted: false,
-      nextVoteTime: null,
-      totalVotes: 0,
-      streak: 0,
-      translationCount: 0
+      servers: serversData,
+      premiumServers: premiumServers.length,
+      totalServers: serversData.filter(s => !s.error).length,
+      totalTranslations,
+      totalVotes: totalUserVotes
     });
   } catch (error) {
     console.error('Error fetching vote status:', error);

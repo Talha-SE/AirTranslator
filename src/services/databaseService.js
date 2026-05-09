@@ -242,6 +242,20 @@ const getVoteStats = async () => {
 };
 
 /**
+ * Get total vote event count for a specific user
+ * @param {string} userId - Discord user ID
+ * @returns {Promise<number>} - Total vote events for this user
+ */
+const getVoteEventCountByUser = async (userId) => {
+    try {
+        return await VoteEvent.countDocuments({ userId });
+    } catch (error) {
+        console.error('Error counting vote events for user:', error);
+        return 0;
+    }
+};
+
+/**
  * Get recent vote events from database
  * @param {number} limit - Number of recent votes to fetch (0 for all)
  * @param {number} hours - Number of hours to look back (default 24)
@@ -1342,6 +1356,7 @@ module.exports = {
     saveVoteEvent,
     getVoteStats,
     getRecentVoteEvents,
+    getVoteEventCountByUser,
     deleteVoteEventById,
     // Premium requests
     createPremiumRequest,
