@@ -415,7 +415,7 @@ const LIMIT_MESSAGE_COOLDOWN = 0; // No cooldown - show message every time
 // Vote tracking system for automatic credit granting
 const pendingVotes = new Map(); // serverId -> { timestamp, timeout }
 const VOTE_CREDIT_DELAY = 15 * 1000; // 15 seconds
-const VOTE_BONUS_AMOUNT = 35; // Free translations to grant
+const VOTE_BONUS_AMOUNT = 20; // Free translations to grant (can be overridden by admin dashboard setting)
 
 // Function to start vote tracking and auto-grant credits
 function startVoteTracking(serverId, userInfo = null, client = null) {

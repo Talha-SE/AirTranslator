@@ -248,16 +248,17 @@ const server = http.createServer(async (req, res) => {
                             displayName: fallbackUsername,
                         };
 
+                        const voteBonusAmount = monetizationService.getVoteBonusAmount();
                         const result = await monetizationService.handleVoteReward(
                             userId,
                             targetServerId,
-                            TOPGG_VOTE_BONUS_AMOUNT,
+                            voteBonusAmount,
                             userInfo,
                             'topgg'
                         );
                         
                         if (result.success) {
-                            console.log(` Vote reward (${TOPGG_VOTE_BONUS_AMOUNT} translations) processed for user ${userId} in server ${targetServerId}`);
+                            console.log(` Vote reward (${voteBonusAmount} translations) processed for user ${userId} in server ${targetServerId}`);
                             if (global.pendingTopggVoteTargets) {
                                 global.pendingTopggVoteTargets.delete(String(userId));
                             }
@@ -499,6 +500,38 @@ const server = http.createServer(async (req, res) => {
         
         if (pathname === '/admin/monetization/recent-votes' && req.method === 'GET') {
             await monetizationHandler.getRecentVotes(req, res, reqUrl);
+            return;
+        }
+        
+        // Vote bonus amount endpoints
+        if (pathname === '/admin/vote-bonus-amount' && req.method === 'GET') {
+            try {
+                const settings = monetizationService.getSettings();
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ amount: settings.voteBonusAmount || 20 }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Failed to get vote bonus amount' }));
+            }
+            return;
+        }
+
+        if (pathname === '/admin/vote-bonus-amount' && req.method === 'POST') {
+            try {
+                const data = await parsePostData(req);
+                const amount = parseInt(data.amount, 10);
+                if (isNaN(amount) || amount < 1 || amount > 1000) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Invalid amount (must be 1-1000)' }));
+                    return;
+                }
+                await monetizationService.updateGlobalSettings({ voteBonusAmount: amount });
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, amount }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Failed to update vote bonus amount' }));
+            }
             return;
         }
         

@@ -5,7 +5,8 @@ class MonetizationService {
         this.globalSettings = {
             defaultFreeTranslationLimit: 50,
             enableGlobalRestriction: false,
-            autoUnlimitedUsageCampaignEnabled: true
+            autoUnlimitedUsageCampaignEnabled: true,
+            voteBonusAmount: 20
         };
         this.settingsLoaded = false;
         // Vote tracking will now use database instead of in-memory storage
@@ -446,6 +447,13 @@ class MonetizationService {
         return {
             ...this.globalSettings
         };
+    }
+
+    /**
+     * Get the current vote bonus amount from settings
+     */
+    getVoteBonusAmount() {
+        return this.globalSettings.voteBonusAmount || 20;
     }
 
     /**

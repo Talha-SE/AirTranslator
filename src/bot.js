@@ -413,10 +413,11 @@ async function translateVoteMessage(serverId) {
     let languageCount = 0;
 
     try {
+        const bonusAmount = monetizationService.getVoteBonusAmount();
         const originalText = `Select where you want to vote to support Air Translator:
 
 🔵 Vote on Top.gg
-Get ${TOPGG_VOTE_BONUS_AMOUNT} free translations by clicking the button below.
+Get ${bonusAmount} free translations by clicking the button below.
 You'll be redirected to the Top.gg bot page 🚀`;
         
         // Get server setup to find configured languages
@@ -503,10 +504,11 @@ You'll be redirected to the Top.gg bot page 🚀`;
             languageCount
         });
         // Fallback to English on error
+        const fallbackAmount = monetizationService.getVoteBonusAmount();
         return `Select where you want to vote to support Air Translator:
 
 🔵 Vote on Top.gg
-Get ${TOPGG_VOTE_BONUS_AMOUNT} free translations by clicking the button below.
+Get ${fallbackAmount} free translations by clicking the button below.
 You'll be redirected to the Top.gg bot page 🚀`;
     }
 }
@@ -911,7 +913,7 @@ client.on(Events.InteractionCreate, async interaction => {
             if (customId.startsWith('vote_choice_topgg')) {
                 try {
                     const source = 'topgg';
-                    const BONUS = TOPGG_VOTE_BONUS_AMOUNT;
+                    const BONUS = monetizationService.getVoteBonusAmount();
                     const SITE_NAME = 'Top.gg';
                     const DELAY_MS = TOPGG_CLICK_REWARD_DELAY_MS;
                     

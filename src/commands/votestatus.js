@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const monetizationService = require('../services/monetizationService');
 
-const TOPGG_VOTE_BONUS_AMOUNT = 35;
+function getVoteBonusAmount() { return monetizationService.getVoteBonusAmount(); }
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -37,7 +37,7 @@ module.exports = {
             const embed = new EmbedBuilder()
                 .setTitle(`🗳️ Vote Status`)
                 .setColor(statusColor)
-                .setDescription(serverStats.isExempt ? '💎 **Premium Server** - Unlimited translations!' : `Vote every 12 hours to get **+${TOPGG_VOTE_BONUS_AMOUNT} bonus translations**!`)
+                .setDescription(serverStats.isExempt ? '💎 **Premium Server** - Unlimited translations!' : `Vote every 12 hours to get **+${getVoteBonusAmount()} bonus translations**!`)
                 .addFields(
                     {
                         name: `${statusEmoji} Translation Status`,
@@ -49,7 +49,7 @@ module.exports = {
             if (!serverStats.isExempt) {
                 embed.addFields({
                     name: '🎁 Vote Reward',
-                    value: `**+${TOPGG_VOTE_BONUS_AMOUNT} translations** every 12 hours\nRewards are automatic & instant!`,
+                    value: `**+${getVoteBonusAmount()} translations** every 12 hours\nRewards are automatic & instant!`,
                     inline: false
                 });
             }

@@ -1300,6 +1300,32 @@ async function saveGlobalSettings() {
     }
 }
 
+// Save vote bonus amount
+async function saveVoteBonusAmount() {
+    const amount = document.getElementById('voteBonusAmount')?.value;
+    if (!amount || parseInt(amount) < 1) {
+        showNotification('Please enter a valid amount (1-1000)', 'error');
+        return;
+    }
+    try {
+        const res = await fetch('/admin/vote-bonus-amount', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ amount: parseInt(amount) })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showNotification(`Vote bonus updated to ${data.amount} translations`, 'success');
+        } else {
+            showNotification('Failed to save: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Error saving vote bonus amount:', error);
+        showNotification('Error saving vote bonus amount', 'error');
+    }
+}
+
 // Add exempt server
 async function addExemptServer(serverId) {
     const serverIdInput = document.getElementById('serverIdInput');

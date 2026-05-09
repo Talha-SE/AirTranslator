@@ -2,8 +2,8 @@ const axios = require('axios');
 const monetizationService = require('./monetizationService');
 const databaseService = require('./databaseService');
 
-const TOPGG_VOTE_BONUS_AMOUNT = 35;
 const TOPGG_VOTE_TARGET_TTL_MS = 60 * 60 * 1000;
+function getVoteBonusAmount() { return monetizationService.getVoteBonusAmount(); }
 
 function parseServerIdFromVoteQuery(queryValue) {
     if (!queryValue) return null;
@@ -193,7 +193,8 @@ class VoteCheckService {
                     const canReward = now - lastRewarded >= twelveHoursMs;
 
                     if (targetServerId && canReward) {
-                        console.log(`⏳ Scheduling ${TOPGG_VOTE_BONUS_AMOUNT} free translations for user ${userId} in server ${targetServerId} after 1 minute`);
+                        const voteAmt = getVoteBonusAmount();
+                        console.log(`⏳ Scheduling ${voteAmt} free translations for user ${userId} in server ${targetServerId} after 1 minute`);
 
                         setTimeout(async () => {
                             try {
@@ -207,13 +208,13 @@ class VoteCheckService {
                                 const result = await monetizationService.handleVoteReward(
                                     userId,
                                     targetServerId,
-                                    TOPGG_VOTE_BONUS_AMOUNT,
+                                    voteAmt,
                                     userInfo,
                                     'topgg'
                                 );
                                 if (result && result.success) {
-                                    console.log(`✅ Vote reward (${TOPGG_VOTE_BONUS_AMOUNT} translations) granted to server ${targetServerId} by user ${userId}`);
-                                    await this.sendVoteConfirmation(userId, targetServerId, TOPGG_VOTE_BONUS_AMOUNT);
+                                    console.log(`✅ Vote reward (${voteAmt} translations) granted to server ${targetServerId} by user ${userId}`);
+                                    await this.sendVoteConfirmation(userId, targetServerId, voteAmt);
                                     if (global.pendingTopggVoteTargets) {
                                         global.pendingTopggVoteTargets.delete(String(userId));
                                     }

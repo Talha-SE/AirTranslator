@@ -678,6 +678,47 @@ async function generateVoteTrackingTab() {
             </div>
         </div>
 
+        <div class="charts-grid" style="margin-bottom: 32px;">
+            <!-- Vote Reward Settings -->
+            <div class="content-card">
+                <div class="card-header"><h3 class="card-title">Vote Reward Settings</h3></div>
+                <div class="card-body">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Bonus Translations Per Vote</label>
+                            <div style="display: flex; gap: 12px; align-items: center;">
+                                <input type="number" id="voteBonusAmount" value="${monetizationService.getSettings().voteBonusAmount || 20}" min="1" max="1000" class="form-control" style="max-width: 120px;" />
+                                <button class="btn btn-primary" onclick="saveVoteBonusAmount()">Save</button>
+                            </div>
+                            <small class="form-hint">Free translations granted per successful vote (1-1000)</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Vote Stats Overview -->
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title-group">
+                        <h3 class="card-title">Vote Stats</h3>
+                        <p class="card-subtitle">Real-time distribution metrics</p>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 0;">
+                        <div class="stat-card" style="padding: 16px;">
+                            <div class="stat-label">Avg Credits/Vote</div>
+                            <div class="stat-value" style="font-size: 20px;">${voteStats.totalVoteClicks > 0 ? (voteStats.totalCreditsGranted / voteStats.totalVoteClicks).toFixed(1) : 0}</div>
+                        </div>
+                        <div class="stat-card" style="padding: 16px;">
+                            <div class="stat-label">Conversion Rate</div>
+                            <div class="stat-value" style="font-size: 20px;">${voteStats.totalVoteClicks > 0 ? ((voteStats.totalCreditsGranted > 0 ? voteStats.recentVotes.filter(v => v.creditsGranted > 0).length / Math.max(voteStats.recentVotes.length, 1) * 100 : 0)).toFixed(1) : 0}%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="content-card">
             <div class="card-header">
                 <div class="card-title-group">
