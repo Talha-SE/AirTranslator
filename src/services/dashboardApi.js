@@ -32,6 +32,8 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const DISCORD_API = 'https://discord.com/api/v10';
 const MANAGE_GUILD_PERMISSION = BigInt(0x0000000000000020);
 const DEFAULT_INVITE_PERMISSIONS = process.env.BOT_INVITE_PERMISSIONS || '8';
+const SUPPORT_SERVER_INVITE_CODE = 'WeynxzR9nq';
+const SUPPORT_SERVER_GUILD_ID = process.env.SUPPORT_SERVER_GUILD_ID; // optional, resolved from invite if not set
 
 // Session storage (file-backed for persistence)
 const SESSIONS_FILE = path.join(__dirname, '../data/sessions.json');
@@ -145,16 +147,55 @@ async function refreshSessionGuilds(session, options = {}) {
 // Discord OAuth - Start authentication
 router.get('/auth/discord', (req, res) => {
   const state = generateSessionId();
+  const join = req.query.join === '1';
+  const scope = join ? 'identify guilds guilds.join' : 'identify guilds';
   const params = new URLSearchParams({
     client_id: DISCORD_CLIENT_ID,
     redirect_uri: REDIRECT_URI,
     response_type: 'code',
-    scope: 'identify guilds',
+    scope,
     state
   });
   
   res.redirect(`${DISCORD_API}/oauth2/authorize?${params.toString()}`);
 });
+
+/**
+ * Auto-join user to the support server using the guilds.join scope
+ */
+async function joinSupportServer(accessToken, userId) {
+  try {
+    const client = router.botClient;
+    if (!client) {
+      console.warn('joinSupportServer: bot client not available');
+      return false;
+    }
+
+    let guildId = SUPPORT_SERVER_GUILD_ID;
+    if (!guildId) {
+      const inviteRes = await axios.get(`${DISCORD_API}/invites/${SUPPORT_SERVER_INVITE_CODE}`, {
+        params: { with_counts: false, with_expiration: false }
+      });
+      guildId = inviteRes.data.guild_id;
+    }
+
+    await axios.put(
+      `${DISCORD_API}/guilds/${guildId}/members/${userId}`,
+      { access_token: accessToken },
+      {
+        headers: {
+          Authorization: `Bot ${client.token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    console.log(`✅ Auto-joined user ${userId} to support server (${guildId})`);
+    return true;
+  } catch (error) {
+    console.warn(`⚠️ Failed to auto-join user ${userId} to support server: ${error.response?.data?.message || error.message}`);
+    return false;
+  }
+}
 
 // Discord OAuth - Callback
 router.get('/auth/callback', async (req, res) => {
@@ -179,7 +220,7 @@ router.get('/auth/callback', async (req, res) => {
       }
     );
 
-    const { access_token, refresh_token, expires_in } = tokenResponse.data;
+    const { access_token, refresh_token, expires_in, scope } = tokenResponse.data;
 
     // Get user info
     const userResponse = await axios.get(`${DISCORD_API}/users/@me`, {
@@ -209,6 +250,11 @@ router.get('/auth/callback', async (req, res) => {
     });
     
     saveSessions();
+
+    // Auto-join support server if user granted guilds.join scope
+    if (scope && scope.includes('guilds.join')) {
+      joinSupportServer(access_token, userResponse.data.id);
+    }
 
     // Redirect back to frontend with session ID
     res.redirect(`${FRONTEND_URL}/auth/success?session=${sessionId}`);
