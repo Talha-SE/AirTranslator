@@ -12,6 +12,7 @@ const {
   createSetup,
   deleteSetup,
   createServerSetup,
+  updateServerSetup,
   deleteServerSetup,
   getPersonalTranslationSettings,
   togglePersonalTranslation,
@@ -22,8 +23,42 @@ const {
 } = require('./databaseService');
 const STTSettings = require('../models/STTSettings');
 const monetizationService = require('./monetizationService');
+const { normalizeLanguageCode } = require('../utils/flagMapping');
 
 const router = express.Router();
+
+function normalizeUniqueStrings(values = [], normalizer = (value) => String(value || '').trim()) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values.map(normalizer).filter(Boolean))];
+}
+
+function normalizeSetupLanguage(value) {
+  const normalized = normalizeLanguageCode(value);
+  if (!normalized || normalized === 'auto') {
+    return '';
+  }
+  return normalized;
+}
+
+function buildPairedSetupData(channels = [], languages = []) {
+  const setupChannels = [];
+  const setupLanguages = [];
+
+  for (const channelId of channels) {
+    setupChannels.push(channelId);
+    setupLanguages.push('auto');
+
+    for (const language of languages) {
+      setupChannels.push(channelId);
+      setupLanguages.push(normalizeSetupLanguage(language));
+    }
+  }
+
+  return {
+    setupChannels,
+    setupLanguages: setupLanguages.filter(Boolean)
+  };
+}
 
 // Discord OAuth Configuration
 const DISCORD_CLIENT_ID = process.env.CLIENT_ID;
@@ -582,6 +617,19 @@ router.post('/servers/:serverId/setups', async (req, res) => {
   try {
     const { serverId } = req.params;
     const { name, channels, languages } = req.body;
+    const trimmedName = String(name || '').trim();
+    const normalizedChannels = normalizeUniqueStrings(channels);
+    const normalizedLanguages = normalizeUniqueStrings(languages, normalizeSetupLanguage);
+
+    if (!trimmedName) {
+      return res.status(400).json({ error: 'Setup name is required' });
+    }
+    if (normalizedChannels.length === 0) {
+      return res.status(400).json({ error: 'At least one channel is required' });
+    }
+    if (normalizedLanguages.length === 0) {
+      return res.status(400).json({ error: 'At least one target language is required' });
+    }
 
     // Get guild from bot client for server name
     const client = router.botClient;
@@ -590,23 +638,10 @@ router.post('/servers/:serverId/setups', async (req, res) => {
 
     // Create paired arrays: each channel gets AUTO_DETECT + each language
     // This matches how quickSetup command structures the data
-    const setupChannels = [];
-    const setupLanguages = [];
-
-    for (const channelId of channels) {
-      // First entry: auto-detect
-      setupChannels.push(channelId);
-      setupLanguages.push('auto');
-      
-      // Then add each target language
-      for (const language of languages) {
-        setupChannels.push(channelId);
-        setupLanguages.push(language.toLowerCase());
-      }
-    }
+    const { setupChannels, setupLanguages } = buildPairedSetupData(normalizedChannels, normalizedLanguages);
 
     // Use createServerSetup (same as commands)
-    const result = await createServerSetup(serverId, serverName, name, setupChannels, setupLanguages);
+    const result = await createServerSetup(serverId, serverName, trimmedName, setupChannels, setupLanguages);
     
     res.json({ success: true, setup: result.setup });
   } catch (error) {
@@ -619,6 +654,60 @@ router.post('/servers/:serverId/setups', async (req, res) => {
       return res.status(400).json({ error: 'A setup with this configuration already exists' });
     }
     res.status(500).json({ error: 'Failed to create setup', details: error.message });
+  }
+});
+
+// Update translation setup
+router.put('/servers/:serverId/setups/:setupId', async (req, res) => {
+  try {
+    const { serverId, setupId } = req.params;
+    const { name, channels, languages } = req.body;
+
+    const trimmedName = String(name || '').trim();
+    const normalizedChannels = normalizeUniqueStrings(channels);
+    const normalizedLanguages = normalizeUniqueStrings(languages, normalizeSetupLanguage);
+
+    if (!setupId || setupId === 'undefined' || setupId === 'null') {
+      return res.status(400).json({ error: 'Setup ID is required' });
+    }
+    if (!trimmedName) {
+      return res.status(400).json({ error: 'Setup name is required' });
+    }
+    if (normalizedChannels.length === 0) {
+      return res.status(400).json({ error: 'At least one channel is required' });
+    }
+    if (normalizedLanguages.length === 0) {
+      return res.status(400).json({ error: 'At least one target language is required' });
+    }
+
+    const { setupChannels, setupLanguages } = buildPairedSetupData(normalizedChannels, normalizedLanguages);
+    const updatedSetup = await updateServerSetup(serverId, setupId, trimmedName, setupChannels, setupLanguages);
+
+    res.json({ success: true, setup: updatedSetup });
+  } catch (error) {
+    console.error('Error updating setup:', error);
+    if (error.message === 'SETUP_NOT_FOUND') {
+      return res.status(404).json({ error: 'Setup not found' });
+    }
+    if (error.message === 'SERVER_NOT_FOUND') {
+      return res.status(404).json({ error: 'Server not found' });
+    }
+    if (error.message === 'SETUP_NAME_EXISTS') {
+      return res.status(400).json({ error: 'A setup with this name already exists' });
+    }
+    if (error.message === 'SETUP_CONFIG_EXISTS') {
+      return res.status(400).json({ error: 'A setup with this configuration already exists' });
+    }
+    if (error.message === 'INVALID_SETUP_NAME') {
+      return res.status(400).json({ error: 'Setup name is required' });
+    }
+    if (error.message === 'INVALID_SETUP_CHANNELS') {
+      return res.status(400).json({ error: 'At least one channel is required' });
+    }
+    if (error.message === 'INVALID_SETUP_LANGUAGES') {
+      return res.status(400).json({ error: 'At least one target language is required' });
+    }
+    res.status(500).json({ error: 'Failed to update setup', details: error.message });
   }
 });
 

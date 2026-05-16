@@ -1,5 +1,9 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { getFlagLanguage, getLanguageDisplayName } = require('../utils/flagMapping');
+const {
+    getFlagLanguage,
+    getLanguageDisplayName,
+    getLanguageFlag: getMappedLanguageFlag
+} = require('../utils/flagMapping');
 const { translateText, detectLanguage, analyzeAndTranslateImage, translateTextToMultipleLanguages } = require('../services/mistralService');
 const { getPersonalTranslationSettings, recordPersonalTranslation, getToneSettings, getServerSetups } = require('../services/databaseService');
 const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
@@ -15,6 +19,7 @@ const VOTE_BONUS_AMOUNT = 20; // Free translations to grant
 
 // Helper function to get language flag emoji
 function getLanguageFlag(langCode) {
+    return getMappedLanguageFlag(langCode);
     const lang = langCode.toLowerCase();
     
     // Map of language codes and full names to flags
@@ -829,6 +834,8 @@ async function messageReactionAdd(client, reaction, user) {
             'urdu': '🇵🇰', 'uyghur': '🇨🇳', 'uzbek': '🇺🇿', 'vietnamese': '🇻🇳',
             'welsh': '🏴󠁧󠁢󠁷󠁬󠁳󠁿', 'xhosa': '🇿🇦', 'yiddish': '🇮🇱', 'yoruba': '🇳🇬', 'zulu': '🇿🇦'
         }[targetLanguage] || flagEmoji;
+        const mappedFlag = getLanguageFlag(targetLanguage);
+        const displayFlag = mappedFlag === '🌐' ? flag : mappedFlag;
 
         const displayLanguage = getLanguageDisplayName(targetLanguage);
 
@@ -840,7 +847,7 @@ async function messageReactionAdd(client, reaction, user) {
                 iconURL: message.author.displayAvatarURL({ dynamic: true, size: 128 })
             })
             .addFields({
-                name: `${flag} ${displayLanguage}`,
+                name: `${displayFlag} ${displayLanguage}`,
                 value: translation.length > 1000 ? translation.substring(0, 997) + '...' : translation,
                 inline: false
             })

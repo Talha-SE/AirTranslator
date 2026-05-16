@@ -416,6 +416,64 @@ const getServerSetups = async (serverId) => {
     return server;
 };
 
+const updateServerSetup = async (serverId, setupId, setupName, channels, languages) => {
+    const normalizedName = String(setupName || '').trim();
+
+    if (!normalizedName) {
+        throw new Error('INVALID_SETUP_NAME');
+    }
+
+    const normalizedChannels = Array.isArray(channels)
+        ? [...new Set(channels.map(channel => String(channel || '').trim()).filter(Boolean))]
+        : [];
+    const normalizedLanguages = Array.isArray(languages)
+        ? languages.map(language => String(language || '').trim().toLowerCase()).filter(Boolean)
+        : [];
+
+    if (normalizedChannels.length === 0) {
+        throw new Error('INVALID_SETUP_CHANNELS');
+    }
+
+    if (normalizedLanguages.length === 0) {
+        throw new Error('INVALID_SETUP_LANGUAGES');
+    }
+
+    const server = await Server.findOne({ serverId });
+
+    if (!server) {
+        throw new Error('SERVER_NOT_FOUND');
+    }
+
+    const setupIndex = server.setups.findIndex(setup => setup.setupId === setupId);
+    if (setupIndex === -1) {
+        throw new Error('SETUP_NOT_FOUND');
+    }
+
+    const duplicateName = server.setups.some((setup, idx) =>
+        idx !== setupIndex && String(setup.name || '').trim().toLowerCase() === normalizedName.toLowerCase()
+    );
+    if (duplicateName) {
+        throw new Error('SETUP_NAME_EXISTS');
+    }
+
+    const duplicateSetup = server.setups.some((setup, idx) =>
+        idx !== setupIndex &&
+        JSON.stringify(setup.channels || []) === JSON.stringify(normalizedChannels) &&
+        JSON.stringify(setup.languages || []) === JSON.stringify(normalizedLanguages)
+    );
+    if (duplicateSetup) {
+        throw new Error('SETUP_CONFIG_EXISTS');
+    }
+
+    server.setups[setupIndex].name = normalizedName;
+    server.setups[setupIndex].channels = normalizedChannels;
+    server.setups[setupIndex].languages = normalizedLanguages;
+
+    await server.save();
+
+    return server.setups[setupIndex];
+};
+
 const deleteServerSetup = async (serverId, setupName) => {
     console.log('[DB SERVICE] deleteServerSetup called');
     console.log('[DB SERVICE] Server ID:', serverId);
@@ -1321,6 +1379,7 @@ module.exports = {
     updateServerConfig,
     createServerSetup,
     getServerSetups,
+    updateServerSetup,
     deleteServerSetup,
     getSetupByChannelId,
     getSetupsByChannelId,
