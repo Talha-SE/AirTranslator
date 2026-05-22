@@ -520,7 +520,10 @@ async function messageReactionAdd(client, reaction, user) {
                 }
 
                 // Skip if already in target language
-                if (detectedLanguage.toLowerCase() === targetLanguage.toLowerCase()) {
+                // But always translate between zh and zh-TW — they are different written forms
+                if (detectedLanguage.toLowerCase() === targetLanguage.toLowerCase() &&
+                    !((detectedLanguage.toLowerCase() === 'zh' && targetLanguage.toLowerCase() === 'zh-tw') ||
+                      (detectedLanguage.toLowerCase() === 'zh-tw' && targetLanguage.toLowerCase() === 'zh'))) {
                     console.log(`⚠️ Content already in ${targetLanguage}, skipping personal translation`);
                     return;
                 }
@@ -778,7 +781,10 @@ async function messageReactionAdd(client, reaction, user) {
         }
 
         // Skip if already in target language
-        if (detectedLanguage.toLowerCase() === targetLanguage.toLowerCase()) {
+        // But always translate between zh and zh-TW — they are different written forms
+        if (detectedLanguage.toLowerCase() === targetLanguage.toLowerCase() &&
+            !((detectedLanguage.toLowerCase() === 'zh' && targetLanguage.toLowerCase() === 'zh-tw') ||
+              (detectedLanguage.toLowerCase() === 'zh-tw' && targetLanguage.toLowerCase() === 'zh'))) {
             console.log(`⚠️ Content already in ${targetLanguage}, skipping translation`);
             return;
         }

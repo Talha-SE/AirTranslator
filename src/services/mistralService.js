@@ -966,6 +966,7 @@ For Korean translations, you MUST add cute chatting elements:
                 'ja': 'Japanese',
                 'zh': 'Chinese (Simplified)',
                 'zh-TW': 'Chinese (Traditional)',
+                'zh-tw': 'Chinese (Traditional)',
                 'taiwanese': 'Chinese (Traditional)',
                 'tawaiese': 'Chinese (Traditional)',
                 'tawainese hoekin': 'Chinese (Traditional)',
@@ -1294,7 +1295,13 @@ const translateTextToMultipleLanguages = async (
         }
         
         // Check if any target language matches source - skip those
-        const languagesToTranslate = targetLanguages.filter(lang => lang !== detected);
+        // But always translate between zh and zh-TW — they are different written forms
+        const languagesToTranslate = targetLanguages.filter(lang => {
+            if (lang === detected) return false;
+            if (lang.toLowerCase() === 'zh' && detected?.toLowerCase() === 'zh-tw') return true;
+            if (lang.toLowerCase() === 'zh-tw' && detected?.toLowerCase() === 'zh') return true;
+            return true;
+        });
         if (languagesToTranslate.length === 0) {
             // All target languages = source language, return original
             targetLanguages.forEach(lang => {
@@ -1307,7 +1314,7 @@ const translateTextToMultipleLanguages = async (
         const languageMap = {
             'en': 'English', 'es': 'Spanish', 'fr': 'French', 'de': 'German', 'it': 'Italian',
             'pt': 'Portuguese', 'pt-BR': 'Portuguese (Brazil)', 'ko': 'Korean', 'ja': 'Japanese',
-            'zh': 'Chinese (Simplified)', 'zh-TW': 'Chinese (Traditional)', 'taiwanese': 'Chinese (Traditional)',
+            'zh': 'Chinese (Simplified)', 'zh-TW': 'Chinese (Traditional)', 'zh-tw': 'Chinese (Traditional)', 'taiwanese': 'Chinese (Traditional)',
             'tawaiese': 'Chinese (Traditional)', 'tawainese hoekin': 'Chinese (Traditional)',
             'hi': 'Hindi', 'bn': 'Bengali', 'pa': 'Punjabi', 'ta': 'Tamil', 'te': 'Telugu',
             'mr': 'Marathi', 'ur': 'Urdu', 'ar': 'Arabic', 'fa': 'Persian', 'tr': 'Turkish',
@@ -1455,6 +1462,9 @@ SOURCE_TEXT_END`
                 parsed[langCode.toLowerCase()] ||
                 parsed[name.toLowerCase()] ||
                 (code ? parsed[code.toLowerCase()] : null) ||
+                // Also try zh-TW with uppercase TW (standard ISO) and dashboard-normalized form
+                parsed['zh-TW'] ||
+                parsed['chinese (traditional)'] ||
                 null;
             
             if (translation && typeof translation === 'string') {
