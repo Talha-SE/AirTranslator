@@ -687,14 +687,11 @@ async function translateAndReply(message, languages, options = {}) {
         const alreadyTranslatedTo = new Set();
         
         // Process all translations in parallel
-        const targetLanguagesArray = languages.filter(language => {
-            if (language === AUTO_DETECT_LANGUAGE) return false;
-            if (language.toLowerCase() === 'zh' && detectedLanguage.toLowerCase() === 'zh-tw') return true;
-            if (language.toLowerCase() === 'zh-tw' && detectedLanguage.toLowerCase() === 'zh') return true;
-            if (language.toLowerCase() === detectedLanguage.toLowerCase()) return false;
-            if (alreadyTranslatedTo.has(language.toLowerCase())) return false;
-            return true;
-        });
+        const targetLanguagesArray = languages.filter(language => 
+            language !== AUTO_DETECT_LANGUAGE && 
+            language.toLowerCase() !== detectedLanguage.toLowerCase() &&
+            !alreadyTranslatedTo.has(language.toLowerCase())
+        );
         
         if (targetLanguagesArray.length === 0) return;
         

@@ -1295,13 +1295,7 @@ const translateTextToMultipleLanguages = async (
         }
         
         // Check if any target language matches source - skip those
-        // But always translate between zh and zh-TW — they are different written forms
-        const languagesToTranslate = targetLanguages.filter(lang => {
-            if (lang === detected) return false;
-            if (lang.toLowerCase() === 'zh' && detected?.toLowerCase() === 'zh-tw') return true;
-            if (lang.toLowerCase() === 'zh-tw' && detected?.toLowerCase() === 'zh') return true;
-            return true;
-        });
+        const languagesToTranslate = targetLanguages.filter(lang => lang !== detected);
         if (languagesToTranslate.length === 0) {
             // All target languages = source language, return original
             targetLanguages.forEach(lang => {
@@ -1462,9 +1456,6 @@ SOURCE_TEXT_END`
                 parsed[langCode.toLowerCase()] ||
                 parsed[name.toLowerCase()] ||
                 (code ? parsed[code.toLowerCase()] : null) ||
-                // Also try zh-TW with uppercase TW (standard ISO) and dashboard-normalized form
-                parsed['zh-TW'] ||
-                parsed['chinese (traditional)'] ||
                 null;
             
             if (translation && typeof translation === 'string') {
