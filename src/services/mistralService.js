@@ -1351,7 +1351,7 @@ const translateTextToMultipleLanguages = async (
 
 CRITICAL BATCH TRANSLATION INSTRUCTIONS:
 1. You will translate ONE message into MULTIPLE languages: ${targetLanguageNames}
-2. Return ONLY a raw JSON object where keys are language codes and values are translations
+2. Return ONLY a single valid JSON object containing an entry for every requested language code — do not omit any language; each value must be the complete translation.
 3. NO markdown code blocks (no \`\`\`json), NO explanations, NO prefixes - ONLY the JSON object
 4. Each translation must follow ALL grammatical and formatting rules below
 5. JSON MUST be strictly valid: inside JSON string values, use escaped control characters (\\n, \\r, \\t). Never place literal newlines/tabs inside quoted JSON values.
