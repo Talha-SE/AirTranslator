@@ -589,29 +589,41 @@ function setupRealtimeAudioPipeline(state) {
 
 /**
  * Build the config for gemini-3.5-live-translate-preview.
- * Uses dedicated translationConfig — built-in translation, no system instructions needed.
+ * Uses speechConfig + system instruction for bidirectional translation.
  */
 function buildTranslateConfig(state) {
-  const tgtLang = state.targetLanguage || 'en';
+  const voiceName = state.voiceName || 'Aoede';
   return {
     responseModalities: ['AUDIO'],
-    translationConfig: {
-      targetLanguageCode: tgtLang,
-      echoTargetLanguage: false,
+    mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+    speechConfig: {
+      voiceConfig: {
+        prebuiltVoiceConfig: {
+          voiceName,
+        },
+      },
+    },
+    contextWindowCompression: {
+      triggerTokens: '104857',
+      slidingWindow: { targetTokens: '52428' },
     },
   };
 }
 
 /**
- * Build a system instruction for the turn-based models (Flash Live, Native Audio).
- * These models don't use translationConfig — they need a prompt
- * telling them to translate speech and respond with audio only.
+ * Build a system instruction for bidirectional translation between two languages.
+ * Works for ALL models (3.5 Live, Flash Live, Native Audio).
  */
 function buildTranslationSystemInstruction(sourceLanguage, targetLanguage) {
-  const tgtName = getLanguageName(targetLanguage);
+  const lang1 = getLanguageName(sourceLanguage);
+  const lang2 = getLanguageName(targetLanguage);
   return [
-    `You are a translator. Auto-detect the source language and translate speech into ${tgtName}.`,
-    `Give translation only. Do NOT chat, reply, or add anything else.`,
+    `You are a professional interpreter for a voice call between two people.`,
+    `You MUST translate bidirectionally between ${lang1} and ${lang2}.`,
+    `If the speaker is speaking in ${lang1}, translate to ${lang2}.`,
+    `If the speaker is speaking in ${lang2}, translate to ${lang1}.`,
+    `Auto-detect which language is being spoken.`,
+    `Give translation ONLY. Do NOT chat, reply, comment, or add anything else.`,
   ].join('\n');
 }
 
@@ -682,13 +694,13 @@ async function connectGeminiSession(state) {
   let config;
   if (isNativeAudio) {
     config = buildNativeAudioConfig(state);
-    log.info(`📖 Using Native Audio config (speechConfig, voice: ${state.voiceName || 'Aoede'}, context compression enabled)`);
+    log.info(`📖 Using Native Audio config (voice: ${state.voiceName || 'Aoede'})`);
   } else if (isFlash) {
     config = buildFlashLiveConfig(state);
-    log.info(`📖 Using Flash Live config (speechConfig, voice: ${state.voiceName || 'Zephyr'}, context compression enabled)`);
+    log.info(`📖 Using Flash Live config (voice: ${state.voiceName || 'Zephyr'})`);
   } else {
     config = buildTranslateConfig(state);
-    log.info(`📖 Using translationConfig (target: ${state.targetLanguage || 'en'})`);
+    log.info(`📖 Using Live Translate config (voice: ${state.voiceName || 'Aoede'})`);
   }
 
   const session = await genAI.live.connect({
@@ -808,21 +820,19 @@ async function connectGeminiSession(state) {
   state.geminiSession = session;
   state.isReconnecting = false;
 
-  // For turn-based models: send system instruction to set up translation context
+  // Send system instruction to set up bidirectional translation context
   // NOTE: This must be AFTER connect() resolves, not inside onopen, to avoid TDZ error
-  if (isTurnBasedModel) {
-    try {
-      const systemPrompt = buildTranslationSystemInstruction(
-        state.sourceLanguage, state.targetLanguage
-      );
-      session.sendClientContent({
-        turns: [{ text: systemPrompt }],
-        turnComplete: true,
-      });
-      log.info(`📤 Sent translation system instruction to ${isNativeAudio ? 'Native Audio' : 'Flash Live'} model`);
-    } catch (err) {
-      log.error(`❌ Failed to send system instruction: ${err.message}`);
-    }
+  try {
+    const systemPrompt = buildTranslationSystemInstruction(
+      state.sourceLanguage, state.targetLanguage
+    );
+    session.sendClientContent({
+      turns: [{ text: systemPrompt }],
+      turnComplete: true,
+    });
+    log.info(`📤 Sent bidirectional translation instruction: ${getLanguageName(state.sourceLanguage)} ↔ ${getLanguageName(state.targetLanguage)}`);
+  } catch (err) {
+    log.error(`❌ Failed to send system instruction: ${err.message}`);
   }
 
   const modeLabel = isNativeAudio ? 'Native Audio batch' : isFlash ? 'Flash Live turn-based' : 'Live Translate continuous';
