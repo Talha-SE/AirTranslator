@@ -535,42 +535,14 @@ async function messageReactionAdd(client, reaction, user) {
                     return;
                 }
 
-                // Create DM embed - only show translation, no original text
-                const personalEmbed = new EmbedBuilder()
-                    .setTitle(`${flagEmoji} Personal Translation Buddy`)
-                    .setColor('#6366f1')
-                    .setDescription(`✨ Your personal translation for **${getLanguageDisplayName(targetLanguage)}**`)
-                    .addFields({
-                        name: `🎯 Translation • ${getLanguageDisplayName(targetLanguage)} ${flagEmoji}`,
-                        value: translation.length > 1000 ? translation.substring(0, 997) + '...' : translation,
-                        inline: false
-                    })
+                // Create a clean, minimal DM — just the translation
+                const translationText = translation.length > 1900 
+                    ? translation.substring(0, 1897) + '...' 
+                    : translation;
 
-                // Add message context with better formatting (supports DMs and Guilds)
-                if (message.guild) {
-                    personalEmbed.addFields({
-                        name: '🏠 Message Source',
-                        value: `**🏢 Server:** ${message.guild.name}\n**📢 Channel:** #${message.channel.name}\n**👤 Author:** ${message.author.username}\n**🔗 Link:** [Jump to message](${message.url})`,
-                        inline: false
-                    });
-                } else {
-                    personalEmbed.addFields({
-                        name: '🏠 Message Source',
-                        value: `**📬 Direct Message**\n**👤 Author:** ${message.author.username}`,
-                        inline: false
-                    });
-                }
-
-                personalEmbed
-                    .setFooter({
-                        text: `Personal Translation Buddy • React with any flag emoji for instant translations • Requested by ${user.username}`,
-                        iconURL: client.user.displayAvatarURL()
-                    })
-                    .setTimestamp()
-                    .setThumbnail(message.author.displayAvatarURL());
-
-                // Send to user's DM
-                await user.send({ embeds: [personalEmbed] });
+                await user.send({
+                    content: `${flagEmoji} **${getLanguageDisplayName(targetLanguage)}**\n${translationText}`
+                });
                 
                 // Record the personal translation
                 await recordPersonalTranslation(user.id);

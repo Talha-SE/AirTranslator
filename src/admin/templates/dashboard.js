@@ -474,7 +474,8 @@ You will get a notification when your premium plan is enabled.</div>
                             </button>
                         </div>
                     </div>
-                </div>                <div class="content-card auto-campaign-card">
+                </div>
+                <div class="content-card auto-campaign-card">
                     <div class="card-header">
                         <div class="card-title-group">
                             <h3 class="card-title">Auto Campaign</h3>
@@ -1322,10 +1323,20 @@ async function generateServersTab(client) {
                     <h3 class="card-title"> Server Directory</h3>
                     <p class="card-subtitle">Comprehensive list of all connected servers</p>
                 </div>
-                <div class="card-actions">
+                <div class="card-actions" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <div style="position: relative;">
+                        <select class="form-control" id="serverSortSelect" onchange="sortServersTable()" style="height: 36px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); min-width: 210px; padding: 0 12px; font-size: 13px; cursor: pointer; appearance: auto;">
+                            <option value="joined-desc">Date Joined (Newest First)</option>
+                            <option value="joined-asc">Date Joined (Oldest First)</option>
+                            <option value="members-desc">Members (High → Low)</option>
+                            <option value="members-asc">Members (Low → High)</option>
+                            <option value="name-asc">Name (A → Z)</option>
+                            <option value="name-desc">Name (Z → A)</option>
+                        </select>
+                    </div>
                     <div class="search-wrapper" style="position: relative;">
                         <svg style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary);" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                        <input type="text" class="form-control" id="serverSearch" placeholder="Search servers..." style="padding-left: 36px; min-width: 260px;" onkeyup="filterServersTable()" />
+                        <input type="text" class="form-control" id="serverSearch" placeholder="Search servers..." style="padding-left: 36px; min-width: 220px; height: 36px; border-radius: 8px;" onkeyup="filterServersTable()" />
                     </div>
                 </div>
             </div>
@@ -1348,7 +1359,7 @@ async function generateServersTab(client) {
                                 const joinedStr = joinedDate ? joinedDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A';
                                 
                                 return `
-                                <tr data-server-id="${guild.id}" class="server-row">
+                                <tr data-server-id="${guild.id}" data-joined="${guild.joinedAt ? new Date(guild.joinedAt).getTime() : 0}" data-member-count="${guild.memberCount || 0}" data-server-name="${(guild.name || '').toLowerCase()}" class="server-row">
                                     <td>
                                         <div class="server-info-cell">
                                             <div class="server-avatar-mini" style="background: var(--primary-light); color: var(--primary); width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;">

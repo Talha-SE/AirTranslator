@@ -981,6 +981,56 @@ function filterServersTable() {
 const serverSearch = document.getElementById('serverSearch');
 serverSearch?.addEventListener('input', debounce(filterServersTable, 150));
 
+// ===== Server Sort =====
+function sortServersTable() {
+    const sortSelect = document.getElementById('serverSortSelect');
+    if (!sortSelect) return;
+    const sortValue = sortSelect.value;
+    localStorage.setItem('adminServerSort', sortValue);
+
+    const tbody = document.getElementById('serversTableBody');
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    const [field, direction] = sortValue.split('-');
+    const dir = direction === 'asc' ? 1 : -1;
+
+    rows.sort((a, b) => {
+        let valA, valB;
+        switch (field) {
+            case 'joined':
+                valA = parseInt(a.getAttribute('data-joined') || '0', 10);
+                valB = parseInt(b.getAttribute('data-joined') || '0', 10);
+                return (valA - valB) * dir;
+            case 'members':
+                valA = parseInt(a.getAttribute('data-member-count') || '0', 10);
+                valB = parseInt(b.getAttribute('data-member-count') || '0', 10);
+                return (valA - valB) * dir;
+            case 'name':
+                valA = (a.getAttribute('data-server-name') || '').toLowerCase();
+                valB = (b.getAttribute('data-server-name') || '').toLowerCase();
+                return valA.localeCompare(valB) * dir;
+            default:
+                return 0;
+        }
+    });
+
+    rows.forEach(row => tbody.appendChild(row));
+}
+
+// Restore saved sort on page load
+(function initServerSort() {
+    const saved = localStorage.getItem('adminServerSort');
+    const sortSelect = document.getElementById('serverSortSelect');
+    if (saved && sortSelect) {
+        sortSelect.value = saved;
+    }
+    // Apply sort on load
+    if (sortSelect) {
+        sortServersTable();
+    }
+})();
+
 // ===== Load Recent Votes on Page Load =====
 if (document.getElementById('recentVotesTbody')) {
     setTimeout(() => refreshRecentVotes(true), 100);

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, ContextMenuCommandBuilder, ApplicationCommandType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { togglePersonalTranslation, getPersonalTranslationSettings } = require('../services/databaseService');
 
 module.exports = {
@@ -12,12 +12,31 @@ module.exports = {
         .addStringOption(option =>
             option.setName('languages')
                 .setDescription('Comma-separated list of languages to translate to (e.g., "korean,spanish,french")')
-                .setRequired(false)),
+                .setRequired(false))
+        .setContexts(0, 1, 2)    // GUILD=0, BOT_DM=1, PRIVATE_CHANNEL=2
+        .setIntegrationTypes(0, 1), // GUILD_INSTALL=0, USER_INSTALL=1
 
     async execute(interaction) {
         const enabled = interaction.options.getBoolean('enabled');
         const languagesInput = interaction.options.getString('languages');
         const userId = interaction.user.id;
+
+        // Support being invoked as a context menu command (right-click user → Personal Buddy)
+        if (interaction.isUserContextMenuCommand()) {
+            // Toggle personal buddy for the target user
+            const targetUser = interaction.options.getUser('user');
+            const targetId = targetUser.id;
+            const settings = await getPersonalTranslationSettings(targetId);
+            const newEnabled = !settings;
+            const defaultLangs = ['korean', 'spanish', 'english'];
+            await togglePersonalTranslation(targetId, newEnabled, settings?.languages || defaultLangs);
+            return interaction.reply({
+                content: newEnabled
+                    ? `✅ Personal Translation Buddy **activated** for **${targetUser.username}**.`
+                    : `❌ Personal Translation Buddy **deactivated** for **${targetUser.username}**.`,
+                flags: MessageFlags.Ephemeral
+            });
+        }
 
         try {
             // Parse languages if provided

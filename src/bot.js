@@ -562,6 +562,7 @@ const pbDisableCommand = require('./commands/pbDisable');
 const pbSetLanguagesCommand = require('./commands/pbSetLanguages');
 const speechToTextCommand = require('./commands/speechToText');
 const callCommand = require('./commands/call');
+const translateMessageCommand = require('./commands/translateMessage');
 
 client.commands.set('quicksetup', quickSetupCommand);
 client.commands.set('autosetup', autoSetupCommand);
@@ -586,6 +587,7 @@ client.commands.set(pbDisableCommand.data.name, pbDisableCommand);
 client.commands.set(pbSetLanguagesCommand.data.name, pbSetLanguagesCommand);
 client.commands.set('speechtotext', speechToTextCommand);
 client.commands.set('call', callCommand);
+client.commands.set(translateMessageCommand.data.name, translateMessageCommand);
 
 // Load events
 const ready = require('./events/ready');
