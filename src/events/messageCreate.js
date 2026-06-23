@@ -699,17 +699,16 @@ async function translateAndReply(message, languages, options = {}) {
         const translations = await translationQueue.push(async () => {
             const toneSettings = await getToneSettings(message.guild.id, message.channel.id);
             
-            // Get available API keys
-            const activeApiKeys = translationQueueService.apiKeys && translationQueueService.apiKeys.length > 0
-                ? translationQueueService.apiKeys
-                : [undefined];
+            // Round-robin: get rotated keys starting from next in sequence
+            const { keys: activeApiKeys, keyIndex, totalKeys } = translationQueueService.getNextApiKey();
 
             // Try each API key until one succeeds
             let lastError = null;
             for (let i = 0; i < activeApiKeys.length; i++) {
                 const apiKey = activeApiKeys[i];
+                const keySuffix = apiKey ? apiKey.slice(-4) : 'undefined';
                 try {
-                    console.log(`🔄 [Translation] Batch translating ${targetLanguagesArray.length} languages using API key ${i + 1}/${activeApiKeys.length}`);
+                    console.log(`🔄 [Translation] Batch translating ${targetLanguagesArray.length} languages using Key ${keyIndex} of ${totalKeys} → ***${keySuffix}`);
                     
                     const result = await translateTextToMultipleLanguages(
                         message.content,
@@ -719,7 +718,7 @@ async function translateAndReply(message, languages, options = {}) {
                         apiKey
                     );
                     
-                    console.log(`✅ [Translation] Success with API key ${i + 1}: ${Object.keys(result).length} translations`);
+                    console.log(`✅ [Translation] Success with Key ${keyIndex} of ${totalKeys} → ***${keySuffix}: ${Object.keys(result).length} translations`);
                     return result;
                     
                 } catch (error) {
@@ -727,7 +726,8 @@ async function translateAndReply(message, languages, options = {}) {
                     const isLastKey = i === activeApiKeys.length - 1;
                     
                     if (!isLastKey) {
-                        console.warn(`⚠️ [Translation] API key ${i + 1} failed (${error?.message}), trying next key...`);
+                        const nextSuffix = activeApiKeys[i + 1] ? activeApiKeys[i + 1].slice(-4) : 'undefined';
+                        console.warn(`⚠️ [Translation] Key ${keyIndex} of ${totalKeys} → ***${keySuffix} failed (${error?.message}), trying Key ${keyIndex + 1 <= totalKeys ? keyIndex + 1 : 1} → ***${nextSuffix}...`);
                     } else {
                         console.error(`❌ [Translation] All API keys exhausted. Last error:`, error?.message);
                     }

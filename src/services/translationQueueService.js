@@ -16,6 +16,25 @@ class TranslationQueueService {
     }
 
     /**
+     * Returns the next API key using round-robin rotation.
+     * Each new request gets the next key in sequence, cycling back to the start.
+     * Returns an array of all keys starting from the rotated index for failover.
+     * @returns {string[]} Array of API keys, first one is the primary for this request
+     */
+    getNextApiKey() {
+        const keys = this.apiKeys.length > 0 ? this.apiKeys : [process.env.MISTRAL_API_KEY];
+        const start = this.currentApiIndex % keys.length;
+        const primaryKeyNumber = (start + 1); // 1-based key number
+        this.currentApiIndex = (this.currentApiIndex + 1) % keys.length;
+        // Return keys starting from current index, wrapping around
+        const rotated = [];
+        for (let i = 0; i < keys.length; i++) {
+            rotated.push(keys[(start + i) % keys.length]);
+        }
+        return { keys: rotated, keyIndex: primaryKeyNumber, totalKeys: keys.length };
+    }
+
+    /**
      * Adds a message to the translation queue
      * @param {Object} messageData - The message data to queue
      * @param {string} messageData.messageId - Discord message ID
@@ -62,9 +81,8 @@ class TranslationQueueService {
                     message.lastAttemptAt = new Date();
                     await message.save();
 
-                    const activeApiKeys = this.apiKeys && this.apiKeys.length > 0
-                        ? this.apiKeys
-                        : [process.env.MISTRAL_API_KEY];
+                    // Round-robin: get rotated keys starting from next in sequence
+                    const { keys: activeApiKeys, keyIndex, totalKeys } = this.getNextApiKey();
 
                     // Try each API key until one succeeds (single batch call for all languages)
                     let translations = {};
@@ -72,7 +90,8 @@ class TranslationQueueService {
                     
                     for (let i = 0; i < activeApiKeys.length; i++) {
                         try {
-                            console.log(`🔄 [Queue] Batch translating ${message.targetLanguages.length} languages using API ${i + 1}/${activeApiKeys.length}`);
+                            const keySuffix = activeApiKeys[i] ? activeApiKeys[i].slice(-4) : 'undefined';
+                            console.log(`🔄 [Queue] Batch translating ${message.targetLanguages.length} languages using Key ${keyIndex} of ${totalKeys} → ***${keySuffix}`);
                             
                             translations = await translateTextToMultipleLanguages(
                                 message.content,
@@ -82,7 +101,7 @@ class TranslationQueueService {
                                 activeApiKeys[i]
                             );
                             
-                            console.log(`✅ [Queue] Success with API ${i + 1}: ${Object.keys(translations).length} translations`);
+                            console.log(`✅ [Queue] Success with Key ${keyIndex} of ${totalKeys} → ***${keySuffix}: ${Object.keys(translations).length} translations`);
                             break; // Success, exit retry loop
                             
                         } catch (error) {
@@ -90,7 +109,8 @@ class TranslationQueueService {
                             const isLastKey = i === activeApiKeys.length - 1;
                             
                             if (!isLastKey) {
-                                console.warn(`⚠️ [Queue] API ${i + 1} failed (${error?.message}), trying next...`);
+                                const nextKeySuffix = activeApiKeys[i + 1] ? activeApiKeys[i + 1].slice(-4) : 'undefined';
+                                console.warn(`⚠️ [Queue] Key ${keyIndex} of ${totalKeys} → ***${activeApiKeys[i].slice(-4)} failed (${error?.message}), trying next...`);
                             } else {
                                 console.error(`❌ [Queue] All API keys failed. Last error:`, error?.message);
                                 throw error; // Re-throw on last attempt

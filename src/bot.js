@@ -1431,23 +1431,18 @@ async function startBot() {
         logger.info('Modern admin panel available at /admin');
         // Start processing queued translations
         translationQueueService.startQueueProcessor((content, targetLanguage) => {
-            // Determine which API to use based on targetLanguage
-            const activeApiKeys = translationQueueService.apiKeys && translationQueueService.apiKeys.length > 0
-                ? translationQueueService.apiKeys
-                : [undefined];
+            // Round-robin: each queued request gets the next API key in sequence
+            const { keys, keyIndex, totalKeys } = translationQueueService.getNextApiKey();
+            const apiKey = keys[0]; // Primary key for this request
+            const keySuffix = apiKey ? apiKey.slice(-4) : 'undefined';
 
-            const apiCount = activeApiKeys.length;
-            const apiIndex = targetLanguage && apiCount > 0
-                ? (targetLanguage.charCodeAt(0) % apiCount)
-                : 0;
-
-            logger.debug(`Using API ${apiIndex + 1} for ${targetLanguage}`);
+            logger.debug(`[Queue] Using Key ${keyIndex} of ${totalKeys} → ***${keySuffix} for ${targetLanguage}`);
             return translateTextToMultipleLanguages(
                 content, 
                 [targetLanguage],
                 null, // auto-detect
                 null, // tone settings
-                activeApiKeys[apiIndex]
+                apiKey
             );
         });
     } catch (error) {
