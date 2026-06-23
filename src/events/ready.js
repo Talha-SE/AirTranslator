@@ -1,6 +1,7 @@
 const { ActivityType } = require('discord.js');
+const VoiceCallTranslation = require('../models/VoiceCallTranslation');
 
-module.exports = (client) => {
+module.exports = async (client) => {
     console.log(`Logged in as ${client.user.tag}!`);
     
     // Log environment status for debugging production issues
@@ -11,4 +12,17 @@ module.exports = (client) => {
     console.log(`  - NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
     
     client.user.setActivity('Translating channels', { type: ActivityType.Watching });
+
+    // Reset stale voice call translation sessions from previous run
+    try {
+        const staleSessions = await VoiceCallTranslation.updateMany(
+            { isActive: true },
+            { isActive: false }
+        );
+        if (staleSessions.modifiedCount > 0) {
+            console.log(`🔄 Reset ${staleSessions.modifiedCount} stale voice call translation session(s)`);
+        }
+    } catch (err) {
+        console.error(`❌ Error resetting stale sessions: ${err.message}`);
+    }
 };
