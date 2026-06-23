@@ -47,7 +47,7 @@ const GEMINI_LIVE_MODELS = {
     sampleRate: GEMINI_INPUT_RATE,
     encoding: 'LINEAR16',
     supportsBidi: true,
-    isTurnBased: false,
+    isTurnBased: false, // continuous mode — uses translationConfig (not speechConfig)
   },
   [FLASH_MODEL_ID]: {
     modelId: FLASH_MODEL_ID,
@@ -585,7 +585,7 @@ function setupRealtimeAudioPipeline(state) {
 
 /**
  * Build the config for gemini-3.5-live-translate-preview.
- * This model uses dedicated translationConfig — no system instructions needed.
+ * Uses dedicated translationConfig — built-in translation, no system instructions needed.
  */
 function buildTranslateConfig(state) {
   const tgtLang = state.targetLanguage || 'en';
