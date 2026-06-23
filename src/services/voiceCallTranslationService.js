@@ -111,7 +111,7 @@ const GEMINI_VOICES = {
 };
 
 const DEFAULT_VOICE = 'Aoede';
-const DEFAULT_MODEL = MODEL_ID;
+const DEFAULT_MODEL = FLASH_MODEL_ID;
 const OPUS_FRAME_DURATION_MS = 20;
 const PCM_SAMPLE_RATE = 48000;
 const DISCORD_FRAME_SIZE = 960; // 20ms at 48kHz
@@ -130,11 +130,8 @@ const VOICE_RECONNECT_MAX_ATTEMPTS = 3;
 /** Session timeout: 6 hours */
 const SESSION_MAX_DURATION_MS = 6 * 60 * 60 * 1000;
 
-/** Minimum playback buffer in seconds — accumulate enough for smooth playback */
-const MIN_PLAYBACK_BUFFER_SECONDS = 1.0;
-
-/** Delay (ms) after player goes idle before flushing buffer — lets more Gemini chunks arrive */
-const IDLE_FLUSH_DELAY_MS = 500;
+/** Minimum playback buffer in seconds (300ms — play as soon as translation arrives) */
+const MIN_PLAYBACK_BUFFER_SECONDS = 0.3;
 
 // ==============================
 // Active Connections Map & Start Locks
@@ -572,18 +569,10 @@ function setupRealtimeAudioPipeline(state) {
     }
   });
 
-  // Handle audio playback state — when current chunk finishes, wait a bit then play next batch
-  // The delay lets more Gemini chunks accumulate for smoother playback
-  state.idleFlushTimer = null;
+  // Handle audio playback state — when current chunk finishes, try playing next batch
   state.audioPlayer.on(AudioPlayerStatus.Idle, () => {
     if (state.translatedAudioBuffer.length > 0) {
-      // Wait to accumulate more chunks — avoids playing tiny fragments
-      if (state.idleFlushTimer) clearTimeout(state.idleFlushTimer);
-      state.idleFlushTimer = setTimeout(() => {
-        if (state.translatedAudioBuffer.length > 0 && state.audioPlayer.state.status === AudioPlayerStatus.Idle) {
-          playTranslatedAudio(state);
-        }
-      }, IDLE_FLUSH_DELAY_MS);
+      playTranslatedAudio(state);
     }
   });
 
@@ -979,12 +968,6 @@ async function stopTranslation(guildId, client) {
     if (state.sessionTimeout) {
       clearTimeout(state.sessionTimeout);
       state.sessionTimeout = null;
-    }
-
-    // Clear idle flush timer
-    if (state.idleFlushTimer) {
-      clearTimeout(state.idleFlushTimer);
-      state.idleFlushTimer = null;
     }
 
     // Destroy all active stream decoders

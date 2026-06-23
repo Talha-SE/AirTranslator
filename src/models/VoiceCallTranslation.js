@@ -7,7 +7,7 @@ const voiceCallTranslationSchema = new mongoose.Schema({
   voiceChannelId: { type: String, default: null },
   sourceLanguage: { type: String, default: 'auto' },
   targetLanguage: { type: String, default: null },
-  model: { type: String, default: 'gemini-3.5-live-translate-preview' },
+  model: { type: String, default: 'gemini-3.1-flash-live-preview' },
   voice: { type: String, default: 'Aoede' },
   updatedBy: { type: String, default: null },
   lastStartedAt: { type: Date, default: null },

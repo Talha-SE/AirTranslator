@@ -534,7 +534,7 @@ router.get('/servers/:serverId', async (req, res) => {
           voiceChannelId: null,
           sourceLanguage: 'auto',
           targetLanguage: null,
-          model: 'gemini-3.5-live-translate-preview',
+          model: 'gemini-3.1-flash-live-preview',
           voice: 'Aoede',
         };
       }
@@ -941,7 +941,7 @@ router.get('/servers/:serverId/voice-call-translation', async (req, res) => {
         voiceChannelId: null,
         sourceLanguage: 'auto',
         targetLanguage: null,
-        model: 'gemini-3.5-live-translate-preview',
+        model: 'gemini-3.1-flash-live-preview',
         voice: 'Aoede',
       };
     }
@@ -992,7 +992,7 @@ router.post('/servers/:serverId/voice-call-translation', async (req, res) => {
       voiceChannelId: voiceChannelId || null,
       sourceLanguage: sourceLanguage || 'auto',
       targetLanguage: targetLanguage || null,
-      model: model || 'gemini-3.5-live-translate-preview',
+      model: model || 'gemini-3.1-flash-live-preview',
       voice: voice || 'Aoede',
       updatedBy: req.userSession?.user?.id || 'dashboard',
     };
@@ -1026,6 +1026,13 @@ router.post('/servers/:serverId/voice-call-translation/start', async (req, res) 
       return res.status(503).json({ error: 'Bot not ready' });
     }
 
+    // Premium gate — VCT requires premium (isExempt)
+    const serverDoc = await require('../models/Server').findOne({ serverId });
+    if (!serverDoc?.monetization?.isExempt) {
+      console.warn(`[BOT API] ⚠️ Voice call translation blocked — premium required (server: ${serverId}, user: ${username})`);
+      return res.status(403).json({ error: 'Voice Call Translation requires a premium subscription. Please upgrade at https://www.patreon.com/c/tsio/membership' });
+    }
+
     // Get the saved settings
     let settings = await VoiceCallTranslation.findOne({ guildId: serverId });
     if (!settings) {
@@ -1051,14 +1058,14 @@ router.post('/servers/:serverId/voice-call-translation/start', async (req, res) 
 
     const voiceChannelName = client.channels?.cache?.get(settings.voiceChannelId)?.name || settings.voiceChannelId;
     console.log(`[BOT API] 🎤 Starting voice call translation for server ${serverId} (requested by ${username})`);
-    console.log(`[BOT API] 📋 Config: Channel=${voiceChannelName}, Source=${settings.sourceLanguage || 'auto'}, Target=${settings.targetLanguage}, Model=${settings.model || 'gemini-3.5-live-translate-preview'}, Voice=${settings.voice || 'Aoede'}`);
+    console.log(`[BOT API] 📋 Config: Channel=${voiceChannelName}, Source=${settings.sourceLanguage || 'auto'}, Target=${settings.targetLanguage}, Model=${settings.model || 'gemini-3.1-flash-live-preview'}, Voice=${settings.voice || 'Aoede'}`);
 
     const result = await voiceCallTranslationService.startTranslation(
       serverId,
       settings.voiceChannelId,
       settings.sourceLanguage || 'auto',
       settings.targetLanguage,
-      settings.model || 'gemini-3.5-live-translate-preview',
+      settings.model || 'gemini-3.1-flash-live-preview',
       client,
       settings.voice || 'Aoede'
     );

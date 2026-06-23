@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const VoiceCallTranslation = require('../models/VoiceCallTranslation');
 const voiceCallTranslationService = require('../services/voiceCallTranslationService');
+const Server = require('../models/Server');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -75,6 +76,26 @@ module.exports = {
                 content: `ℹ️ Voice translation is already active in ${channel ? `<#${channel.id}>` : 'a voice channel'}. Use \`/call action:stop\` to stop it first.`,
                 flags: MessageFlags.Ephemeral
             });
+            return;
+        }
+
+        // Premium gate — VCT requires premium (isExempt)
+        const serverDoc = await Server.findOne({ serverId: guild.id });
+        if (!serverDoc?.monetization?.isExempt) {
+            const premiumEmbed = new EmbedBuilder()
+                .setColor(0xFFAA00)
+                .setTitle('🔒 Premium Feature')
+                .setDescription(
+                    'Voice Call Translation is a **premium-only** feature.\n\n' +
+                    '**To unlock:**\n' +
+                    '1. Visit [Patreon](https://www.patreon.com/c/tsio/membership)\n' +
+                    '2. Subscribe to a premium plan\n' +
+                    '3. Your server will be activated automatically\n\n' +
+                    '✨ *Premium also unlocks unlimited translations and priority support!*'
+                )
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [premiumEmbed], flags: MessageFlags.Ephemeral });
             return;
         }
 
