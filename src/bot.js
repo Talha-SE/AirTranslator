@@ -561,6 +561,7 @@ const pbEnableCommand = require('./commands/pbEnable');
 const pbDisableCommand = require('./commands/pbDisable');
 const pbSetLanguagesCommand = require('./commands/pbSetLanguages');
 const speechToTextCommand = require('./commands/speechToText');
+const callCommand = require('./commands/call');
 
 client.commands.set('quicksetup', quickSetupCommand);
 client.commands.set('autosetup', autoSetupCommand);
@@ -584,6 +585,7 @@ client.commands.set(pbEnableCommand.data.name, pbEnableCommand);
 client.commands.set(pbDisableCommand.data.name, pbDisableCommand);
 client.commands.set(pbSetLanguagesCommand.data.name, pbSetLanguagesCommand);
 client.commands.set('speechtotext', speechToTextCommand);
+client.commands.set('call', callCommand);
 
 // Load events
 const ready = require('./events/ready');
@@ -639,22 +641,37 @@ setInterval(async () => {
     try {
         const guilds = client.guilds.cache;
         for (const guild of guilds.values()) {
-            const sttSettings = await require('./models/STTSettings').findOne({ guildId: guild.id, enabled: true }).lean();
+            const [sttSettings, vctSettings] = await Promise.all([
+                require('./models/STTSettings').findOne({ guildId: guild.id, enabled: true }).lean(),
+                require('./models/VoiceCallTranslation').findOne({ guildId: guild.id }).lean()
+            ]);
             const connection = getVoiceConnection(guild.id);
             
-            // If no STT setup exists but bot is connected
-            if (!sttSettings && connection) {
-                connection.destroy();
-                logger.info('[PeriodicCheck] Left voice channel - no STT setup found', { guildId: guild.id });
+            // No connection exists for this guild - nothing to check
+            if (!connection) continue;
+            
+            // Check if VCT is currently active (bot is in a voice channel for VCT)
+            const { isTranslationActive } = require('./services/voiceCallTranslationService');
+            const vctActive = isTranslationActive(guild.id);
+            
+            // Case 1: VCT is actively running - keep connection alive
+            if (vctActive) {
+                logger.info('[PeriodicCheck] ✅ VCT active - keeping voice connection alive', { guildId: guild.id });
                 continue;
             }
             
-            // Handle STT feature - just keep connection alive if STT is enabled
-            // STT sessions manage their own lifecycle
+            // Case 2: STT is enabled and connected - keep alive (STT manages its own lifecycle)
             if (sttSettings?.enabled && connection) {
-                // Connection already exists and STT is enabled, keep it alive
+                logger.info('[PeriodicCheck] ✅ STT enabled - keeping voice connection alive', { guildId: guild.id });
                 continue;
             }
+            
+            // Case 3: Orphaned connection - no active STT or VCT, destroy it
+            const vctConfigured = vctSettings?.enabled && vctSettings?.voiceChannelId;
+            let reason = vctConfigured ? 'VCT configured but not started' : 'no STT or VCT is active';
+            
+            connection.destroy();
+            logger.info('[PeriodicCheck] 🗑️ Left voice channel - ' + reason, { guildId: guild.id });
         }
     } catch (error) {
         logger.error('Periodic voice check error:', error?.message);

@@ -79,7 +79,18 @@ module.exports = {
                     inline: false
                 },
                 {
-                    name: '🏴 **\n\n━━━ INSTANT FLAG MAGIC ━━━**',
+                    name: '� **\n\n━━━ VOICE TRANSLATION ━━━**',
+                    value: '```yaml\n━━━ Real-time voice-to-voice translation ━━━\n# AI-powered live voice translation\n# Bot joins your voice channel automatically\n```\n' +
+                        '▫️ **`/call`** ➤ *Start voice translation in configured channel*\n' +
+                        '   💡 Example: `/call`\n' +
+                        '   🤖 *Bot joins your saved voice channel*\n\n' +
+                        '▫️ **`/call action:stop`** ➤ *Stop voice translation*\n' +
+                        '   💡 Example: `/call action:stop`\n' +
+                        '   ⚙️ *Configure from Dashboard → Voice Call Translation tab*',
+                    inline: false
+                },
+                {
+                    name: '�🏴 **\n\n━━━ INSTANT FLAG MAGIC ━━━**',
                     value: '```glsl\n━━━ React with flags = Instant translation! ━━━\n✨ Popular country flags for quick access\n🌟 Works instantly on any message - old or new!\n```\n' +
                         '**🌟 Popular Flags:**\n' +
                         '🇺🇸 English  •  🇪🇸 Spanish  •  🇫🇷 French  •  🇰🇷 Korean\n' +

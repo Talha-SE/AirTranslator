@@ -22,6 +22,8 @@ const {
   getVoteEventCountByUser
 } = require('./databaseService');
 const STTSettings = require('../models/STTSettings');
+const VoiceCallTranslation = require('../models/VoiceCallTranslation');
+const voiceCallTranslationService = require('./voiceCallTranslationService');
 const monetizationService = require('./monetizationService');
 const { normalizeLanguageCode } = require('../utils/flagMapping');
 
@@ -517,6 +519,30 @@ router.get('/servers/:serverId', async (req, res) => {
       serverData.sttSettings = { enabled: false };
     }
 
+    // Fetch Voice Call Translation settings
+    try {
+      const voiceCallSettings = await VoiceCallTranslation.findOne({ guildId: serverId });
+      if (voiceCallSettings) {
+        serverData.voiceCallTranslation = voiceCallSettings.toObject ? voiceCallSettings.toObject() : voiceCallSettings;
+        // Override isActive with real-time status
+        const liveStatus = voiceCallTranslationService.getTranslationStatus(serverId);
+        serverData.voiceCallTranslation.isActive = liveStatus.active || false;
+      } else {
+        serverData.voiceCallTranslation = {
+          enabled: false,
+          isActive: false,
+          voiceChannelId: null,
+          sourceLanguage: 'auto',
+          targetLanguage: null,
+          model: 'gemini-3.5-live-translate-preview',
+          voice: 'Aoede',
+        };
+      }
+    } catch (err) {
+      console.warn('Failed to fetch Voice Call Translation settings:', err);
+      serverData.voiceCallTranslation = { enabled: false, isActive: false };
+    }
+
     // Get bot client to fetch channel names
     const client = router.botClient;
     const guild = client?.guilds.cache.get(serverId) || await client?.guilds.fetch(serverId).catch(() => null);
@@ -895,6 +921,217 @@ router.post('/servers/:serverId/stt', async (req, res) => {
   } catch (error) {
     console.error('Error updating STT settings:', error);
     res.status(500).json({ error: 'Failed to update STT settings' });
+  }
+});
+
+// ==============================
+// Voice Call Translation Routes
+// ==============================
+
+// Get voice call translation settings
+router.get('/servers/:serverId/voice-call-translation', async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    let settings = await VoiceCallTranslation.findOne({ guildId: serverId });
+
+    if (!settings) {
+      settings = {
+        enabled: false,
+        isActive: false,
+        voiceChannelId: null,
+        sourceLanguage: 'auto',
+        targetLanguage: null,
+        model: 'gemini-3.5-live-translate-preview',
+        voice: 'Aoede',
+      };
+    }
+
+    // Add live status from active connections
+    const liveStatus = voiceCallTranslationService.getTranslationStatus(serverId);
+
+    const hasConfig = settings.voiceChannelId && settings.targetLanguage;
+    console.log(`[BOT API] 📋 Fetched VCT settings for ${serverId}: enabled=${settings.enabled}, configured=${hasConfig}, live=${liveStatus.active ? '🟢' : '🔴'}`);
+
+    res.json({
+      ...(settings.toObject ? settings.toObject() : settings),
+      isActive: liveStatus.active || settings.isActive || false,
+    });
+  } catch (error) {
+    console.error(`[BOT API] ❌ Error fetching voice call translation settings for ${serverId}:`, error);
+    res.status(500).json({ error: 'Failed to fetch voice call translation settings' });
+  }
+});
+
+// Update voice call translation settings
+router.post('/servers/:serverId/voice-call-translation', async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    const {
+      enabled,
+      voiceChannelId,
+      sourceLanguage,
+      targetLanguage,
+      model,
+      voice,
+    } = req.body;
+
+    if (enabled && !voiceChannelId) {
+      return res.status(400).json({ error: 'Voice channel is required when enabled' });
+    }
+
+    if (enabled && !targetLanguage) {
+      return res.status(400).json({ error: 'Target language is required' });
+    }
+
+    if (enabled && sourceLanguage && targetLanguage && sourceLanguage !== 'auto' && sourceLanguage === targetLanguage) {
+      return res.status(400).json({ error: 'Source and target languages must be different' });
+    }
+
+    const updateData = {
+      enabled: !!enabled,
+      voiceChannelId: voiceChannelId || null,
+      sourceLanguage: sourceLanguage || 'auto',
+      targetLanguage: targetLanguage || null,
+      model: model || 'gemini-3.5-live-translate-preview',
+      voice: voice || 'Aoede',
+      updatedBy: req.userSession?.user?.id || 'dashboard',
+    };
+
+    const settings = await VoiceCallTranslation.findOneAndUpdate(
+      { guildId: serverId },
+      updateData,
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    const enabledStatus = updateData.enabled ? 'enabled' : 'disabled';
+    console.log(`[BOT API] ✅ Voice call translation settings ${enabledStatus} for server ${serverId}`);
+    console.log(`[BOT API] 📋 Saved config: Channel=${updateData.voiceChannelId || 'none'}, Source=${updateData.sourceLanguage}, Target=${updateData.targetLanguage}, Model=${updateData.model}, Voice=${updateData.voice}`);
+    res.json({ success: true, settings });
+  } catch (error) {
+    console.error(`[BOT API] ❌ Error updating voice call translation settings for server ${serverId}:`, error);
+    res.status(500).json({ error: 'Failed to update voice call translation settings' });
+  }
+});
+
+// Start voice call translation
+router.post('/servers/:serverId/voice-call-translation/start', async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    const client = router.botClient;
+    const userId = req.userSession?.user?.id || 'unknown';
+    const username = req.userSession?.user?.username || 'Unknown';
+
+    if (!client) {
+      console.error(`[BOT API] ❌ Voice call translation start failed - bot not ready (server: ${serverId}, user: ${username})`);
+      return res.status(503).json({ error: 'Bot not ready' });
+    }
+
+    // Get the saved settings
+    let settings = await VoiceCallTranslation.findOne({ guildId: serverId });
+    if (!settings) {
+      console.warn(`[BOT API] ⚠️ Voice call translation start failed - no settings saved (server: ${serverId}, user: ${username})`);
+      return res.status(400).json({ error: 'Please save your translation settings first' });
+    }
+
+    if (!settings.voiceChannelId) {
+      console.warn(`[BOT API] ⚠️ Voice call translation start failed - no voice channel (server: ${serverId}, user: ${username})`);
+      return res.status(400).json({ error: 'No voice channel configured. Please select a voice channel first.' });
+    }
+
+    if (!settings.targetLanguage) {
+      console.warn(`[BOT API] ⚠️ Voice call translation start failed - no target language (server: ${serverId}, user: ${username})`);
+      return res.status(400).json({ error: 'No target language configured. Please select a target language first.' });
+    }
+
+    // Check if already active
+    if (voiceCallTranslationService.isTranslationActive(serverId)) {
+      console.warn(`[BOT API] ⚠️ Voice call translation start failed - already active (server: ${serverId}, user: ${username})`);
+      return res.status(409).json({ error: 'Translation is already active for this server' });
+    }
+
+    const voiceChannelName = client.channels?.cache?.get(settings.voiceChannelId)?.name || settings.voiceChannelId;
+    console.log(`[BOT API] 🎤 Starting voice call translation for server ${serverId} (requested by ${username})`);
+    console.log(`[BOT API] 📋 Config: Channel=${voiceChannelName}, Source=${settings.sourceLanguage || 'auto'}, Target=${settings.targetLanguage}, Model=${settings.model || 'gemini-3.5-live-translate-preview'}, Voice=${settings.voice || 'Aoede'}`);
+
+    const result = await voiceCallTranslationService.startTranslation(
+      serverId,
+      settings.voiceChannelId,
+      settings.sourceLanguage || 'auto',
+      settings.targetLanguage,
+      settings.model || 'gemini-3.5-live-translate-preview',
+      client,
+      settings.voice || 'Aoede'
+    );
+
+    if (result.success) {
+      console.log(`[BOT API] ✅ Voice call translation started successfully for server ${serverId} (requested by ${username})`);
+      res.json({ success: true, message: 'Voice translation started successfully' });
+    } else {
+      console.error(`[BOT API] ❌ Failed to start voice call translation for server ${serverId}: ${result.error}`);
+      res.status(500).json({ error: result.error || 'Failed to start voice translation' });
+    }
+  } catch (error) {
+    console.error(`[BOT API] ❌ Error starting voice call translation for server ${serverId}:`, error);
+    res.status(500).json({ error: 'Failed to start voice translation' });
+  }
+});
+
+// Stop voice call translation
+router.post('/servers/:serverId/voice-call-translation/stop', async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    const client = router.botClient;
+    const userId = req.userSession?.user?.id || 'unknown';
+    const username = req.userSession?.user?.username || 'Unknown';
+
+    const wasActive = voiceCallTranslationService.isTranslationActive(serverId);
+    console.log(`[BOT API] 🔴 Stopping voice call translation for server ${serverId} (requested by ${username}, wasActive: ${wasActive})`);
+
+    const result = await voiceCallTranslationService.stopTranslation(serverId, client);
+
+    if (result.success) {
+      console.log(`[BOT API] ✅ Voice call translation stopped for server ${serverId} (requested by ${username})`);
+      res.json({ success: true, message: 'Voice translation stopped successfully' });
+    } else {
+      if (result.error === 'No active translation') {
+        console.log(`[BOT API] ℹ️ Voice call translation was not active for server ${serverId}`);
+        res.json({ success: true, message: 'No active translation to stop' });
+      } else {
+        console.error(`[BOT API] ❌ Failed to stop voice call translation for server ${serverId}: ${result.error}`);
+        res.status(500).json({ error: result.error || 'Failed to stop voice translation' });
+      }
+    }
+  } catch (error) {
+    console.error(`[BOT API] ❌ Error stopping voice call translation for server ${serverId}:`, error);
+    res.status(500).json({ error: 'Failed to stop voice translation' });
+  }
+});
+
+// Get voice call translation status
+router.get('/servers/:serverId/voice-call-translation/status', async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    const status = voiceCallTranslationService.getTranslationStatus(serverId);
+    const settings = await VoiceCallTranslation.findOne({ guildId: serverId });
+
+    const statusStr = status.active ? '🟢 active' : '🔴 inactive';
+    console.log(`[BOT API] 📊 Voice call translation status for ${serverId}: ${statusStr}${status.active ? ` (channel: ${status.voiceChannelId}, uptime: ${Math.round((status.uptime || 0) / 1000)}s)` : ''}`);
+
+    res.json({
+      active: status.active,
+      config: settings ? {
+        enabled: settings.enabled,
+        voiceChannelId: settings.voiceChannelId,
+        sourceLanguage: settings.sourceLanguage,
+        targetLanguage: settings.targetLanguage,
+        model: settings.model,
+        voice: settings.voice,
+      } : null,
+      ...status,
+    });
+  } catch (error) {
+    console.error(`[BOT API] ❌ Error fetching voice call translation status for ${serverId}:`, error);
+    res.status(500).json({ error: 'Failed to fetch status' });
   }
 });
 
