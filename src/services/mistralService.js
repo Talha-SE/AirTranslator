@@ -691,8 +691,8 @@ const DETECT_API_KEY = process.env.MISTRAL_DETECT_API_KEY || MISTRAL_API_KEY;
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 //const TRANSLATION_MODEL = 'devstral-small-latest';
-const TRANSLATION_MODEL = 'mistral-large-latest';
-//const TRANSLATION_MODEL = 'mistral-small-2603';
+//const TRANSLATION_MODEL = 'mistral-large-latest';
+const TRANSLATION_MODEL = 'mistral-small-2506';
 //const TRANSLATION_MODEL = 'ministral-14b-latest';
 const THINKING_MODE_ENABLED = true; // Enable thinking mode for ministral-14b-latest
 /**
