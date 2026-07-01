@@ -21,6 +21,12 @@ const monetizationSettingsSchema = new mongoose.Schema({
     feedbackCollectionEnabled: {
         type: Boolean,
         default: true
+    },
+    voteBonusAmount: {
+        type: Number,
+        default: 20,
+        min: 1,
+        max: 1000
     }
 }, { timestamps: true });
 

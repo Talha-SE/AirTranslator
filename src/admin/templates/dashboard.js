@@ -602,7 +602,21 @@ async function generateVoteTrackingTab() {
             }
         }));
     }
-    
+
+    // Enrich server names — use DB fallback for servers the bot has left
+    const Server = require('../../models/Server');
+    const missingServerIds = (enrichedRecentVotes || [])
+        .filter(v => v?.serverId && (!client || !client.guilds.cache.has(v.serverId)))
+        .map(v => v.serverId);
+    const uniqueMissingIds = [...new Set(missingServerIds)];
+    let dbNameMap = {};
+    if (uniqueMissingIds.length > 0) {
+        try {
+            const dbServers = await Server.find({ serverId: { $in: uniqueMissingIds } }, 'serverId serverName').lean();
+            dbServers.forEach(s => { dbNameMap[s.serverId] = s.serverName; });
+        } catch (_) { /* non-fatal */ }
+    }
+
     return `
     <div class="tab-content" id="vote-tracking-tab">
         <div class="welcome-section">
@@ -769,7 +783,7 @@ async function generateVoteTrackingTab() {
                         <tbody id="recentVotesTbody">
                             ${enrichedRecentVotes.map(vote => {
                                 const server = client ? client.guilds.cache.get(vote.serverId) : null;
-                                const serverName = server ? server.name : 'Unknown Server';
+                                const serverName = server ? server.name : (dbNameMap[vote.serverId] || 'Unknown Server');
                                 const timestamp = new Date(vote.timestamp);
                                 const timeStr = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                                 const dateStr = timestamp.toLocaleDateString([], { month: 'short', day: 'numeric' });
@@ -2061,6 +2075,337 @@ async function generatePaymentsTab() {
 }
 
 /**
+ * Generate voice call translation monitoring tab content
+ */
+async function generateVoiceTab() {
+    const client = global.discordClient;
+    const VoiceCallTranslation = require('../../models/VoiceCallTranslation');
+    const STTSettings = require('../../models/STTSettings');
+    const voiceCallTranslationService = require('../../services/voiceCallTranslationService');
+
+    // Fetch all data in parallel
+    const [
+        vctRecords,
+        sttRecords,
+        activeSessions
+    ] = await Promise.all([
+        VoiceCallTranslation.find({}).sort({ updatedAt: -1 }).lean(),
+        STTSettings.find({}).sort({ updatedAt: -1 }).lean(),
+        Promise.resolve(voiceCallTranslationService.getActiveCount())
+    ]);
+
+    const vctEnabled = vctRecords.filter(v => v.enabled).length;
+    const sttEnabled = sttRecords.filter(s => s.enabled).length;
+    const vctGuildIds = new Set(vctRecords.filter(v => v.enabled).map(v => v.guildId));
+    const sttGuildIds = new Set(sttRecords.filter(s => s.enabled).map(s => s.guildId));
+    const totalVoiceServers = new Set([...vctGuildIds, ...sttGuildIds]).size;
+
+    // Model distribution
+    const modelDist = {};
+    vctRecords.forEach(v => {
+        const m = v.model || 'unknown';
+        modelDist[m] = (modelDist[m] || 0) + 1;
+    });
+    const modelEntries = Object.entries(modelDist).sort((a, b) => b[1] - a[1]);
+
+    // Language distribution
+    const sourceLangs = {};
+    const targetLangs = {};
+    vctRecords.forEach(v => {
+        if (v.sourceLanguage && v.sourceLanguage !== 'auto') {
+            sourceLangs[v.sourceLanguage] = (sourceLangs[v.sourceLanguage] || 0) + 1;
+        }
+        if (v.targetLanguage) {
+            targetLangs[v.targetLanguage] = (targetLangs[v.targetLanguage] || 0) + 1;
+        }
+    });
+    const topSourceLangs = Object.entries(sourceLangs).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const topTargetLangs = Object.entries(targetLangs).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+    // Build VCT rows
+    const vctRows = vctRecords.map(record => {
+        const guild = client ? client.guilds.cache.get(record.guildId) : null;
+        const serverName = guild ? guild.name : 'Unknown Server';
+        const liveStatus = voiceCallTranslationService.getTranslationStatus(record.guildId);
+        const isActive = liveStatus.active || record.isActive || false;
+        const vcName = record.voiceChannelId && guild
+            ? (guild.channels.cache.get(record.voiceChannelId)?.name || record.voiceChannelId)
+            : (record.voiceChannelId || '—');
+        const lastStarted = record.lastStartedAt
+            ? new Date(record.lastStartedAt).toLocaleString()
+            : '—';
+
+        return `
+            <tr>
+                <td>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <strong style="font-size: 14px; color: var(--text-primary);">${serverName}</strong>
+                        <code style="font-size: 11px; color: var(--text-tertiary); background: none; padding: 0;">${record.guildId}</code>
+                    </div>
+                </td>
+                <td><span style="font-size: 13px;">${vcName}</span></td>
+                <td><span class="badge badge-info">${record.sourceLanguage || 'auto'} → ${record.targetLanguage || '—'}</span></td>
+                <td style="font-size: 13px;">${record.model || '—'}</td>
+                <td style="font-size: 13px;">${record.voice || '—'}</td>
+                <td style="text-align: center;">
+                    ${isActive
+                        ? '<span class="badge badge-success" style="display: inline-flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block;"></span> Live</span>'
+                        : '<span class="badge badge-secondary">Inactive</span>'
+                    }
+                </td>
+                <td style="font-size: 12px; color: var(--text-secondary);">${lastStarted}</td>
+            </tr>`;
+    }).join('');
+
+    // Build STT rows
+    const sttRows = sttRecords.map(record => {
+        const guild = client ? client.guilds.cache.get(record.guildId) : null;
+        const serverName = guild ? guild.name : 'Unknown Server';
+        const inChan = record.inputChannelId && guild
+            ? (guild.channels.cache.get(record.inputChannelId)?.name || record.inputChannelId)
+            : (record.inputChannelId || '—');
+        const outChan = record.outputChannelId && guild
+            ? (guild.channels.cache.get(record.outputChannelId)?.name || record.outputChannelId)
+            : (record.outputChannelId || '—');
+        const langs = [record.language1, record.language2, record.language3].filter(Boolean).join(', ') || '—';
+
+        return `
+            <tr>
+                <td>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <strong style="font-size: 14px; color: var(--text-primary);">${serverName}</strong>
+                        <code style="font-size: 11px; color: var(--text-tertiary); background: none; padding: 0;">${record.guildId}</code>
+                    </div>
+                </td>
+                <td style="font-size: 13px;">${inChan}</td>
+                <td style="font-size: 13px;">${outChan}</td>
+                <td style="font-size: 13px;">${record.model || '—'}</td>
+                <td style="font-size: 13px;">${langs}</td>
+                <td style="text-align: center;">
+                    ${record.enabled
+                        ? '<span class="badge badge-success">Enabled</span>'
+                        : '<span class="badge badge-secondary">Disabled</span>'
+                    }
+                </td>
+            </tr>`;
+    }).join('');
+
+    return `
+    <div class="tab-content" id="voice-calls-tab">
+        <!-- Welcome Section -->
+        <div class="welcome-section">
+            <div class="welcome-text">
+                <h2>Voice Call Monitoring</h2>
+                <p>Monitor Voice Call Translation and Speech-to-Text usage across all servers in real-time.</p>
+            </div>
+            <div class="welcome-actions">
+                <button class="btn btn-outline btn-sm" onclick="window.location.reload()">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M17 10a7 7 0 11-1.5-4.3M17 5v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Refresh Data
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(99, 102, 241, 0.1); color: #6366f1;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">VCT Enabled</div>
+                    <div class="stat-value">${vctEnabled.toLocaleString()}</div>
+                    <div class="stat-footer">
+                        <span class="trend neutral">Voice Call Translation</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Active Sessions</div>
+                    <div class="stat-value">${activeSessions.toLocaleString()}</div>
+                    <div class="stat-footer">
+                        <span class="trend ${activeSessions > 0 ? 'positive' : 'neutral'}">Currently live</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">STT Enabled</div>
+                    <div class="stat-value">${sttEnabled.toLocaleString()}</div>
+                    <div class="stat-footer">
+                        <span class="trend neutral">Speech-to-Text</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(245, 158, 11, 0.1); color: #f59e0b;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-label">Total Voice Servers</div>
+                    <div class="stat-value">${totalVoiceServers.toLocaleString()}</div>
+                    <div class="stat-footer">
+                        <span class="trend neutral">VCT + STT combined</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Model & Language Distribution -->
+        <div class="analytics-grid" style="margin-bottom: 32px;">
+            <div class="content-card">
+                <div class="card-header">
+                    <h3 class="card-title">Model Distribution</h3>
+                    <p class="card-subtitle">Gemini models used for voice translation</p>
+                </div>
+                <div class="card-body">
+                    ${modelEntries.length > 0 ? modelEntries.map(([model, count]) => `
+                        <div class="lang-item">
+                            <div class="lang-meta">
+                                <span class="lang-name" style="font-family: monospace; font-size: 12px;">${model}</span>
+                                <span class="lang-percent">${count}</span>
+                            </div>
+                            <div class="lang-progress">
+                                <div class="lang-bar" style="width: ${(count / Math.max(...modelEntries.map(e => e[1]))) * 100}%"></div>
+                            </div>
+                        </div>
+                    `).join('') : '<div style="padding: 24px; text-align: center; color: var(--text-tertiary);">No model data available</div>'}
+                </div>
+            </div>
+
+            <div class="side-cards">
+                <div class="content-card">
+                    <div class="card-header">
+                        <h3 class="card-title">Top Source Languages</h3>
+                    </div>
+                    <div class="card-body">
+                        ${topSourceLangs.length > 0 ? topSourceLangs.map(([lang, count]) => `
+                            <div class="lang-item">
+                                <div class="lang-meta">
+                                    <span class="lang-flag">${lang.toUpperCase()}</span>
+                                    <span class="lang-name">${lang}</span>
+                                    <span class="lang-percent">${count}</span>
+                                </div>
+                                <div class="lang-progress">
+                                    <div class="lang-bar" style="width: ${(count / Math.max(...topSourceLangs.map(e => e[1]))) * 100}%"></div>
+                                </div>
+                            </div>
+                        `).join('') : '<div style="padding: 24px; text-align: center; color: var(--text-tertiary);">No source language data</div>'}
+                    </div>
+                </div>
+
+                <div class="content-card">
+                    <div class="card-header">
+                        <h3 class="card-title">Top Target Languages</h3>
+                    </div>
+                    <div class="card-body">
+                        ${topTargetLangs.length > 0 ? topTargetLangs.map(([lang, count]) => `
+                            <div class="lang-item">
+                                <div class="lang-meta">
+                                    <span class="lang-flag">${lang.toUpperCase()}</span>
+                                    <span class="lang-name">${lang}</span>
+                                    <span class="lang-percent">${count}</span>
+                                </div>
+                                <div class="lang-progress">
+                                    <div class="lang-bar" style="width: ${(count / Math.max(...topTargetLangs.map(e => e[1]))) * 100}%"></div>
+                                </div>
+                            </div>
+                        `).join('') : '<div style="padding: 24px; text-align: center; color: var(--text-tertiary);">No target language data</div>'}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VCT Servers Table -->
+        <div class="content-card" style="margin-bottom: 32px;">
+            <div class="card-header">
+                <div class="card-title-group">
+                    <h3 class="card-title">Voice Call Translation Servers</h3>
+                    <p class="card-subtitle">All servers with VCT configuration</p>
+                </div>
+                <span class="badge badge-info">${vctRecords.length} records</span>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Server</th>
+                                <th>Voice Channel</th>
+                                <th>Languages</th>
+                                <th>Model</th>
+                                <th>Voice</th>
+                                <th style="text-align: center;">Status</th>
+                                <th>Last Started</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${vctRows || '<tr><td colspan="7" style="text-align: center; padding: 40px; color: var(--text-tertiary);">No VCT configurations found.</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- STT Servers Table -->
+        <div class="content-card">
+            <div class="card-header">
+                <div class="card-title-group">
+                    <h3 class="card-title">Speech-to-Text Servers</h3>
+                    <p class="card-subtitle">All servers with STT configuration</p>
+                </div>
+                <span class="badge badge-info">${sttRecords.length} records</span>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Server</th>
+                                <th>Input Channel</th>
+                                <th>Output Channel</th>
+                                <th>Model</th>
+                                <th>Translation Languages</th>
+                                <th style="text-align: center;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${sttRows || '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-tertiary);">No STT configurations found.</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    `;
+}
+
+/**
  * Generate complete dashboard
  */
 async function generateDashboard(analytics, client, activeTab = 'analytics') {
@@ -2090,6 +2435,9 @@ async function generateDashboard(analytics, client, activeTab = 'analytics') {
         case 'servers':
             tabContent = await generateServersTab(client);
             break;
+        case 'voice-calls':
+            tabContent = await generateVoiceTab();
+            break;
         case 'feedback':
             tabContent = await generateFeedbackTab();
             break;
@@ -2115,7 +2463,8 @@ module.exports = {
     generateMonetizationTab,
     generatePaymentsTab,
     generateServersTab,
-    generateFeedbackTab
+    generateFeedbackTab,
+    generateVoiceTab
 };
 
 

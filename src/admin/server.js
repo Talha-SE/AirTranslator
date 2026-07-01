@@ -11,6 +11,7 @@ const monetizationHandler = require('./handlers/monetization');
 const paymentsHandler = require('./handlers/payments');
 const serversHandler = require('./handlers/servers');
 const feedbackHandler = require('./handlers/feedback');
+const voiceHandler = require('./handlers/voice');
 const { generateLoginPage } = require('./templates/login');
 const { generateDashboard } = require('./templates/dashboard');
 const analyticsService = require('../services/analyticsService');
@@ -387,7 +388,23 @@ const server = http.createServer(async (req, res) => {
             await feedbackHandler.deleteAllFeedback(req, res);
             return;
         }
-        
+
+        // Voice endpoints
+        if (pathname === '/admin/api/voice/stats' && req.method === 'GET') {
+            await voiceHandler.getVoiceStats(req, res);
+            return;
+        }
+
+        if (pathname === '/admin/api/voice/vct-servers' && req.method === 'GET') {
+            await voiceHandler.getVctServers(req, res);
+            return;
+        }
+
+        if (pathname === '/admin/api/voice/stt-servers' && req.method === 'GET') {
+            await voiceHandler.getSttServers(req, res);
+            return;
+        }
+
         // Server endpoints
         if (pathname === '/admin/servers' && req.method === 'GET') {
             await serversHandler.getServers(req, res);

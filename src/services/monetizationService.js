@@ -357,50 +357,58 @@ class MonetizationService {
         try {
             await this.ensureSettingsLoaded();
 
-            // 1) Load servers known in DB
+            // 1) Build the set of live guild IDs from Discord
+            const liveGuildIds = new Set();
+            if (client && client.guilds && client.guilds.cache) {
+                client.guilds.cache.forEach((guild) => liveGuildIds.add(guild.id));
+            }
+
+            // 2) Load servers known in DB
             const dbServers = await databaseService.getAllServers();
 
             // Map for quick lookup by id
             const byId = new Map();
 
-            const fromDb = dbServers.map((server) => {
-                const sMon = server.monetization || {
-                    freeTranslationLimit: this.globalSettings.defaultFreeTranslationLimit,
-                    isRestricted: this.globalSettings.enableGlobalRestriction,
-                    isExempt: false,
-                    premiumJoinedAt: null,
-                    lastReset: new Date(),
-                    customLimit: null
-                };
+            const fromDb = dbServers
+                .filter((server) => liveGuildIds.has(server.server_id))
+                .map((server) => {
+                    const sMon = server.monetization || {
+                        freeTranslationLimit: this.globalSettings.defaultFreeTranslationLimit,
+                        isRestricted: this.globalSettings.enableGlobalRestriction,
+                        isExempt: false,
+                        premiumJoinedAt: null,
+                        lastReset: new Date(),
+                        customLimit: null
+                    };
 
-                const translationCount = server.translation_count || 0;
-                // Always use global default unless there's a custom limit
-                const effectiveLimit = sMon.customLimit || this.globalSettings.defaultFreeTranslationLimit;
-                const isRestricted = sMon.isRestricted || this.globalSettings.enableGlobalRestriction;
-                const canTranslate = sMon.isExempt ? true : (isRestricted ? translationCount < effectiveLimit : true);
-                const premiumJoinedAt = sMon.premiumJoinedAt || null;
-                const nextRenewalDate = this.calculateNextRenewalDate(premiumJoinedAt);
+                    const translationCount = server.translation_count || 0;
+                    // Always use global default unless there's a custom limit
+                    const effectiveLimit = sMon.customLimit || this.globalSettings.defaultFreeTranslationLimit;
+                    const isRestricted = sMon.isRestricted || this.globalSettings.enableGlobalRestriction;
+                    const canTranslate = sMon.isExempt ? true : (isRestricted ? translationCount < effectiveLimit : true);
+                    const premiumJoinedAt = sMon.premiumJoinedAt || null;
+                    const nextRenewalDate = this.calculateNextRenewalDate(premiumJoinedAt);
 
-                const info = {
-                    id: server.server_id,
-                    name: 'Unknown Server',
-                    translationCount,
-                    isExempt: sMon.isExempt,
-                    isRestricted,
-                    canTranslate,
-                    freeTranslationLimit: effectiveLimit,
-                    lastReset: sMon.lastReset,
-                    exemptUntil: sMon.exemptUntil || null,
-                    premiumJoinedAt,
-                    nextRenewalDate,
-                    memberCount: undefined
-                };
+                    const info = {
+                        id: server.server_id,
+                        name: 'Unknown Server',
+                        translationCount,
+                        isExempt: sMon.isExempt,
+                        isRestricted,
+                        canTranslate,
+                        freeTranslationLimit: effectiveLimit,
+                        lastReset: sMon.lastReset,
+                        exemptUntil: sMon.exemptUntil || null,
+                        premiumJoinedAt,
+                        nextRenewalDate,
+                        memberCount: undefined
+                    };
 
-                byId.set(info.id, info);
-                return info;
-            });
+                    byId.set(info.id, info);
+                    return info;
+                });
 
-            // 2) Add any guilds from the client that are not in DB yet
+            // 3) Add any guilds from the client that are not in DB yet
             const merged = [...fromDb];
             if (client && client.guilds && client.guilds.cache) {
                 client.guilds.cache.forEach((guild) => {
@@ -698,7 +706,16 @@ class MonetizationService {
             const allServers = await databaseService.getAllServers();
             let expiredCount = 0;
 
+            // Only check servers the bot is currently in
+            const client = global.discordClient;
+            const liveGuildIds = new Set();
+            if (client && client.guilds && client.guilds.cache) {
+                client.guilds.cache.forEach((guild) => liveGuildIds.add(guild.id));
+            }
+
             for (const server of allServers) {
+                // Skip servers the bot is no longer in
+                if (!liveGuildIds.has(server.server_id)) continue;
                 if (!server.monetization) continue;
                 
                 const { isExempt, exemptUntil } = server.monetization;

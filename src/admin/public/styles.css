@@ -651,6 +651,11 @@ a:hover {
     font-weight: 600;
 }
 
+.badge-secondary {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
 .badge-info {
     background: #dbeafe;
     color: #1e40af;
@@ -690,6 +695,11 @@ a:hover {
 .badge-active {
     background: #dbeafe;
     color: #1e40af;
+}
+
+[data-theme="dark"] .badge-secondary {
+    background: #334155;
+    color: #94a3b8;
 }
 
 [data-theme="dark"] .badge-info {
