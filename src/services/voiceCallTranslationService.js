@@ -807,14 +807,15 @@ function setupRealtimeAudioPipeline(state) {
 
 /**
  * Build the config for gemini-3.5-live-translate-preview.
- * Uses speechConfig + system instruction for bidirectional translation.
+ * Uses speechConfig + systemInstruction (top-level) for bidirectional translation.
  */
-function buildTranslateConfig(state) {
+function buildTranslateConfig(state, systemInstruction) {
   const voiceName = state.voiceName || 'Aoede';
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
     temperature: 0.3,
+    systemInstruction: { parts: [{ text: systemInstruction }] },
     speechConfig: {
       voiceConfig: {
         prebuiltVoiceConfig: {
@@ -858,15 +859,16 @@ function buildTranslationSystemInstruction(sourceLanguage, targetLanguage) {
 
 /**
  * Build the config for gemini-3.1-flash-live-preview.
- * This model uses speechConfig + contextWindowCompression (not translationConfig).
+ * This model uses speechConfig + contextWindowCompression + systemInstruction.
  * It listens, detects silence, and returns translated audio as a turn.
  */
-function buildFlashLiveConfig(state) {
+function buildFlashLiveConfig(state, systemInstruction) {
   const voiceName = state.voiceName || 'Zephyr';
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
     temperature: 0.3,
+    systemInstruction: { parts: [{ text: systemInstruction }] },
     speechConfig: {
       voiceConfig: {
         prebuiltVoiceConfig: {
@@ -883,15 +885,16 @@ function buildFlashLiveConfig(state) {
 
 /**
  * Build the config for gemini-2.5-flash-native-audio-preview.
- * Native audio model — batch mode with speechConfig, mediaResolution, context compression.
+ * Native audio model — batch mode with speechConfig, mediaResolution, context compression, systemInstruction.
  * Uses system instruction for translation-only behavior.
  */
-function buildNativeAudioConfig(state) {
+function buildNativeAudioConfig(state, systemInstruction) {
   const voiceName = state.voiceName || 'Aoede';
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
     temperature: 0.3,
+    systemInstruction: { parts: [{ text: systemInstruction }] },
     speechConfig: {
       voiceConfig: {
         prebuiltVoiceConfig: {
@@ -921,16 +924,21 @@ async function connectGeminiSession(state) {
 
   const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
-  // Build config based on model type
+  // Build the system instruction for bidirectional translation
+  const systemInstruction = buildTranslationSystemInstruction(
+    state.sourceLanguage, state.targetLanguage
+  );
+
+  // Build config based on model type (system instruction embedded at config level)
   let config;
   if (isNativeAudio) {
-    config = buildNativeAudioConfig(state);
+    config = buildNativeAudioConfig(state, systemInstruction);
     log.info(`📖 Using Native Audio config (voice: ${state.voiceName || 'Aoede'})`);
   } else if (isFlash) {
-    config = buildFlashLiveConfig(state);
+    config = buildFlashLiveConfig(state, systemInstruction);
     log.info(`📖 Using Flash Live config (voice: ${state.voiceName || 'Zephyr'})`);
   } else {
-    config = buildTranslateConfig(state);
+    config = buildTranslateConfig(state, systemInstruction);
     log.info(`📖 Using Live Translate config (voice: ${state.voiceName || 'Aoede'})`);
   }
 
@@ -1051,20 +1059,9 @@ async function connectGeminiSession(state) {
   state.geminiSession = session;
   state.isReconnecting = false;
 
-  // Send system instruction to set up bidirectional translation context
-  // NOTE: This must be AFTER connect() resolves, not inside onopen, to avoid TDZ error
-  try {
-    const systemPrompt = buildTranslationSystemInstruction(
-      state.sourceLanguage, state.targetLanguage
-    );
-    session.sendClientContent({
-      turns: [{ text: systemPrompt }],
-      turnComplete: true,
-    });
-    log.info(`📤 Sent bidirectional translation instruction: ${getLanguageName(state.sourceLanguage)} ↔ ${getLanguageName(state.targetLanguage)}`);
-  } catch (err) {
-    log.error(`❌ Failed to send system instruction: ${err.message}`);
-  }
+  // System instruction is already embedded in the config at connect time
+  // (no need for sendClientContent — that causes the model to respond with audio confirmation)
+  log.info(`📝 System instruction set: ${getLanguageName(state.sourceLanguage)} ↔ ${getLanguageName(state.targetLanguage)}`);
 
   const modeLabel = isNativeAudio ? 'Native Audio batch' : isFlash ? 'Flash Live turn-based' : 'Live Translate continuous';
   log.success(`✅ Gemini Live session established (${modeLabel} mode)`);
