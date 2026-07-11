@@ -958,7 +958,6 @@ function setupRealtimeAudioPipeline(state) {
       }, 100);
     }
   });
-  });
 
   log.success(`✅ Audio pipeline ready — ${state.isTurnBased ? 'batch mode (full utterance → Gemini → translation)' : 'streaming mode (200ms chunks → real-time translation)'}`);
 
