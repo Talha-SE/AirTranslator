@@ -70,8 +70,8 @@ const GEMINI_LIVE_MODELS = {
 /** Silence duration before considering speech ended (ms) */
 const SILENCE_DURATION_MS = 1100; // 1.1s silence = end of utterance (reduced from 2s for faster response)
 
-/** Turn-based models use 1.1s silence — faster response, still filters natural pauses */
-const FLASH_SILENCE_DURATION_MS = 1100;
+/** Turn-based models use 2s silence — better for complete utterance capture */
+const FLASH_SILENCE_DURATION_MS = 2000;
 
 // ==============================
 // Gemini Voices Configuration
@@ -268,10 +268,20 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
     return { success: false, error: 'Translation is already starting for this guild. Please wait a moment and try again.' };
   }
   
-  // Check if already active
+  // Check if already active — with stale-state cleanup
   if (activeConnections.has(guildId)) {
-    log.warn('Translation already active for this guild');
-    return { success: false, error: 'Translation already active for this guild' };
+    const existingState = activeConnections.get(guildId);
+    const connStatus = existingState?.connection?.state?.status;
+    if (connStatus === VoiceConnectionStatus.Destroyed || connStatus === VoiceConnectionStatus.Disconnected) {
+      log.warn(`🧹 Found stale connection (${connStatus}) — cleaning up before restart`);
+      existingState.isRunning = false;
+      activeConnections.delete(guildId);
+      // Fully clean up the old state
+      await stopTranslation(guildId, client).catch(() => {});
+    } else {
+      log.warn('Translation already active for this guild');
+      return { success: false, error: 'Translation already active for this guild' };
+    }
   }
 
   if (!GEMINI_API_KEY) {
@@ -350,6 +360,16 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       isTurnBased: [FLASH_MODEL_ID, NATIVE_AUDIO_MODEL_ID].includes(modelId || DEFAULT_MODEL),
       /** Map of userId → { pcmBuffer, flushTimer } for active real-time streams */
       activeStreams: new Map(),
+      /** Interval ID for periodic activity check */
+      activityCheckInterval: null,
+      /** Interval ID for voice keep-alive (prevents Discord from dropping idle connections) */
+      keepAliveInterval: null,
+      /** Reference to voiceStateUpdate listener (removed during stopTranslation) */
+      voiceStateHandler: null,
+      /** Audio send queue — serializes concurrent sends to the single Gemini WebSocket */
+      audioSendQueue: [],
+      /** Whether a send is currently in progress (queue processing flag) */
+      isSendingAudio: false,
     };
 
     // Subscribe audio player to connection
@@ -362,6 +382,39 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
     // Set up real-time audio pipeline
     log.info('🎧 Setting up real-time audio pipeline (streaming PCM chunks every 200ms)...');
     setupRealtimeAudioPipeline(state);
+
+    // Start activity monitor — checks if channel is empty for 10+ min and stops if so
+    state.activityCheckInterval = setInterval(async () => {
+      if (!state.isRunning) return;
+      const inactiveTime = Date.now() - state.lastActivityTime;
+      try {
+        const guild = await client.guilds.fetch(guildId).catch(() => null);
+        if (!guild) return;
+        const channel = guild.channels.cache.get(state.voiceChannelId);
+        if (!channel || channel.type !== 2) return;
+        const humanMembers = channel.members.filter(m => !m.user.bot).size;
+        
+        if (humanMembers === 0 && inactiveTime > 10 * 60 * 1000) {
+          log.warn(`⏰ Channel empty for ${Math.round(inactiveTime / 60000)} min — stopping translation`);
+          await stopTranslation(guildId, client);
+        } else if (humanMembers > 0 && inactiveTime > 25 * 60 * 1000) {
+          log.info(`💤 ${humanMembers} user(s) in channel but inactive for ${Math.round(inactiveTime / 60000)} min — keeping alive`);
+        }
+      } catch (e) { /* ignore monitor errors */ }
+    }, 60000); // check every 60 seconds
+
+    // Start voice keep-alive — sends silence every 45s to prevent Discord gateway from dropping idle connections
+    const silenceFrame = Buffer.alloc(960 * 2 * 2); // 20ms stereo silence at 48kHz 16-bit PCM
+    state.keepAliveInterval = setInterval(() => {
+      if (!state.isRunning || !state.connection) return;
+      // Only send keep-alive if audio player is idle (no translation playing)
+      if (state.audioPlayer.state.status === AudioPlayerStatus.Idle) {
+        try {
+          const resource = createAudioResource(Readable.from([silenceFrame]), { inputType: StreamType.Raw });
+          state.audioPlayer.play(resource);
+        } catch (e) { /* ignore keep-alive errors */ }
+      }
+    }, 45000);
 
     // Store connection state
     activeConnections.set(guildId, state);
@@ -382,19 +435,80 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
     });
 
     connection.on(VoiceConnectionStatus.Disconnected, async () => {
-      log.warn('⚠️ Voice connection disconnected — attempting reconnect...');
-      try {
-        // Wait briefly for potential auto-reconnect by Discord.js
-        await Promise.race([
-          entersState(connection, VoiceConnectionStatus.Ready, VOICE_RECONNECT_WAIT_MS),
-          entersState(connection, VoiceConnectionStatus.Connecting, VOICE_RECONNECT_WAIT_MS),
-        ]);
-        log.success('✅ Voice connection reconnected');
-        return;
-      } catch (e) {
-        log.warn(`⚠️ Voice reconnect failed after ${VOICE_RECONNECT_WAIT_MS}ms — stopping translation`);
-        await stopTranslation(guildId, client);
+      log.warn('⚠️ Voice connection disconnected — attempting reconnect with retries...');
+      
+      for (let attempt = 1; attempt <= VOICE_RECONNECT_MAX_ATTEMPTS; attempt++) {
+        const delay = attempt === 1 ? VOICE_RECONNECT_WAIT_MS : VOICE_RECONNECT_WAIT_MS * Math.pow(2, attempt - 2);
+        log.info(`🔄 Reconnect attempt ${attempt}/${VOICE_RECONNECT_MAX_ATTEMPTS} (${delay}ms delay)...`);
+        
+        try {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          await Promise.race([
+            entersState(connection, VoiceConnectionStatus.Ready, 5000),
+            entersState(connection, VoiceConnectionStatus.Connecting, 5000),
+          ]);
+          log.success('✅ Voice connection reconnected on attempt ' + attempt);
+          return;
+        } catch (e) {
+          log.warn(`⚠️ Reconnect attempt ${attempt} failed: ${e.message}`);
+        }
       }
+      
+      // All retries exhausted — check if users are still in the channel
+      log.warn('👥 Checking for users in voice channel for potential auto-restart...');
+      try {
+        const guild = await client.guilds.fetch(guildId);
+        const channel = guild.channels.cache.get(state?.voiceChannelId || voiceChannelId);
+        if (channel && channel.type === 2) {
+          const humanMembers = channel.members.filter(m => !m.user.bot).size;
+          if (humanMembers > 0 && state?.isRunning) {
+            log.info(`👥 ${humanMembers} user(s) still in channel — auto-restarting translation`);
+            // Mark old state as dead so cleanup doesn't conflict
+            if (state) {
+              state.isRunning = false;
+              activeConnections.delete(guildId);
+            }
+            // Brief pause for Discord to fully release old connection
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            // Re-fetch settings from DB and restart
+            try {
+              const settings = await VoiceCallTranslation.findOne({ guildId });
+              if (settings && settings.enabled) {
+                const result = await startTranslation(
+                  guildId,
+                  settings.voiceChannelId || state?.voiceChannelId || voiceChannelId,
+                  settings.sourceLanguage || state?.sourceLanguage || 'auto',
+                  settings.targetLanguage || state?.targetLanguage,
+                  settings.model || state?.modelId || DEFAULT_MODEL,
+                  client || state?.client,
+                  settings.voice || state?.voiceName || DEFAULT_VOICE
+                );
+                if (result.success) {
+                  log.success('✅ Voice translation auto-restarted successfully');
+                  // Notify text channel if possible
+                  try {
+                    const guildChannels = guild.channels.cache;
+                    const textChannel = guildChannels.find(c => c.type === 0 && c.name.includes('general'));
+                    if (textChannel) {
+                      textChannel.send('🔄 Voice translation reconnected!').catch(() => {});
+                    }
+                  } catch (notifyErr) { /* ignore notification errors */ }
+                  return;
+                }
+              }
+            } catch (restartErr) {
+              log.error(`❌ Auto-restart failed: ${restartErr.message}`);
+            }
+          } else {
+            log.info('👥 No users in channel — stopping translation');
+          }
+        }
+      } catch (e) {
+        log.error(`❌ Error checking channel users: ${e.message}`);
+      }
+      
+      log.warn('⏹️ All reconnect attempts exhausted — stopping translation');
+      await stopTranslation(guildId, client || state?.client);
     });
 
     connection.on(VoiceConnectionStatus.Destroyed, () => {
@@ -408,6 +522,38 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
     connection.on('error', (error) => {
       log.error(`❌ Voice connection error: ${error.message}`);
     });
+
+    // Listen for users joining/leaving the voice channel to subscribe/unsubscribe proactively
+    const voiceStateHandler = async (oldState, newState) => {
+      // Only care about this guild
+      if (oldState.guild.id !== guildId && newState.guild.id !== guildId) return;
+      const targetChannelId = state.voiceChannelId;
+
+      // User joined the VCT channel
+      if (newState.channelId === targetChannelId && oldState.channelId !== targetChannelId) {
+        if (!newState.member?.user?.bot) {
+          log.info(`👤 User joined voice channel: ${newState.member?.user?.username || newState.id}`);
+          setupUserStream(state, newState.id);
+        }
+      }
+
+      // User left the VCT channel — clean up their stream
+      if (oldState.channelId === targetChannelId && newState.channelId !== targetChannelId) {
+        if (!oldState.member?.user?.bot) {
+          log.info(`👋 User left voice channel: ${oldState.member?.user?.username || oldState.id}`);
+          const streamInfo = state.activeStreams.get(oldState.id);
+          if (streamInfo) {
+            try { streamInfo.audioStream?.destroy(); } catch (e) { /* ignore */ }
+            try { streamInfo.decoder?.destroy(); } catch (e) { /* ignore */ }
+            state.activeStreams.delete(oldState.id);
+          }
+        }
+      }
+    };
+
+    client.on('voiceStateUpdate', voiceStateHandler);
+    state.voiceStateHandler = voiceStateHandler;
+    log.info('✅ Voice state listener registered — will subscribe new joiners automatically');
 
     // Update database
     await VoiceCallTranslation.findOneAndUpdate(
@@ -433,132 +579,176 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
 }
 
 /**
+ * Set up a full audio pipeline for a single user: subscribe → decode Opus → accumulate PCM → send to Gemini on silence.
+ * Called proactively for all users in channel on join, and when new users join.
+ * Also triggered by speaking.start as a fallback.
+ *
+ * BEHAVIOR BY MODEL:
+ * - Turn-based (3.1 Flash, 2.5 Native): batch mode — accumulate FULL utterance, send on silence
+ * - Continuous (3.5 Live): streaming mode — flush PCM every 200ms for real-time translation
+ *
+ * @param {Object} state - The guild's voice call translation state
+ * @param {string} userId - Discord user ID to subscribe to
+ */
+function setupUserStream(state, userId) {
+  const log = getLogger(state.guildId);
+  const receiver = state.connection.receiver;
+
+  // Already subscribed — skip
+  if (state.activeStreams.has(userId)) return;
+
+  const user = state.client.users.cache.get(userId);
+  const username = user?.username || userId;
+
+  const silenceDuration = state.isTurnBased ? FLASH_SILENCE_DURATION_MS : SILENCE_DURATION_MS;
+  const audioStream = receiver.subscribe(userId, {
+    end: {
+      behavior: EndBehaviorType.AfterSilence,
+      duration: silenceDuration,
+    },
+  });
+
+  // Decode Opus → PCM
+  const decoder = createOpusDecoder();
+  decoder.on('error', (err) => {
+    log.warn(`⚠️ Opus decoder error for ${username}: ${err.message}`);
+  });
+
+  // Track stream immediately so duplicate subscriptions are blocked
+  const streamInfo = { decoder, totalBytes: 0, audioStream, pcmChunks: [], username, flushInterval: null, lastFlushIndex: 0 };
+  state.activeStreams.set(userId, streamInfo);
+
+  const pcmStream = audioStream.pipe(decoder);
+  const pcmChunks = streamInfo.pcmChunks;
+  let totalBytes = 0;
+
+  pcmStream.on('data', (chunk) => {
+    pcmChunks.push(chunk);
+    totalBytes += chunk.length;
+    state.lastActivityTime = Date.now();
+  });
+
+  // For continuous model (3.5 Live): stream PCM chunks every 200ms for real-time translation
+  if (!state.isTurnBased) {
+    const FLUSH_INTERVAL_MS = 200;
+    streamInfo.flushInterval = setInterval(() => {
+      if (pcmChunks.length > streamInfo.lastFlushIndex && state.geminiSession && state.isRunning) {
+        const newChunks = pcmChunks.slice(streamInfo.lastFlushIndex);
+        streamInfo.lastFlushIndex = pcmChunks.length;
+        const buffer = Buffer.concat(newChunks);
+        const downsampled = downsamplePcm(buffer, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
+        if (downsampled.length > 0) {
+          sendChunkToGemini(state, downsampled).catch((err) => {
+            log.warn(`⚠️ Streaming flush error for ${username}: ${err.message}`);
+          });
+        }
+      }
+    }, FLUSH_INTERVAL_MS);
+    log.info(`🎤 ${username}: Streaming mode — flushing PCM every ${FLUSH_INTERVAL_MS}ms`);
+  }
+
+  pcmStream.on('end', async () => {
+    // Get stream info (may already be deleted on error)
+    const info = state.activeStreams.get(userId);
+
+    // Clear streaming flush interval if active (continuous model)
+    if (info?.flushInterval) {
+      clearInterval(info.flushInterval);
+      info.flushInterval = null;
+    }
+
+    // Clean up decoder
+    if (info) {
+      try { info.decoder.destroy(); } catch (e) { /* ignore */ }
+      state.activeStreams.delete(userId);
+    }
+
+    // Skip empty utterances
+    if (pcmChunks.length === 0 || !state.geminiSession || !state.isRunning) {
+      const durationMs = Math.round((totalBytes / 2) / PCM_SAMPLE_RATE * 1000);
+      log.debug(`⏹️ ${username}: Speech ended — empty (${(totalBytes / 1024).toFixed(1)} KB, ${durationMs}ms)`);
+      return;
+    }
+
+    // For continuous model: only send chunks accumulated since last flush
+    // For turn-based model: send all chunks (batch mode)
+    const startIndex = state.isTurnBased ? 0 : (info?.lastFlushIndex || 0);
+    if (startIndex >= pcmChunks.length) {
+      log.debug(`⏹️ ${username}: No new audio since last stream flush — skipping final send`);
+      return;
+    }
+
+    const finalChunks = pcmChunks.slice(startIndex);
+    const fullUtterance = Buffer.concat(finalChunks);
+    const durationMs = Math.round((fullUtterance.length / 2) / PCM_SAMPLE_RATE * 1000);
+
+    // Skip tiny audio fragments (< 200ms) — likely mic clicks/breaths, not real speech
+    if (durationMs < 200) {
+      log.debug(`⏹️ ${username}: Speech too short (${durationMs}ms), skipping`);
+      return;
+    }
+
+    log.info(`⏹️ ${username}: Speech ended — sending final utterance (${(fullUtterance.length / 1024).toFixed(1)} KB PCM, ${durationMs}ms)`);
+
+    // Downsample 48kHz → 16kHz for Gemini input
+    const downsampled = downsamplePcm(fullUtterance, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
+    if (downsampled.length === 0) {
+      log.warn(`⚠️ ${username}: Downsampled audio empty, skipping`);
+      return;
+    }
+
+    // Send the utterance to Gemini
+    try {
+      await sendChunkToGemini(state, downsampled);
+      log.success(`📤 Sent final utterance to Gemini (${(downsampled.length / 1024).toFixed(1)} KB, ${durationMs}ms) → awaiting translation`);
+    } catch (err) {
+      log.error(`❌ Failed to send utterance to Gemini: ${err.message}`);
+    }
+  });
+
+  audioStream.on('error', (err) => {
+    log.error(`❌ Audio stream error for ${username}: ${err.message}`);
+    const info = state.activeStreams.get(userId);
+    if (info) {
+      if (info.flushInterval) {
+        clearInterval(info.flushInterval);
+      }
+      try { info.decoder.destroy(); } catch (e) { /* ignore */ }
+      state.activeStreams.delete(userId);
+    }
+  });
+
+  log.info(`🎧 Subscribed to audio from ${username} (${userId})`);
+}
+
+/**
  * Set up the real-time audio pipeline.
  *
- * KEY DESIGN: Instead of buffering ALL audio until silence and sending one big chunk,
- * we send small PCM chunks to Gemini EVERY 200ms as audio arrives.
- * This is true real-time streaming — Gemini starts translating immediately.
+ * KEY DESIGN:
+ * - Turn-based models (3.1 Flash, 2.5 Native): batch mode — accumulate FULL utterance, send on silence.
+ *   Gemini receives a complete sentence → produces a coherent translation.
+ *   Speech ends after 2s of silence (EndBehaviorType.AfterSilence).
  *
- * Each user gets a persistent receiver. While speaking, PCM data is accumulated
- * and flushed to Gemini every 200ms (~6400 bytes per flush at 16kHz 16-bit mono).
+ * - Continuous model (3.5 Live): streaming mode — flush small PCM chunks to Gemini every 200ms.
+ *   Gemini translates in real-time as audio arrives.
+ *   Each user's stream also sends a final chunk on silence.
  */
 function setupRealtimeAudioPipeline(state) {
   const log = getLogger(state.guildId);
   const receiver = state.connection.receiver;
 
-  log.info('🔍 Listening for speakers in voice channel (batch utterance mode)...');
+  log.info(`🔍 Listening for speakers in voice channel (${state.isTurnBased ? 'batch' : 'streaming'} mode)...`);
 
   /**
    * BATCH MODE: Accumulate the ENTIRE utterance, then send to Gemini at once.
    * Gemini receives a complete sentence → produces a coherent translation.
    * Speech ends after 2s of silence (EndBehaviorType.AfterSilence).
    */
+  // Listen for speaking start — triggers subscription (proactive setup below covers existing users)
   receiver.speaking.on('start', (userId) => {
-    // Skip the bot's own audio — prevent echo loop
     if (userId === state.client.user.id) return;
-
-    // If this user already has an active stream, skip — avoid duplicate streams
-    // Discord VAD fires multiple start/end during one speech session
-    if (state.activeStreams.has(userId)) {
-      return;
-    }
-
-    const user = state.client.users.cache.get(userId);
-    const username = user?.username || userId;
-    state.userSpeakingCount++;
-    state.lastActivityTime = Date.now();
-
-    log.info(`🗣️ User started speaking: ${username} (#${state.userSpeakingCount})`);
-
-    if (state.onActivityChange) {
-      state.onActivityChange('speaking', userId);
-    }
-
-    // Create a persistent audio stream — ends after silence
-    // Flash model: 2s silence (turn-based, model detects end of speech)
-    // Translate model: 3s silence (continuous, more tolerance for pauses)
-    const silenceDuration = state.isTurnBased ? FLASH_SILENCE_DURATION_MS : SILENCE_DURATION_MS;
-    const audioStream = receiver.subscribe(userId, {
-      end: {
-        behavior: EndBehaviorType.AfterSilence,
-        duration: silenceDuration,
-      },
-    });
-
-    // Decode Opus → PCM
-    const decoder = createOpusDecoder();
-    // Catch decoder errors to prevent process crash from invalid Opus packets
-    decoder.on('error', (err) => {
-      log.warn(`⚠️ Opus decoder error for ${username}: ${err.message}`);
-    });
-
-    // Track stream IMMEDIATELY so duplicate start events are blocked
-    state.activeStreams.set(userId, { decoder, totalBytes: 0, audioStream, pcmChunks: [], username });
-
-    const pcmStream = audioStream.pipe(decoder);
-
-    // Accumulate FULL utterance — no periodic flushing
-    const streamInfo = state.activeStreams.get(userId);
-    const pcmChunks = streamInfo.pcmChunks;
-    let totalBytes = 0;
-
-    pcmStream.on('data', (chunk) => {
-      pcmChunks.push(chunk);
-      totalBytes += chunk.length;
-      state.lastActivityTime = Date.now();
-    });
-
-    pcmStream.on('end', async () => {
-      // Clean up decoder and stream tracking
-      const info = state.activeStreams.get(userId);
-      if (info) {
-        try { info.decoder.destroy(); } catch (e) { /* ignore */ }
-        state.activeStreams.delete(userId);
-      }
-
-      // Skip empty utterances
-      if (pcmChunks.length === 0 || !state.geminiSession || !state.isRunning) {
-        const durationMs = Math.round((totalBytes / 2) / PCM_SAMPLE_RATE * 1000);
-        log.debug(`⏹️ ${username}: Speech ended — empty (${(totalBytes / 1024).toFixed(1)} KB, ${durationMs}ms)`);
-        return;
-      }
-
-      // Combine ALL chunks into one full utterance
-      const fullUtterance = Buffer.concat(pcmChunks);
-      const durationMs = Math.round((fullUtterance.length / 2) / PCM_SAMPLE_RATE * 1000);
-
-      // Skip tiny audio fragments (< 200ms) — likely mic clicks/breaths, not real speech
-      if (durationMs < 200) {
-        log.debug(`⏹️ ${username}: Speech too short (${durationMs}ms), skipping`);
-        return;
-      }
-
-      log.info(`⏹️ ${username}: Speech ended — sending full utterance (${(fullUtterance.length / 1024).toFixed(1)} KB PCM, ${durationMs}ms)`);
-
-      // Downsample 48kHz → 16kHz for Gemini input
-      const downsampled = downsamplePcm(fullUtterance, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
-      if (downsampled.length === 0) {
-        log.warn(`⚠️ ${username}: Downsampled audio empty, skipping`);
-        return;
-      }
-
-      // Send the complete utterance to Gemini in one batch
-      try {
-        await sendChunkToGemini(state, downsampled);
-        log.success(`📤 Sent full utterance to Gemini (${(downsampled.length / 1024).toFixed(1)} KB, ${durationMs}ms) → awaiting translation`);
-      } catch (err) {
-        log.error(`❌ Failed to send utterance to Gemini: ${err.message}`);
-      }
-    });
-
-    audioStream.on('error', (err) => {
-      log.error(`❌ Audio stream error for ${username}: ${err.message}`);
-      const info = state.activeStreams.get(userId);
-      if (info) {
-        try { info.decoder.destroy(); } catch (e) { /* ignore */ }
-        state.activeStreams.delete(userId);
-      }
-    });
+    // If user already subscribed via proactive setup, this is a no-op
+    setupUserStream(state, userId);
   });
 
   receiver.speaking.on('end', (userId) => {
@@ -584,7 +774,27 @@ function setupRealtimeAudioPipeline(state) {
     log.error(`❌ Audio player error: ${error.message}`);
   });
 
-  log.success('✅ Audio pipeline ready — batch mode (full utterance → Gemini → translation)');
+  log.success(`✅ Audio pipeline ready — ${state.isTurnBased ? 'batch mode (full utterance → Gemini → translation)' : 'streaming mode (200ms chunks → real-time translation)'}`);
+
+  // Proactively subscribe to ALL users currently in the voice channel
+  // This ensures we don't miss anyone whose speaking.start event never fires
+  try {
+    const guild = state.client.guilds.cache.get(state.guildId);
+    if (guild) {
+      const channel = guild.channels.cache.get(state.voiceChannelId);
+      if (channel && channel.type === 2) {
+        const members = channel.members.filter(m => !m.user.bot);
+        if (members.size > 0) {
+          log.info(`👥 Proactively subscribing to ${members.size} user(s) already in voice channel...`);
+          for (const [userId] of members) {
+            setupUserStream(state, userId);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    log.error(`❌ Error during proactive user subscription: ${e.message}`);
+  }
 }
 
 /**
@@ -596,6 +806,9 @@ function buildTranslateConfig(state) {
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+    generationConfig: {
+      temperature: 0.3,
+    },
     speechConfig: {
       voiceConfig: {
         prebuiltVoiceConfig: {
@@ -618,12 +831,22 @@ function buildTranslationSystemInstruction(sourceLanguage, targetLanguage) {
   const lang1 = getLanguageName(sourceLanguage);
   const lang2 = getLanguageName(targetLanguage);
   return [
-    `You are a professional interpreter for a voice call between two people.`,
+    `You are a pure translation engine. Your ONLY output is a spoken translation in the target language.`,
     `You MUST translate bidirectionally between ${lang1} and ${lang2}.`,
-    `If the speaker is speaking in ${lang1}, translate to ${lang2}.`,
-    `If the speaker is speaking in ${lang2}, translate to ${lang1}.`,
+    `If the speaker is speaking in ${lang1}, output ONLY the ${lang2} translation.`,
+    `If the speaker is speaking in ${lang2}, output ONLY the ${lang1} translation.`,
     `Auto-detect which language is being spoken.`,
-    `Give translation ONLY. Do NOT chat, reply, comment, or add anything else.`,
+    ``,
+    `ABSOLUTE RULES - VIOLATION BREAKS THE SERVICE:`,
+    `- Output the translation ONLY as audio, nothing else.`,
+    `- NEVER add greetings, explanations, or any text.`,
+    `- NEVER say "I understand", "Here is", "The speaker said", "In other words", or similar.`,
+    `- NEVER add your own thoughts, questions, or comments.`,
+    `- NEVER repeat the original text back.`,
+    `- If unsure, translate as best you can, output ONLY that. No disclaimers.`,
+    `- If the speaker is already speaking the target language, repeat it verbatim.`,
+    ``,
+    `You are NOT a chat assistant. You are a translation machine with audio output.`,
   ].join('\n');
 }
 
@@ -637,6 +860,9 @@ function buildFlashLiveConfig(state) {
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+    generationConfig: {
+      temperature: 0.3,
+    },
     speechConfig: {
       voiceConfig: {
         prebuiltVoiceConfig: {
@@ -661,6 +887,9 @@ function buildNativeAudioConfig(state) {
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+    generationConfig: {
+      temperature: 0.3,
+    },
     speechConfig: {
       voiceConfig: {
         prebuiltVoiceConfig: {
@@ -874,10 +1103,46 @@ async function reconnectGeminiSession(state) {
 }
 
 /**
- * Send audio PCM data to Gemini Live API for translation
- * Uses the persistent WebSocket session instead of REST calls.
+ * Send audio PCM data to Gemini Live API for translation.
+ * Uses a sequential queue for ALL models to prevent concurrent writes
+ * to the single WebSocket session.
+ *
+ * For turn-based models (2.5, 3.1): one full utterance per queue item.
+ * For continuous model (3.5 Live): small 200ms streaming chunks per queue item.
  */
 async function sendChunkToGemini(state, pcmBuffer) {
+  // Queue to serialize all sends: no concurrent writes to the single Gemini WebSocket
+  return new Promise((resolve, reject) => {
+    state.audioSendQueue.push({ pcmBuffer, resolve, reject });
+    processSendQueue(state);
+  });
+}
+
+/**
+ * Process the audio send queue sequentially — only one send at a time.
+ * Called whenever a new item is enqueued, and again after each send completes.
+ */
+async function processSendQueue(state) {
+  if (state.isSendingAudio || state.audioSendQueue.length === 0) return;
+  state.isSendingAudio = true;
+
+  while (state.audioSendQueue.length > 0) {
+    const item = state.audioSendQueue.shift();
+    try {
+      await doSendToGemini(state, item.pcmBuffer);
+      item.resolve();
+    } catch (err) {
+      item.reject(err);
+    }
+  }
+
+  state.isSendingAudio = false;
+}
+
+/**
+ * Actual low-level send to the Gemini WebSocket session.
+ */
+async function doSendToGemini(state, pcmBuffer) {
   const log = getLogger(state.guildId);
 
   try {
@@ -903,6 +1168,7 @@ async function sendChunkToGemini(state, pcmBuffer) {
     if (error.message?.includes('API_KEY') || error.message?.includes('PERMISSION_DENIED')) {
       log.error('🔑 Gemini API key may be invalid or model not available - check your GEMINI_API_KEY');
     }
+    throw error;
   }
 }
 
@@ -980,8 +1246,40 @@ async function stopTranslation(guildId, client) {
       state.sessionTimeout = null;
     }
 
-    // Destroy all active stream decoders
+    // Clear activity check interval
+    if (state.activityCheckInterval) {
+      clearInterval(state.activityCheckInterval);
+      state.activityCheckInterval = null;
+    }
+
+    // Clear keep-alive interval
+    if (state.keepAliveInterval) {
+      clearInterval(state.keepAliveInterval);
+      state.keepAliveInterval = null;
+    }
+
+    // Remove voiceStateUpdate listener
+    if (state.voiceStateHandler) {
+      const c = client || state.client;
+      if (c) {
+        c.removeListener('voiceStateUpdate', state.voiceStateHandler);
+      }
+      state.voiceStateHandler = null;
+      log.info('🗑️ Voice state listener removed');
+    }
+
+    // Flush audio send queue (reject remaining items)
+    while (state.audioSendQueue?.length > 0) {
+      const item = state.audioSendQueue.shift();
+      if (item?.reject) item.reject(new Error('Translation stopped'));
+    }
+    state.isSendingAudio = false;
+
+    // Destroy all active stream decoders and clear streaming flush intervals
     for (const [userId, streamInfo] of state.activeStreams) {
+      if (streamInfo.flushInterval) {
+        clearInterval(streamInfo.flushInterval);
+      }
       try { streamInfo.decoder.destroy(); } catch (e) { /* ignore */ }
     }
     state.activeStreams.clear();
@@ -1037,6 +1335,17 @@ async function stopTranslation(guildId, client) {
  */
 function isTranslationActive(guildId) {
   return activeConnections.has(guildId);
+}
+
+/**
+ * Check if the active connection is actually healthy (not stale/dead).
+ * Used by /call command to detect stale-state scenarios.
+ */
+function isConnectionHealthy(guildId) {
+  const state = activeConnections.get(guildId);
+  if (!state) return false;
+  const status = state.connection?.state?.status;
+  return status === VoiceConnectionStatus.Ready || status === VoiceConnectionStatus.Connecting;
 }
 
 /**
@@ -1099,6 +1408,7 @@ module.exports = {
   startTranslation,
   stopTranslation,
   isTranslationActive,
+  isConnectionHealthy,
   getTranslationStatus,
   onActivityChange,
   getActiveCount,

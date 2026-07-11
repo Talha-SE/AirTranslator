@@ -70,13 +70,21 @@ module.exports = {
 
         // Start action — check if already active
         if (voiceCallTranslationService.isTranslationActive(guild.id)) {
-            const status = voiceCallTranslationService.getTranslationStatus(guild.id);
-            const channel = guild.channels.cache.get(status.voiceChannelId);
-            await interaction.reply({
-                content: `ℹ️ Voice translation is already active in ${channel ? `<#${channel.id}>` : 'a voice channel'}. Use \`/call action:stop\` to stop it first.`,
-                flags: MessageFlags.Ephemeral
-            });
-            return;
+            // Check if the connection is actually healthy, or just stale
+            const isHealthy = voiceCallTranslationService.isConnectionHealthy(guild.id);
+            if (isHealthy === false) {
+                // Stale connection — auto-cleanup and proceed
+                await voiceCallTranslationService.stopTranslation(guild.id, interaction.client);
+                // Continue to start flow below
+            } else {
+                const status = voiceCallTranslationService.getTranslationStatus(guild.id);
+                const channel = guild.channels.cache.get(status.voiceChannelId);
+                await interaction.reply({
+                    content: `ℹ️ Voice translation is already active in ${channel ? `<#${channel.id}>` : 'a voice channel'}. Use \`/call action:stop\` to stop it first.`,
+                    flags: MessageFlags.Ephemeral
+                });
+                return;
+            }
         }
 
         // Premium gate — VCT requires premium (isExempt)
