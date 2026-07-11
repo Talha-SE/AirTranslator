@@ -116,8 +116,8 @@ const OPUS_FRAME_DURATION_MS = 20;
 const PCM_SAMPLE_RATE = 48000;
 const DISCORD_FRAME_SIZE = 960; // 20ms at 48kHz
 
-/** Maximum translated audio buffer size (~5 seconds at 24kHz 16-bit) */
-const MAX_BUFFER_SIZE = GEMINI_OUTPUT_RATE * 2 * 5; // 240,000 bytes
+/** Maximum translated audio buffer size (~45 seconds at 24kHz 16-bit) */
+const MAX_BUFFER_SIZE = GEMINI_OUTPUT_RATE * 2 * 45; // 2,160,000 bytes
 
 /** Gemini reconnection settings */
 const MAX_RECONNECT_ATTEMPTS = 3;
