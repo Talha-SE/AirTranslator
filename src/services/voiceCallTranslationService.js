@@ -70,8 +70,8 @@ const GEMINI_LIVE_MODELS = {
 /** Silence duration before considering speech ended (ms) */
 const SILENCE_DURATION_MS = 1100; // 1.1s silence = end of utterance (reduced from 2s for faster response)
 
-/** Turn-based models use 2s silence — better for complete utterance capture */
-const FLASH_SILENCE_DURATION_MS = 2000;
+/** Turn-based models use 1.5s silence — faster response, still filters natural pauses */
+const FLASH_SILENCE_DURATION_MS = 1500;
 
 // ==============================
 // Gemini Voices Configuration
