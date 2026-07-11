@@ -611,7 +611,15 @@ function setupUserStream(state, userId) {
   // Decode Opus → PCM
   const decoder = createOpusDecoder();
   decoder.on('error', (err) => {
-    log.warn(`⚠️ Opus decoder error for ${username}: ${err.message}`);
+    log.warn(`⚠️ Opus decoder error for ${username}: ${err.message} — cleaning up and will re-subscribe`);
+    // Clean up: destroy decoder + remove from activeStreams so next speaking.start re-creates
+    if (state.activeStreams.has(userId)) {
+      const info = state.activeStreams.get(userId);
+      if (info?.flushInterval) clearInterval(info.flushInterval);
+      try { info?.decoder?.destroy(); } catch (e) { /* ignore */ }
+      try { info?.audioStream?.destroy(); } catch (e) { /* ignore */ }
+      state.activeStreams.delete(userId);
+    }
   });
 
   // Track stream immediately so duplicate subscriptions are blocked
@@ -806,9 +814,7 @@ function buildTranslateConfig(state) {
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
-    generationConfig: {
-      temperature: 0.3,
-    },
+    temperature: 0.3,
     speechConfig: {
       voiceConfig: {
         prebuiltVoiceConfig: {
@@ -860,9 +866,7 @@ function buildFlashLiveConfig(state) {
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
-    generationConfig: {
-      temperature: 0.3,
-    },
+    temperature: 0.3,
     speechConfig: {
       voiceConfig: {
         prebuiltVoiceConfig: {
@@ -887,9 +891,7 @@ function buildNativeAudioConfig(state) {
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
-    generationConfig: {
-      temperature: 0.3,
-    },
+    temperature: 0.3,
     speechConfig: {
       voiceConfig: {
         prebuiltVoiceConfig: {
