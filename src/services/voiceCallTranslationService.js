@@ -133,33 +133,56 @@ const SESSION_MAX_DURATION_MS = 6 * 60 * 60 * 1000;
 /** Minimum playback buffer in seconds (300ms — play as soon as translation arrives) */
 const MIN_PLAYBACK_BUFFER_SECONDS = 0.3;
 
+/** Playback chunk duration in seconds — play in bounded slices instead of one huge buffer */
+const PLAYBACK_CHUNK_SECONDS = 1.0;
+
+/** Silence tail appended to end of translated audio to prevent Opus interpolation artifacts (ms) */
+const SILENCE_TAIL_MS = 100;
+
+/** Maximum items in Gemini send queue before dropping oldest continuous chunks */
+const MAX_SEND_QUEUE_ITEMS = 30;
+
+/** How often to sweep voice channel for missing subscriptions (ms) */
+const SUBSCRIPTION_SWEEP_INTERVAL_MS = 8000;
+
+/** Delay before re-subscribing after a stream ends or decoder error (ms) */
+const STREAM_RECOVERY_DELAY_MS = 500;
+
+/** Max recovery attempts per user before giving up */
+const MAX_STREAM_RECOVERY_ATTEMPTS = 5;
+
 // ==============================
 // Active Connections Map & Start Locks
 // ==============================
 const activeConnections = new Map();
 /** Per-guild locks to prevent concurrent startTranslation calls */
 const startLocks = new Map();
+/** Cached loggers per guild — avoids allocating new objects every call */
+const loggerCache = new Map();
 
 /**
- * Get logger instance with scope
+ * Get cached logger instance with scope.
  */
 function getLogger(guildId) {
+  const cacheKey = guildId || '__global__';
+  if (loggerCache.has(cacheKey)) return loggerCache.get(cacheKey);
+
   const scope = guildId ? `voice-call:${guildId}` : 'voice-call';
-  const LOGGER_LEVELS = ['debug', 'info', 'success', 'warn', 'error'];
   const COLORS = {
     reset: '\x1b[0m', dim: '\x1b[2m',
     gray: '\x1b[90m', blue: '\x1b[34m', green: '\x1b[32m', yellow: '\x1b[33m', red: '\x1b[31m',
   };
-  const ICONS = { debug: '🐛', info: 'ℹ️', success: '✅', warn: '⚠️', error: '❌' };
-  const LEVEL_COLOR = { debug: COLORS.gray, info: COLORS.blue, success: COLORS.green, warn: COLORS.yellow, error: COLORS.red };
 
-  return {
-    debug: (msg, meta) => console.log(`${COLORS.dim}${new Date().toISOString()}${COLORS.reset} ${COLORS.gray}🐛 DEBUG${COLORS.reset} ${COLORS.dim}[${scope}]${COLORS.reset} ${msg}`),
-    info: (msg, meta) => console.log(`${COLORS.dim}${new Date().toISOString()}${COLORS.reset} ${COLORS.blue}ℹ️ INFO${COLORS.reset} ${COLORS.dim}[${scope}]${COLORS.reset} ${msg}`),
-    success: (msg, meta) => console.log(`${COLORS.dim}${new Date().toISOString()}${COLORS.reset} ${COLORS.green}✅ SUCCESS${COLORS.reset} ${COLORS.dim}[${scope}]${COLORS.reset} ${msg}`),
-    warn: (msg, meta) => console.log(`${COLORS.dim}${new Date().toISOString()}${COLORS.reset} ${COLORS.yellow}⚠️ WARN${COLORS.reset} ${COLORS.dim}[${scope}]${COLORS.reset} ${msg}`),
-    error: (msg, meta) => console.log(`${COLORS.dim}${new Date().toISOString()}${COLORS.reset} ${COLORS.red}❌ ERROR${COLORS.reset} ${COLORS.dim}[${scope}]${COLORS.reset} ${msg}`),
+  const logger = {
+    debug: (msg) => console.log(`${COLORS.dim}${new Date().toISOString()}${COLORS.reset} ${COLORS.gray}🐛 DEBUG${COLORS.reset} ${COLORS.dim}[${scope}]${COLORS.reset} ${msg}`),
+    info: (msg) => console.log(`${COLORS.dim}${new Date().toISOString()}${COLORS.reset} ${COLORS.blue}ℹ️ INFO${COLORS.reset} ${COLORS.dim}[${scope}]${COLORS.reset} ${msg}`),
+    success: (msg) => console.log(`${COLORS.dim}${new Date().toISOString()}${COLORS.reset} ${COLORS.green}✅ SUCCESS${COLORS.reset} ${COLORS.dim}[${scope}]${COLORS.reset} ${msg}`),
+    warn: (msg) => console.log(`${COLORS.dim}${new Date().toISOString()}${COLORS.reset} ${COLORS.yellow}⚠️ WARN${COLORS.reset} ${COLORS.dim}[${scope}]${COLORS.reset} ${msg}`),
+    error: (msg) => console.log(`${COLORS.dim}${new Date().toISOString()}${COLORS.reset} ${COLORS.red}❌ ERROR${COLORS.reset} ${COLORS.dim}[${scope}]${COLORS.reset} ${msg}`),
   };
+
+  loggerCache.set(cacheKey, logger);
+  return logger;
 }
 
 // ==============================
@@ -351,12 +374,18 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       activityTimeout: null,
       lastActivityTime: Date.now(),
       translatedAudioBuffer: Buffer.alloc(0),
+      /** Chunk-list approach: store translated audio chunks, concat only at playback time */
+      translatedChunks: [],
+      /** Max chunks before dropping oldest (prevents unbounded growth) */
+      maxTranslatedChunks: 100,
       onActivityChange: null,
       userSpeakingCount: 0,
       totalAudioSent: 0,
       totalAudioReceived: 0,
       /** Flash model: accumulate audio parts until turnComplete */
       flashModelAudioParts: [],
+      /** Timeout to clear flashModelAudioParts if turnComplete stalls */
+      flashModelPartsTimer: null,
       isTurnBased: [FLASH_MODEL_ID, NATIVE_AUDIO_MODEL_ID].includes(modelId || DEFAULT_MODEL),
       /** Map of userId → { pcmBuffer, flushTimer } for active real-time streams */
       activeStreams: new Map(),
@@ -370,6 +399,14 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       audioSendQueue: [],
       /** Whether a send is currently in progress (queue processing flag) */
       isSendingAudio: false,
+      /** Interval ID for subscription sweep */
+      subscriptionSweepInterval: null,
+      /** Timeout ID for playback drain timer */
+      playbackDrainTimer: null,
+      /** Map of userId → recovery timer timeout ID */
+      recoveryTimers: new Map(),
+      /** Map of userId → recovery attempt count */
+      recoveryAttempts: new Map(),
     };
 
     // Subscribe audio player to connection
@@ -448,6 +485,8 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
             entersState(connection, VoiceConnectionStatus.Connecting, 5000),
           ]);
           log.success('✅ Voice connection reconnected on attempt ' + attempt);
+          // Rebuild per-user receive streams after reconnect
+          ensureVoiceChannelSubscriptions(state);
           return;
         } catch (e) {
           log.warn(`⚠️ Reconnect attempt ${attempt} failed: ${e.message}`);
@@ -578,6 +617,116 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
   }
 }
 
+// ==============================
+// Durable Per-User Stream Management
+// ==============================
+
+/**
+ * Check if a user is still in the target voice channel.
+ */
+function isUserInTargetVoiceChannel(state, userId) {
+  try {
+    const guild = state.client.guilds.cache.get(state.guildId);
+    if (!guild) return false;
+    const channel = guild.channels.cache.get(state.voiceChannelId);
+    if (!channel || channel.type !== 2) return false;
+    return channel.members.has(userId);
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Clean up a user's stream state without triggering recovery.
+ */
+function clearUserStream(state, userId, log) {
+  const info = state.activeStreams.get(userId);
+  if (!info) return;
+  if (info.flushInterval) clearInterval(info.flushInterval);
+  try { info.decoder?.destroy(); } catch (e) { /* ignore */ }
+  try { info.audioStream?.destroy(); } catch (e) { /* ignore */ }
+  state.activeStreams.delete(userId);
+  if (log) log.debug(`🧹 Cleaned stream for ${info.username || userId}`);
+}
+
+/**
+ * Schedule automatic re-subscription for a user after stream ends or decoder error.
+ */
+function scheduleUserStreamRecovery(state, userId, reason) {
+  const log = getLogger(state.guildId);
+  const info = state.activeStreams.get(userId);
+  const username = info?.username || userId;
+
+  if (!state.isRunning) return;
+  if (!isUserInTargetVoiceChannel(state, userId)) {
+    state.recoveryAttempts.delete(userId);
+    return;
+  }
+
+  const attempts = (state.recoveryAttempts.get(userId) || 0) + 1;
+  if (attempts > MAX_STREAM_RECOVERY_ATTEMPTS) {
+    log.warn(`⚠️ ${username}: Gave up re-subscribing after ${attempts} attempts (reason: ${reason})`);
+    state.recoveryAttempts.delete(userId);
+    return;
+  }
+  state.recoveryAttempts.set(userId, attempts);
+
+  const existingTimer = state.recoveryTimers.get(userId);
+  if (existingTimer) clearTimeout(existingTimer);
+
+  log.info(`🔄 ${username}: Re-subscribe in ${STREAM_RECOVERY_DELAY_MS}ms (attempt ${attempts}, reason: ${reason})`);
+
+  const timer = setTimeout(() => {
+    state.recoveryTimers.delete(userId);
+    if (!state.isRunning) return;
+    if (!isUserInTargetVoiceChannel(state, userId)) return;
+    if (state.activeStreams.has(userId)) return;
+    setupUserStream(state, userId, `recovery-${attempts}`);
+  }, STREAM_RECOVERY_DELAY_MS);
+
+  state.recoveryTimers.set(userId, timer);
+}
+
+/**
+ * Subscribe to all non-bot users currently in the voice channel.
+ * Called periodically and after reconnects to self-heal subscriptions.
+ */
+function ensureVoiceChannelSubscriptions(state) {
+  const log = getLogger(state.guildId);
+  if (!state.isRunning) return;
+
+  try {
+    const guild = state.client.guilds.cache.get(state.guildId);
+    if (!guild) return;
+    const channel = guild.channels.cache.get(state.voiceChannelId);
+    if (!channel || channel.type !== 2) return;
+
+    const members = channel.members.filter(m => !m.user.bot);
+    for (const [userId, member] of members) {
+      if (!state.activeStreams.has(userId)) {
+        log.debug(`🔍 Sweep: subscribing ${member.user.username} (${userId})`);
+        setupUserStream(state, userId, 'sweep');
+      }
+    }
+
+    for (const [userId, streamInfo] of state.activeStreams) {
+      if (!channel.members.has(userId)) {
+        log.debug(`🔍 Sweep: cleaning up ${streamInfo.username || userId} (left channel)`);
+        clearUserStream(state, userId, log);
+      }
+    }
+  } catch (e) { /* ignore sweep errors */ }
+}
+
+/**
+ * Append a short silence tail to prevent Opus interpolation artifacts.
+ */
+function appendSilenceTail(stereoBuffer) {
+  const silenceSamples = Math.floor(PCM_SAMPLE_RATE * 2 * (SILENCE_TAIL_MS / 1000));
+  const tail = Buffer.alloc(silenceSamples * 2);
+  return Buffer.concat([stereoBuffer, tail]);
+}
+
 /**
  * Set up a full audio pipeline for a single user: subscribe → decode Opus → accumulate PCM → send to Gemini on silence.
  * Called proactively for all users in channel on join, and when new users join.
@@ -589,16 +738,21 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
  *
  * @param {Object} state - The guild's voice call translation state
  * @param {string} userId - Discord user ID to subscribe to
+ * @param {string} source - Where this subscription came from (direct, sweep, recovery-N, voiceStateUpdate)
  */
-function setupUserStream(state, userId) {
+function setupUserStream(state, userId, source = 'direct') {
   const log = getLogger(state.guildId);
-  const receiver = state.connection.receiver;
+  const receiver = state.connection?.receiver;
+  if (!receiver) return;
 
-  // Already subscribed — skip
   if (state.activeStreams.has(userId)) return;
+  if (!state.isRunning) return;
 
   const user = state.client.users.cache.get(userId);
   const username = user?.username || userId;
+
+  // Reset recovery attempts on successful subscribe
+  state.recoveryAttempts.set(userId, 0);
 
   const silenceDuration = state.isTurnBased ? FLASH_SILENCE_DURATION_MS : SILENCE_DURATION_MS;
   const audioStream = receiver.subscribe(userId, {
@@ -608,22 +762,30 @@ function setupUserStream(state, userId) {
     },
   });
 
-  // Decode Opus → PCM
   const decoder = createOpusDecoder();
   decoder.on('error', (err) => {
-    log.warn(`⚠️ Opus decoder error for ${username}: ${err.message} — cleaning up and will re-subscribe`);
-    // Clean up: destroy decoder + remove from activeStreams so next speaking.start re-creates
-    if (state.activeStreams.has(userId)) {
-      const info = state.activeStreams.get(userId);
-      if (info?.flushInterval) clearInterval(info.flushInterval);
-      try { info?.decoder?.destroy(); } catch (e) { /* ignore */ }
-      try { info?.audioStream?.destroy(); } catch (e) { /* ignore */ }
-      state.activeStreams.delete(userId);
+    // DAVE epoch transitions can cause transient decoder errors — don't destroy the stream
+    if (err?.message?.includes('DAVE') || err?.message?.includes('decrypt')) {
+      log.debug(`🔒 DAVE/decrypt transient error for ${username}: ${err.message}`);
+      return;
     }
+    log.warn(`⚠️ Opus decoder error for ${username}: ${err.message} — scheduling recovery`);
+    clearUserStream(state, userId, log);
+    scheduleUserStreamRecovery(state, userId, `decoder-error: ${err.message}`);
   });
 
-  // Track stream immediately so duplicate subscriptions are blocked
-  const streamInfo = { decoder, totalBytes: 0, audioStream, pcmChunks: [], username, flushInterval: null, lastFlushIndex: 0 };
+  const streamInfo = {
+    decoder,
+    totalBytes: 0,
+    audioStream,
+    pcmChunks: [],
+    username,
+    flushInterval: null,
+    lastFlushIndex: 0,
+    subscribedAt: Date.now(),
+    subscribeSource: source,
+    utteranceCount: 0,
+  };
   state.activeStreams.set(userId, streamInfo);
 
   const pcmStream = audioStream.pipe(decoder);
@@ -636,7 +798,6 @@ function setupUserStream(state, userId) {
     state.lastActivityTime = Date.now();
   });
 
-  // For continuous model (3.5 Live): stream PCM chunks every 200ms for real-time translation
   if (!state.isTurnBased) {
     const FLUSH_INTERVAL_MS = 200;
     streamInfo.flushInterval = setInterval(() => {
@@ -644,6 +805,11 @@ function setupUserStream(state, userId) {
         const newChunks = pcmChunks.slice(streamInfo.lastFlushIndex);
         streamInfo.lastFlushIndex = pcmChunks.length;
         const buffer = Buffer.concat(newChunks);
+        // Prune old chunks from array to prevent unbounded growth
+        if (streamInfo.lastFlushIndex > 50) {
+          pcmChunks.splice(0, streamInfo.lastFlushIndex);
+          streamInfo.lastFlushIndex = 0;
+        }
         const downsampled = downsamplePcm(buffer, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
         if (downsampled.length > 0) {
           sendChunkToGemini(state, downsampled).catch((err) => {
@@ -652,34 +818,34 @@ function setupUserStream(state, userId) {
         }
       }
     }, FLUSH_INTERVAL_MS);
-    log.info(`🎤 ${username}: Streaming mode — flushing PCM every ${FLUSH_INTERVAL_MS}ms`);
   }
 
   pcmStream.on('end', async () => {
-    // Get stream info (may already be deleted on error)
     const info = state.activeStreams.get(userId);
 
-    // Clear streaming flush interval if active (continuous model)
     if (info?.flushInterval) {
       clearInterval(info.flushInterval);
       info.flushInterval = null;
     }
 
-    // Clean up decoder
     if (info) {
       try { info.decoder.destroy(); } catch (e) { /* ignore */ }
       state.activeStreams.delete(userId);
     }
 
-    // Skip empty utterances
-    if (pcmChunks.length === 0 || !state.geminiSession || !state.isRunning) {
-      const durationMs = Math.round((totalBytes / 2) / PCM_SAMPLE_RATE * 1000);
-      log.debug(`⏹️ ${username}: Speech ended — empty (${(totalBytes / 1024).toFixed(1)} KB, ${durationMs}ms)`);
+    // Input diagnostics: no PCM data at all
+    if (pcmChunks.length === 0 || totalBytes === 0) {
+      log.warn(`🔇 ${username}: Speech ended but NO PCM received — likely Discord client input/VAD/mic issue (source: ${streamInfo.subscribeSource})`);
+      scheduleUserStreamRecovery(state, userId, 'empty-audio');
       return;
     }
 
-    // For continuous model: only send chunks accumulated since last flush
-    // For turn-based model: send all chunks (batch mode)
+    if (!state.geminiSession || !state.isRunning) {
+      const durationMs = Math.round((totalBytes / 2) / PCM_SAMPLE_RATE * 1000);
+      log.debug(`⏹️ ${username}: Speech ended — skipped (${(totalBytes / 1024).toFixed(1)} KB, ${durationMs}ms) — no active session`);
+      return;
+    }
+
     const startIndex = state.isTurnBased ? 0 : (info?.lastFlushIndex || 0);
     if (startIndex >= pcmChunks.length) {
       log.debug(`⏹️ ${username}: No new audio since last stream flush — skipping final send`);
@@ -690,43 +856,51 @@ function setupUserStream(state, userId) {
     const fullUtterance = Buffer.concat(finalChunks);
     const durationMs = Math.round((fullUtterance.length / 2) / PCM_SAMPLE_RATE * 1000);
 
-    // Skip tiny audio fragments (< 200ms) — likely mic clicks/breaths, not real speech
     if (durationMs < 200) {
       log.debug(`⏹️ ${username}: Speech too short (${durationMs}ms), skipping`);
       return;
     }
 
-    log.info(`⏹️ ${username}: Speech ended — sending final utterance (${(fullUtterance.length / 1024).toFixed(1)} KB PCM, ${durationMs}ms)`);
+    streamInfo.utteranceCount++;
+    log.info(`⏹️ ${username}: Utterance #${streamInfo.utteranceCount} ended — ${(fullUtterance.length / 1024).toFixed(1)} KB PCM, ${durationMs}ms (source: ${streamInfo.subscribeSource})`);
 
-    // Downsample 48kHz → 16kHz for Gemini input
     const downsampled = downsamplePcm(fullUtterance, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
     if (downsampled.length === 0) {
       log.warn(`⚠️ ${username}: Downsampled audio empty, skipping`);
       return;
     }
 
-    // Send the utterance to Gemini
     try {
       await sendChunkToGemini(state, downsampled);
-      log.success(`📤 Sent final utterance to Gemini (${(downsampled.length / 1024).toFixed(1)} KB, ${durationMs}ms) → awaiting translation`);
+      log.success(`📤 Sent utterance to Gemini (${(downsampled.length / 1024).toFixed(1)} KB, ${durationMs}ms)`);
     } catch (err) {
       log.error(`❌ Failed to send utterance to Gemini: ${err.message}`);
     }
   });
 
   audioStream.on('error', (err) => {
-    log.error(`❌ Audio stream error for ${username}: ${err.message}`);
-    const info = state.activeStreams.get(userId);
-    if (info) {
-      if (info.flushInterval) {
-        clearInterval(info.flushInterval);
-      }
-      try { info.decoder.destroy(); } catch (e) { /* ignore */ }
-      state.activeStreams.delete(userId);
+    // DAVE epoch transitions can cause transient stream errors — don't destroy the stream
+    if (err?.message?.includes('DAVE') || err?.message?.includes('decrypt')) {
+      log.debug(`🔒 DAVE/decrypt transient stream error for ${username}: ${err.message}`);
+      return;
     }
+    log.error(`❌ Audio stream error for ${username}: ${err.message}`);
+    clearUserStream(state, userId, log);
+    scheduleUserStreamRecovery(state, userId, `stream-error: ${err.message}`);
   });
 
-  log.info(`🎧 Subscribed to audio from ${username} (${userId})`);
+  pcmStream.on('error', (err) => {
+    // DAVE epoch transitions can cause transient PCM errors — don't destroy the stream
+    if (err?.message?.includes('DAVE') || err?.message?.includes('decrypt')) {
+      log.debug(`🔒 DAVE/decrypt transient PCM error for ${username}: ${err.message}`);
+      return;
+    }
+    log.error(`❌ PCM stream error for ${username}: ${err.message}`);
+    clearUserStream(state, userId, log);
+    scheduleUserStreamRecovery(state, userId, `pcm-error: ${err.message}`);
+  });
+
+  log.info(`🎧 Subscribed to ${username} (${userId}) [${streamInfo.subscribeSource}]`);
 }
 
 /**
@@ -769,40 +943,32 @@ function setupRealtimeAudioPipeline(state) {
 
   // Handle audio playback state — when current chunk finishes, try playing next batch
   state.audioPlayer.on(AudioPlayerStatus.Idle, () => {
-    if (state.translatedAudioBuffer.length > 0) {
-      playTranslatedAudio(state);
+    if (state.translatedChunks.length > 0) {
+      playNextChunk(state);
     }
-  });
-
-  state.audioPlayer.on(AudioPlayerStatus.Playing, () => {
-    log.debug('▶️ Audio player started playing');
   });
 
   state.audioPlayer.on('error', (error) => {
     log.error(`❌ Audio player error: ${error.message}`);
+    if (state.translatedChunks.length > 0) {
+      setTimeout(() => {
+        if (state.audioPlayer.state.status === AudioPlayerStatus.Idle) {
+          playNextChunk(state);
+        }
+      }, 100);
+    }
+  });
   });
 
   log.success(`✅ Audio pipeline ready — ${state.isTurnBased ? 'batch mode (full utterance → Gemini → translation)' : 'streaming mode (200ms chunks → real-time translation)'}`);
 
   // Proactively subscribe to ALL users currently in the voice channel
-  // This ensures we don't miss anyone whose speaking.start event never fires
-  try {
-    const guild = state.client.guilds.cache.get(state.guildId);
-    if (guild) {
-      const channel = guild.channels.cache.get(state.voiceChannelId);
-      if (channel && channel.type === 2) {
-        const members = channel.members.filter(m => !m.user.bot);
-        if (members.size > 0) {
-          log.info(`👥 Proactively subscribing to ${members.size} user(s) already in voice channel...`);
-          for (const [userId] of members) {
-            setupUserStream(state, userId);
-          }
-        }
-      }
-    }
-  } catch (e) {
-    log.error(`❌ Error during proactive user subscription: ${e.message}`);
-  }
+  ensureVoiceChannelSubscriptions(state);
+
+  // Start periodic subscription sweep — self-heals missed subscriptions
+  state.subscriptionSweepInterval = setInterval(() => {
+    ensureVoiceChannelSubscriptions(state);
+  }, SUBSCRIPTION_SWEEP_INTERVAL_MS);
 }
 
 /**
@@ -958,6 +1124,14 @@ async function connectGeminiSession(state) {
               for (const part of modelTurn.parts) {
                 if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData?.data) {
                   state.flashModelAudioParts.push(part.inlineData.data);
+                  // Reset timeout — if turnComplete doesn't arrive in 30s, clear the buffer
+                  if (state.flashModelPartsTimer) clearTimeout(state.flashModelPartsTimer);
+                  state.flashModelPartsTimer = setTimeout(() => {
+                    if (state.flashModelAudioParts.length > 0) {
+                      log.warn(`⚠️ flashModelAudioParts timeout — clearing ${state.flashModelAudioParts.length} stale parts`);
+                      state.flashModelAudioParts = [];
+                    }
+                  }, 30000);
                 }
                 // Log any text parts for debugging
                 if (part.text) {
@@ -968,6 +1142,11 @@ async function connectGeminiSession(state) {
 
             // When turn is complete, concatenate all buffered audio and play
             if (message?.serverContent?.turnComplete) {
+              // Clear the timeout — turnComplete arrived
+              if (state.flashModelPartsTimer) {
+                clearTimeout(state.flashModelPartsTimer);
+                state.flashModelPartsTimer = null;
+              }
               if (state.flashModelAudioParts.length > 0) {
                 const combined = Buffer.concat(
                   state.flashModelAudioParts.map(d => Buffer.from(d, 'base64'))
@@ -979,16 +1158,13 @@ async function connectGeminiSession(state) {
                   const translatedDurationMs = Math.round((combined.length / 2) / GEMINI_OUTPUT_RATE * 1000);
                   log.success(`🔊 Turn-based model complete — received ${(combined.length / 1024).toFixed(1)} KB translated audio (${translatedDurationMs}ms)`);
 
-                  // Queue the audio for playback (cap at MAX_BUFFER_SIZE)
-                  if (state.translatedAudioBuffer.length + combined.length > MAX_BUFFER_SIZE) {
-                    const overflow = state.translatedAudioBuffer.length + combined.length - MAX_BUFFER_SIZE;
-                    state.translatedAudioBuffer = state.translatedAudioBuffer.subarray(overflow);
-                    log.warn(`⚠️ Audio buffer overflow — dropped ${(overflow / 1024).toFixed(1)} KB of oldest audio`);
+                  // Use chunk-list: store chunks, only concat at playback time
+                  state.translatedChunks.push(combined);
+
+                  // Cap chunks to prevent unbounded growth
+                  while (state.translatedChunks.length > state.maxTranslatedChunks) {
+                    state.translatedChunks.shift();
                   }
-                  state.translatedAudioBuffer = Buffer.concat([
-                    state.translatedAudioBuffer,
-                    combined,
-                  ]);
 
                   // Start playing if idle
                   if (state.audioPlayer.state.status === AudioPlayerStatus.Idle) {
@@ -1009,23 +1185,17 @@ async function connectGeminiSession(state) {
                   if (audioData.length > 0) {
                     audioParts++;
                     state.totalAudioReceived += audioData.length;
-                    const translatedDurationMs = Math.round((audioData.length / 2) / GEMINI_OUTPUT_RATE * 1000);
-                    log.debug(`🔊 Received translated audio chunk: ${(audioData.length / 1024).toFixed(1)} KB (${translatedDurationMs}ms)`);
 
-                    // Queue the audio for playback (cap at MAX_BUFFER_SIZE to prevent unbounded growth)
-                    if (state.translatedAudioBuffer.length + audioData.length > MAX_BUFFER_SIZE) {
-                      const overflow = state.translatedAudioBuffer.length + audioData.length - MAX_BUFFER_SIZE;
-                      state.translatedAudioBuffer = state.translatedAudioBuffer.subarray(overflow);
-                      log.warn(`⚠️ Audio buffer overflow — dropped ${(overflow / 1024).toFixed(1)} KB of oldest audio`);
+                    // Use chunk-list: store chunks, only concat at playback time
+                    state.translatedChunks.push(audioData);
+
+                    // Cap chunks to prevent unbounded growth
+                    while (state.translatedChunks.length > state.maxTranslatedChunks) {
+                      state.translatedChunks.shift();
                     }
-                    state.translatedAudioBuffer = Buffer.concat([
-                      state.translatedAudioBuffer,
-                      audioData,
-                    ]);
 
                     // Start playing if idle
                     if (state.audioPlayer.state.status === AudioPlayerStatus.Idle) {
-                      log.info('▶️ Starting playback of translated audio...');
                       playTranslatedAudio(state);
                     }
                   }
@@ -1126,6 +1296,13 @@ async function processSendQueue(state) {
   state.isSendingAudio = true;
 
   while (state.audioSendQueue.length > 0) {
+    // Queue backpressure: drop oldest items if queue is too deep
+    if (state.audioSendQueue.length > MAX_SEND_QUEUE_ITEMS) {
+      const dropped = state.audioSendQueue.shift();
+      if (dropped?.reject) dropped.reject(new Error('Queue overflow — dropped stale chunk'));
+      continue;
+    }
+
     const item = state.audioSendQueue.shift();
     try {
       await doSendToGemini(state, item.pcmBuffer);
@@ -1173,48 +1350,84 @@ async function doSendToGemini(state, pcmBuffer) {
 
 /**
  * Play translated audio through the Discord voice connection.
- * Buffers audio until there's enough for a decent playback chunk (~1s),
- * then encodes and plays it. This avoids choppy tiny clips.
+ * Uses chunked playback with drain timer for stable output.
  */
 function playTranslatedAudio(state) {
-  if (state.translatedAudioBuffer.length === 0) return;
-  
   const log = getLogger(state.guildId);
   
-  // Wait until we have at least 500ms of audio (24kHz * 2 bytes * 0.5s = 24000 bytes)
+  // Use chunk-list: compute total buffered length from chunks
+  const totalBuffered = state.translatedChunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const minBufferSize = GEMINI_OUTPUT_RATE * 2 * MIN_PLAYBACK_BUFFER_SECONDS;
-  if (state.translatedAudioBuffer.length < minBufferSize) {
+
+  if (totalBuffered < minBufferSize) {
+    // Start drain timer — play remaining chunks after short delay if no more audio arrives
+    if (!state.playbackDrainTimer) {
+      state.playbackDrainTimer = setTimeout(() => {
+        state.playbackDrainTimer = null;
+        const remaining = state.translatedChunks.reduce((sum, c) => sum + c.length, 0);
+        if (remaining > 0 && state.audioPlayer.state.status === AudioPlayerStatus.Idle) {
+          log.debug('⏰ Drain timer fired — playing remaining chunks');
+          playNextChunk(state);
+        }
+      }, 350);
+    }
     return;
   }
 
-  try {
-    const bufferSizeKb = (state.translatedAudioBuffer.length / 1024).toFixed(1);
-    
-    // Take the buffered audio and clear
-    const pcmData = state.translatedAudioBuffer;
-    state.translatedAudioBuffer = Buffer.alloc(0);
-    
-    // Upsample 24kHz → 48kHz for Discord
-    const upsampledPcm = upsamplePcm(pcmData, GEMINI_OUTPUT_RATE, PCM_SAMPLE_RATE);
-    log.debug(`🔊 Playing ${bufferSizeKb} KB audio (upsampled to ${(upsampledPcm.length / 1024).toFixed(1)} KB @ ${PCM_SAMPLE_RATE}Hz)`);
+  if (state.playbackDrainTimer) {
+    clearTimeout(state.playbackDrainTimer);
+    state.playbackDrainTimer = null;
+  }
 
-    // StreamType.Raw = PCM input, @discordjs/voice auto-encodes to Opus internally
-    // Raw defaults to stereo, so convert mono → stereo by duplicating channels
+  playNextChunk(state);
+}
+
+/**
+ * Play the next bounded chunk from translated audio buffer.
+ * Chunks are capped at PLAYBACK_CHUNK_SECONDS to prevent large one-shot resources.
+ */
+function playNextChunk(state) {
+  if (state.translatedChunks.length === 0) return;
+  if (state.audioPlayer.state.status !== AudioPlayerStatus.Idle) return;
+
+  const log = getLogger(state.guildId);
+
+  try {
+    // Concat only the minimum needed for this chunk (at most 1 second of audio)
+    const maxChunkBytes = GEMINI_OUTPUT_RATE * 2 * PLAYBACK_CHUNK_SECONDS;
+    let chunkBytes = 0;
+    let takeCount = 0;
+    for (let i = 0; i < state.translatedChunks.length; i++) {
+      chunkBytes += state.translatedChunks[i].length;
+      takeCount = i + 1;
+      if (chunkBytes >= maxChunkBytes) break;
+    }
+
+    const pcmData = Buffer.concat(state.translatedChunks.splice(0, takeCount));
+
+    const upsampledPcm = upsamplePcm(pcmData, GEMINI_OUTPUT_RATE, PCM_SAMPLE_RATE);
+
     const stereoBuffer = Buffer.alloc(upsampledPcm.length * 2);
     for (let i = 0; i < upsampledPcm.length; i += 2) {
       const sample = upsampledPcm.readInt16LE(i);
-      stereoBuffer.writeInt16LE(sample, i * 2);      // Left channel
-      stereoBuffer.writeInt16LE(sample, i * 2 + 2);   // Right channel (copy)
+      stereoBuffer.writeInt16LE(sample, i * 2);
+      stereoBuffer.writeInt16LE(sample, i * 2 + 2);
     }
 
-    const resource = createAudioResource(Readable.from([stereoBuffer]), {
+    // Append silence tail to last chunk to prevent Opus interpolation artifacts
+    const finalBuffer = state.translatedChunks.length === 0
+      ? appendSilenceTail(stereoBuffer)
+      : stereoBuffer;
+
+    const resource = createAudioResource(Readable.from([finalBuffer]), {
       inputType: StreamType.Raw,
     });
 
     state.audioPlayer.play(resource);
-    log.debug(`▶️ Playing translated audio in voice channel`);
+    const remaining = state.translatedChunks.reduce((sum, c) => sum + c.length, 0);
+    log.debug(`▶️ Playing ${(chunkBytes / 1024).toFixed(1)} KB chunk (${(remaining / 1024).toFixed(1)} KB remaining)`);
   } catch (error) {
-    log.error(`❌ Error playing translated audio: ${error.message}`);
+    log.error(`❌ Error playing audio chunk: ${error.message}`);
   }
 }
 
@@ -1274,17 +1487,45 @@ async function stopTranslation(guildId, client) {
     }
     state.isSendingAudio = false;
 
-    // Destroy all active stream decoders and clear streaming flush intervals
+    // Clear subscription sweep interval
+    if (state.subscriptionSweepInterval) {
+      clearInterval(state.subscriptionSweepInterval);
+      state.subscriptionSweepInterval = null;
+    }
+
+    // Clear playback drain timer
+    if (state.playbackDrainTimer) {
+      clearTimeout(state.playbackDrainTimer);
+      state.playbackDrainTimer = null;
+    }
+
+    // Clear flashModelAudioParts timeout
+    if (state.flashModelPartsTimer) {
+      clearTimeout(state.flashModelPartsTimer);
+      state.flashModelPartsTimer = null;
+    }
+    state.flashModelAudioParts = [];
+
+    // Clear all per-user recovery timers
+    for (const [userId, timer] of state.recoveryTimers) {
+      clearTimeout(timer);
+    }
+    state.recoveryTimers.clear();
+    state.recoveryAttempts.clear();
+
+    // Destroy all active streams, decoders, and clear flushing intervals
     for (const [userId, streamInfo] of state.activeStreams) {
       if (streamInfo.flushInterval) {
         clearInterval(streamInfo.flushInterval);
       }
-      try { streamInfo.decoder.destroy(); } catch (e) { /* ignore */ }
+      try { streamInfo.decoder?.destroy(); } catch (e) { /* ignore */ }
+      try { streamInfo.audioStream?.destroy(); } catch (e) { /* ignore */ }
     }
     state.activeStreams.clear();
 
-    // Clear translated audio buffer
+    // Clear translated audio state
     state.translatedAudioBuffer = Buffer.alloc(0);
+    state.translatedChunks = [];
 
     // Destroy the voice connection
     if (state.connection) {
