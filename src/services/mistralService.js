@@ -831,7 +831,6 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
                     translateText(chunk, targetLanguage, sourceLanguage, useToneUnderstanding, apiKey, modelOverride)
                 )
             );
-            
             // Restore preserved items in the final result
             const finalTranslation = translatedChunks.join('');
             return restorePreservedItems(finalTranslation, nameMap);

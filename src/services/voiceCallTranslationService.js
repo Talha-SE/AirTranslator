@@ -29,6 +29,17 @@ const { Readable, Transform, PassThrough } = require('stream');
 const VoiceCallTranslation = require('../models/VoiceCallTranslation');
 
 // ==============================
+// Cached GoogleGenAI Client (reused across reconnects)
+// ==============================
+let cachedGenAIClient = null;
+function getGenAIClient() {
+  if (!cachedGenAIClient) {
+    cachedGenAIClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  }
+  return cachedGenAIClient;
+}
+
+// ==============================
 // Configuration
 // ==============================
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
@@ -150,6 +161,9 @@ const STREAM_RECOVERY_DELAY_MS = 500;
 
 /** Max recovery attempts per user before giving up */
 const MAX_STREAM_RECOVERY_ATTEMPTS = 5;
+
+/** Max number of flashModelAudioParts before dropping oldest (prevents unbounded growth for turn-based models) */
+const MAX_FLASH_MODEL_PARTS = 200;
 
 // ==============================
 // Active Connections Map & Start Locks
@@ -377,7 +391,9 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       /** Chunk-list approach: store translated audio chunks, concat only at playback time */
       translatedChunks: [],
       /** Max chunks before dropping oldest (prevents unbounded growth) */
-      maxTranslatedChunks: 100,
+      maxTranslatedChunks: 30,
+      /** Total bytes in translatedChunks — used to enforce byte cap */
+      translatedChunksSize: 0,
       onActivityChange: null,
       userSpeakingCount: 0,
       totalAudioSent: 0,
@@ -399,6 +415,16 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       audioSendQueue: [],
       /** Whether a send is currently in progress (queue processing flag) */
       isSendingAudio: false,
+      /** Per-user audio send queues (continuous mode only — buffers non-active speakers) */
+      userSendQueues: new Map(),
+      /** Per-user queue processing locks (continuous mode) */
+      userQueueProcessing: new Map(),
+      /** Currently active speaker userId for continuous mode gating */
+      activeSpeakerId: null,
+      /** Map of userId → timestamp when they started speaking */
+      speakerTimestamps: new Map(),
+      /** Crosstalk flush timer — force-flushes queued speakers if active speaker talks too long */
+      crosstalkFlushTimer: null,
       /** Interval ID for subscription sweep */
       subscriptionSweepInterval: null,
       /** Timeout ID for playback drain timer */
@@ -436,6 +462,14 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
           await stopTranslation(guildId, client);
         } else if (humanMembers > 0 && inactiveTime > 25 * 60 * 1000) {
           log.info(`💤 ${humanMembers} user(s) in channel but inactive for ${Math.round(inactiveTime / 60000)} min — keeping alive`);
+        }
+
+        // Memory health check — log warnings when translated audio buffer grows large
+        const bufMB = (state.translatedChunksSize || 0) / (1024 * 1024);
+        if (bufMB > 1.5) {
+          log.warn(`🧠 Large audio buffer: ${bufMB.toFixed(1)} MB (${state.translatedChunks.length} chunks) — may indicate playback lag`);
+        } else if (bufMB > 0.5 && state.translatedChunks.length > 5) {
+          log.info(`🧠 Audio buffer: ${bufMB.toFixed(1)} MB (${state.translatedChunks.length} chunks)`);
         }
       } catch (e) { /* ignore monitor errors */ }
     }, 60000); // check every 60 seconds
@@ -806,14 +840,18 @@ function setupUserStream(state, userId, source = 'direct') {
         streamInfo.lastFlushIndex = pcmChunks.length;
         const buffer = Buffer.concat(newChunks);
         // Prune old chunks from array to prevent unbounded growth
-        if (streamInfo.lastFlushIndex > 50) {
+        if (streamInfo.lastFlushIndex > 20) {
           pcmChunks.splice(0, streamInfo.lastFlushIndex);
           streamInfo.lastFlushIndex = 0;
         }
         const downsampled = downsamplePcm(buffer, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
         if (downsampled.length > 0) {
-          sendChunkToGemini(state, downsampled).catch((err) => {
-            log.warn(`⚠️ Streaming flush error for ${username}: ${err.message}`);
+          // Push to per-user queue instead of shared queue — prevents interleaving
+          const userQueue = state.userSendQueues.get(userId) || [];
+          userQueue.push(downsampled);
+          state.userSendQueues.set(userId, userQueue);
+          processUserQueue(state, userId).catch((err) => {
+            log.warn(`⚠️ processUserQueue error for ${username}: ${err.message}`);
           });
         }
       }
@@ -871,10 +909,28 @@ function setupUserStream(state, userId, source = 'direct') {
     }
 
     try {
-      await sendChunkToGemini(state, downsampled);
-      log.success(`📤 Sent utterance to Gemini (${(downsampled.length / 1024).toFixed(1)} KB, ${durationMs}ms)`);
+      if (!state.isTurnBased) {
+        // Continuous mode: push final utterance to per-user queue, then flush if active
+        const userQueue = state.userSendQueues.get(userId) || [];
+        userQueue.push(downsampled);
+        state.userSendQueues.set(userId, userQueue);
+        if (state.activeSpeakerId === userId) {
+          await processUserQueue(state, userId);
+        }
+        log.success(`📤 Queued utterance for ${username} (${(downsampled.length / 1024).toFixed(1)} KB, ${durationMs}ms)`);
+
+        // Transition to next speaker — this user's stream ended
+        await transitionFromSpeaker(state, userId);
+      } else {
+        // Turn-based mode: use shared queue as before
+        await sendChunkToGemini(state, downsampled);
+        log.success(`📤 Sent utterance to Gemini (${(downsampled.length / 1024).toFixed(1)} KB, ${durationMs}ms)`);
+      }
     } catch (err) {
       log.error(`❌ Failed to send utterance to Gemini: ${err.message}`);
+    } finally {
+      // Free PCM data immediately to help GC — utterance is fully processed
+      pcmChunks.length = 0;
     }
   });
 
@@ -931,6 +987,25 @@ function setupRealtimeAudioPipeline(state) {
     if (userId === state.client.user.id) return;
     // If user already subscribed via proactive setup, this is a no-op
     setupUserStream(state, userId);
+
+    // Continuous mode: track active speaker for per-user queue gating
+    if (!state.isTurnBased && state.isRunning) {
+      const prevSpeaker = state.activeSpeakerId;
+      state.activeSpeakerId = userId;
+      state.speakerTimestamps.set(userId, Date.now());
+
+      if (prevSpeaker && prevSpeaker !== userId) {
+        const prevUser = state.client.users.cache.get(prevSpeaker);
+        const curUser = state.client.users.cache.get(userId);
+        log.info(`🗣️ Speaker switch: ${prevUser?.username || prevSpeaker} → ${curUser?.username || userId}`);
+      }
+
+      // Set up crosstalk timer if other users have buffered audio waiting
+      setupCrosstalkTimer(state, userId);
+
+      // Process this user's queue immediately (drains any buffered audio from previous turns)
+      processUserQueue(state, userId).catch(() => {});
+    }
   });
 
   receiver.speaking.on('end', (userId) => {
@@ -939,6 +1014,10 @@ function setupRealtimeAudioPipeline(state) {
     if (state.onActivityChange) {
       state.onActivityChange('silence', userId);
     }
+    // Note for continuous mode: speaker transition happens in pcmStream.on('end'),
+    // not here. The speaking.end event fires immediately on silence detection, but
+    // the Opus stream continues for another ~1.1s (AfterSilence window). We wait
+    // for the actual stream end before switching, so the final audio data is captured.
   });
 
   // Handle audio playback state — when current chunk finishes, try playing next batch
@@ -1041,6 +1120,9 @@ function buildFlashLiveConfig(state, systemInstruction) {
         },
       },
     },
+    thinkingConfig: {
+      thinkingLevel: 'minimal', // Lowest latency for real-time translation
+    },
     contextWindowCompression: {
       triggerTokens: '104857',
       slidingWindow: { targetTokens: '52428' },
@@ -1067,6 +1149,9 @@ function buildNativeAudioConfig(state, systemInstruction) {
         },
       },
     },
+    thinkingConfig: {
+      thinkingBudget: 0, // Disabled — translation is deterministic, no reasoning needed
+    },
     contextWindowCompression: {
       triggerTokens: '104857',
       slidingWindow: { targetTokens: '52428' },
@@ -1087,7 +1172,7 @@ async function connectGeminiSession(state) {
 
   log.info(`🔌 Opening Gemini Live WebSocket session for model: ${state.modelId}...`);
 
-  const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  const genAI = getGenAIClient();
 
   // Build the system instruction for bidirectional translation
   const systemInstruction = buildTranslationSystemInstruction(
@@ -1123,6 +1208,10 @@ async function connectGeminiSession(state) {
               for (const part of modelTurn.parts) {
                 if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData?.data) {
                   state.flashModelAudioParts.push(part.inlineData.data);
+                  // Cap count to prevent unbounded growth (each part is a base64 audio chunk)
+                  if (state.flashModelAudioParts.length > MAX_FLASH_MODEL_PARTS) {
+                    state.flashModelAudioParts.splice(0, state.flashModelAudioParts.length - MAX_FLASH_MODEL_PARTS);
+                  }
                   // Reset timeout — if turnComplete doesn't arrive in 30s, clear the buffer
                   if (state.flashModelPartsTimer) clearTimeout(state.flashModelPartsTimer);
                   state.flashModelPartsTimer = setTimeout(() => {
@@ -1159,10 +1248,12 @@ async function connectGeminiSession(state) {
 
                   // Use chunk-list: store chunks, only concat at playback time
                   state.translatedChunks.push(combined);
+                  state.translatedChunksSize += combined.length;
 
-                  // Cap chunks to prevent unbounded growth
-                  while (state.translatedChunks.length > state.maxTranslatedChunks) {
-                    state.translatedChunks.shift();
+                  // Cap chunks to prevent unbounded growth (by count AND byte size)
+                  while (state.translatedChunks.length > state.maxTranslatedChunks || state.translatedChunksSize > MAX_BUFFER_SIZE) {
+                    const oldest = state.translatedChunks.shift();
+                    if (oldest) state.translatedChunksSize -= oldest.length;
                   }
 
                   // Start playing if idle
@@ -1187,10 +1278,12 @@ async function connectGeminiSession(state) {
 
                     // Use chunk-list: store chunks, only concat at playback time
                     state.translatedChunks.push(audioData);
+                    state.translatedChunksSize += audioData.length;
 
-                    // Cap chunks to prevent unbounded growth
-                    while (state.translatedChunks.length > state.maxTranslatedChunks) {
-                      state.translatedChunks.shift();
+                    // Cap chunks to prevent unbounded growth (by count AND byte size)
+                    while (state.translatedChunks.length > state.maxTranslatedChunks || state.translatedChunksSize > MAX_BUFFER_SIZE) {
+                      const oldest = state.translatedChunks.shift();
+                      if (oldest) state.translatedChunksSize -= oldest.length;
                     }
 
                     // Start playing if idle
@@ -1347,6 +1440,133 @@ async function doSendToGemini(state, pcmBuffer) {
   }
 }
 
+// ==============================
+// Continuous Mode: Per-User Queue Gating
+// ==============================
+
+/**
+ * Process a single user's audio queue for continuous mode (3.5 Live Translate).
+ * Only sends audio to Gemini if this user is the currently active speaker.
+ * Otherwise, audio stays buffered in their per-user queue (prevents interleaving).
+ *
+ * This serializes sends per-user with a per-user processing lock.
+ */
+async function processUserQueue(state, userId) {
+  if (state.isTurnBased) return; // Only for continuous mode
+
+  const userQueue = state.userSendQueues.get(userId);
+  if (!userQueue || userQueue.length === 0) return;
+
+  // Per-user processing lock to prevent concurrent sends for the same user
+  if (state.userQueueProcessing.get(userId)) return;
+  state.userQueueProcessing.set(userId, true);
+
+  try {
+    // Only send if this user is the active speaker (otherwise buffer)
+    if (state.activeSpeakerId !== userId) return;
+
+    // Drain this user's queue sequentially to Gemini
+    while (userQueue.length > 0) {
+      // Queue backpressure: drop oldest if queue is too deep
+      if (userQueue.length > MAX_SEND_QUEUE_ITEMS) {
+        userQueue.shift();
+        continue;
+      }
+
+      const pcmBuffer = userQueue.shift();
+      try {
+        await doSendToGemini(state, pcmBuffer);
+      } catch (err) {
+        // On send failure, push back to front for retry, then stop this drain cycle
+        userQueue.unshift(pcmBuffer);
+        throw err;
+      }
+    }
+  } finally {
+    state.userQueueProcessing.set(userId, false);
+  }
+}
+
+/**
+ * Transition from a finished speaker to the next queued speaker.
+ * Cleans up the finished user's queue state, then finds the next speaker
+ * with buffered audio (oldest first) and starts draining their queue.
+ */
+async function transitionFromSpeaker(state, finishedUserId) {
+  const log = getLogger(state.guildId);
+
+  // Clean up the finished user's queue state
+  state.userSendQueues.delete(finishedUserId);
+  state.userQueueProcessing.delete(finishedUserId);
+  state.speakerTimestamps.delete(finishedUserId);
+
+  // Cancel any crosstalk timer — will be re-set if needed
+  if (state.crosstalkFlushTimer) {
+    clearTimeout(state.crosstalkFlushTimer);
+    state.crosstalkFlushTimer = null;
+  }
+
+  // Find next speaker with buffered audio (oldest timestamp first)
+  let nextSpeakerId = null;
+  let oldestTimestamp = Infinity;
+  for (const [uid, queue] of state.userSendQueues) {
+    if (queue && queue.length > 0) {
+      const ts = state.speakerTimestamps.get(uid) || Date.now();
+      if (ts < oldestTimestamp) {
+        oldestTimestamp = ts;
+        nextSpeakerId = uid;
+      }
+    }
+  }
+
+  if (nextSpeakerId) {
+    state.activeSpeakerId = nextSpeakerId;
+    const nextUser = state.client.users.cache.get(nextSpeakerId);
+    log.info(`🗣️ Switching to next speaker: ${nextUser?.username || nextSpeakerId}`);
+    // Process the next speaker's queued audio
+    setupCrosstalkTimer(state, nextSpeakerId);
+    await processUserQueue(state, nextSpeakerId).catch(() => {});
+  } else {
+    state.activeSpeakerId = null;
+  }
+}
+
+/**
+ * Set up a crosstalk timeout for the current speaker.
+ * If other users have buffered audio waiting, start a 5s timer.
+ * When the timer fires, force-switch to the next queued speaker
+ * (prevents one speaker from hogging the queue indefinitely).
+ */
+function setupCrosstalkTimer(state, currentSpeakerId) {
+  // Cancel any existing timer
+  if (state.crosstalkFlushTimer) {
+    clearTimeout(state.crosstalkFlushTimer);
+    state.crosstalkFlushTimer = null;
+  }
+
+  // Check if other users have buffered audio
+  let hasWaitingUsers = false;
+  for (const [uid, queue] of state.userSendQueues) {
+    if (uid !== currentSpeakerId && queue && queue.length > 0) {
+      hasWaitingUsers = true;
+      break;
+    }
+  }
+
+  if (hasWaitingUsers) {
+    state.crosstalkFlushTimer = setTimeout(async () => {
+      state.crosstalkFlushTimer = null;
+      if (!state.isRunning) return;
+      if (state.activeSpeakerId !== currentSpeakerId) return; // Already switched
+
+      const log = getLogger(state.guildId);
+      log.info(`⏰ Crosstalk timeout (5s) — force-switching to next queued speaker`);
+
+      await transitionFromSpeaker(state, currentSpeakerId);
+    }, 5000);
+  }
+}
+
 /**
  * Play translated audio through the Discord voice connection.
  * Uses chunked playback with drain timer for stable output.
@@ -1402,7 +1622,12 @@ function playNextChunk(state) {
       if (chunkBytes >= maxChunkBytes) break;
     }
 
-    const pcmData = Buffer.concat(state.translatedChunks.splice(0, takeCount));
+    const spliced = state.translatedChunks.splice(0, takeCount);
+    // Update byte tracking — subtract removed chunks
+    for (const chunk of spliced) {
+      state.translatedChunksSize -= chunk.length;
+    }
+    const pcmData = Buffer.concat(spliced);
 
     const upsampledPcm = upsamplePcm(pcmData, GEMINI_OUTPUT_RATE, PCM_SAMPLE_RATE);
 
@@ -1423,7 +1648,7 @@ function playNextChunk(state) {
     });
 
     state.audioPlayer.play(resource);
-    const remaining = state.translatedChunks.reduce((sum, c) => sum + c.length, 0);
+    const remaining = state.translatedChunksSize || 0;
     log.debug(`▶️ Playing ${(chunkBytes / 1024).toFixed(1)} KB chunk (${(remaining / 1024).toFixed(1)} KB remaining)`);
   } catch (error) {
     log.error(`❌ Error playing audio chunk: ${error.message}`);
@@ -1486,6 +1711,16 @@ async function stopTranslation(guildId, client) {
     }
     state.isSendingAudio = false;
 
+    // Clear per-user queues and speaker gating state (continuous mode)
+    state.userSendQueues.clear();
+    state.userQueueProcessing.clear();
+    state.speakerTimestamps.clear();
+    state.activeSpeakerId = null;
+    if (state.crosstalkFlushTimer) {
+      clearTimeout(state.crosstalkFlushTimer);
+      state.crosstalkFlushTimer = null;
+    }
+
     // Clear subscription sweep interval
     if (state.subscriptionSweepInterval) {
       clearInterval(state.subscriptionSweepInterval);
@@ -1525,6 +1760,7 @@ async function stopTranslation(guildId, client) {
     // Clear translated audio state
     state.translatedAudioBuffer = Buffer.alloc(0);
     state.translatedChunks = [];
+    state.translatedChunksSize = 0;
 
     // Destroy the voice connection
     if (state.connection) {
@@ -1550,6 +1786,9 @@ async function stopTranslation(guildId, client) {
     // Clean up state
     state.isRunning = false;
     activeConnections.delete(guildId);
+
+    // Clean up logger cache for this guild to prevent unbounded growth
+    loggerCache.delete(guildId);
 
     // Update database
     await VoiceCallTranslation.findOneAndUpdate(
