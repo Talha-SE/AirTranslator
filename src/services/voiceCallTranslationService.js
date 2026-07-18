@@ -127,8 +127,8 @@ const OPUS_FRAME_DURATION_MS = 20;
 const PCM_SAMPLE_RATE = 48000;
 const DISCORD_FRAME_SIZE = 960; // 20ms at 48kHz
 
-/** Maximum translated audio buffer size (~45 seconds at 24kHz 16-bit) */
-const MAX_BUFFER_SIZE = GEMINI_OUTPUT_RATE * 2 * 45; // 2,160,000 bytes
+/** Maximum translated audio buffer size (~20 minutes at 24kHz 16-bit) */
+const MAX_BUFFER_SIZE = GEMINI_OUTPUT_RATE * 2 * 1200; // ~57.6MB
 
 /** Gemini reconnection settings */
 const MAX_RECONNECT_ATTEMPTS = 3;
@@ -163,7 +163,10 @@ const STREAM_RECOVERY_DELAY_MS = 500;
 const MAX_STREAM_RECOVERY_ATTEMPTS = 5;
 
 /** Max number of flashModelAudioParts before dropping oldest (prevents unbounded growth for turn-based models) */
-const MAX_FLASH_MODEL_PARTS = 200;
+const MAX_FLASH_MODEL_PARTS = 10000; // Support ~16 min of continuous audio at ~100ms parts
+
+/** How often to force-flush accumulated PCM for turn-based models (prevents buffer bloat on long speech) */
+const TURN_BASED_FLUSH_INTERVAL_MS = 30000; // 30s
 
 // ==============================
 // Active Connections Map & Start Locks
@@ -390,8 +393,8 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       translatedAudioBuffer: Buffer.alloc(0),
       /** Chunk-list approach: store translated audio chunks, concat only at playback time */
       translatedChunks: [],
-      /** Max chunks before dropping oldest (prevents unbounded growth) */
-      maxTranslatedChunks: 30,
+      /** Max chunks before dropping oldest (supports ~20 min of 1-sec chunks) */
+      maxTranslatedChunks: 2000,
       /** Total bytes in translatedChunks — used to enforce byte cap */
       translatedChunksSize: 0,
       onActivityChange: null,
@@ -856,6 +859,28 @@ function setupUserStream(state, userId, source = 'direct') {
         }
       }
     }, FLUSH_INTERVAL_MS);
+  } else {
+    // Turn-based mode: periodic force-flush prevents PCM buffer bloat on long continuous speech
+    streamInfo.flushInterval = setInterval(() => {
+      if (pcmChunks.length > streamInfo.lastFlushIndex && state.geminiSession && state.isRunning) {
+        const newChunks = pcmChunks.slice(streamInfo.lastFlushIndex);
+        streamInfo.lastFlushIndex = pcmChunks.length;
+        const buffer = Buffer.concat(newChunks);
+        const durationMs = Math.round((buffer.length / 2) / PCM_SAMPLE_RATE * 1000);
+        log.debug(`⏰ ${username}: Force-flushing ${(buffer.length / 1024).toFixed(1)} KB (${durationMs}ms)`);
+        // Prune old chunks to prevent unbounded growth
+        if (streamInfo.lastFlushIndex > 20) {
+          pcmChunks.splice(0, streamInfo.lastFlushIndex);
+          streamInfo.lastFlushIndex = 0;
+        }
+        const downsampled = downsamplePcm(buffer, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
+        if (downsampled.length > 0) {
+          sendChunkToGemini(state, downsampled).catch((err) => {
+            log.warn(`⚠️ ${username}: Force-flush send error: ${err.message}`);
+          });
+        }
+      }
+    }, TURN_BASED_FLUSH_INTERVAL_MS);
   }
 
   pcmStream.on('end', async () => {
@@ -884,7 +909,7 @@ function setupUserStream(state, userId, source = 'direct') {
       return;
     }
 
-    const startIndex = state.isTurnBased ? 0 : (info?.lastFlushIndex || 0);
+    const startIndex = info?.lastFlushIndex || 0;
     if (startIndex >= pcmChunks.length) {
       log.debug(`⏹️ ${username}: No new audio since last stream flush — skipping final send`);
       return;
@@ -1058,7 +1083,7 @@ function buildTranslateConfig(state, systemInstruction) {
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
-    temperature: 0.3,
+    temperature: 0.0,
     systemInstruction: { parts: [{ text: systemInstruction }] },
     speechConfig: {
       voiceConfig: {
@@ -1082,22 +1107,19 @@ function buildTranslationSystemInstruction(sourceLanguage, targetLanguage) {
   const lang1 = getLanguageName(sourceLanguage);
   const lang2 = getLanguageName(targetLanguage);
   return [
-    `You are a pure translation engine. Your ONLY output is a spoken translation in the target language.`,
+    `You are a native speaker of both ${lang1} and ${lang2}. You are a translator. Your ONLY output is a spoken translation in the target language of whatever the speaker says. Speak in a natural, fluent, and native style. Do NOT add any commentary, explanations, or text. Do NOT repeat the original text. Do NOT add your own thoughts or questions. Do NOT output any text — only audio translation.`,
     `You MUST translate bidirectionally between ${lang1} and ${lang2}.`,
-    `If the speaker is speaking in ${lang1}, output ONLY the ${lang2} translation.`,
-    `If the speaker is speaking in ${lang2}, output ONLY the ${lang1} translation.`,
-    `Auto-detect which language is being spoken.`,
+    `If the speaker is speaking in ${lang1}, output ONLY the ${lang2} translation. If the speaker is speaking in ${lang2}, output ONLY the ${lang1} translation. Dont output same language translation.`,
+    `If the speaker is speaking in ${lang2}, output ONLY the ${lang1} translation. If the speaker is speaking in ${lang1}, output ONLY the ${lang2} translation. Dont output same language translation.`,
+    `You must auto-detect which language is being spoken by the speaker`,
     ``,
     `ABSOLUTE RULES - VIOLATION BREAKS THE SERVICE:`,
-    `- Output the translation ONLY as audio, nothing else.`,
     `- NEVER add greetings, explanations, or any text.`,
     `- NEVER say "I understand", "Here is", "The speaker said", "In other words", or similar.`,
     `- NEVER add your own thoughts, questions, or comments.`,
     `- NEVER repeat the original text back.`,
     `- If unsure, translate as best you can, output ONLY that. No disclaimers.`,
-    `- If the speaker is already speaking the target language, repeat it verbatim.`,
-    ``,
-    `You are NOT a chat assistant. You are a translation machine with audio output.`,
+    `Your job is to translate speech to speech, nothing else.`,
   ].join('\n');
 }
 
@@ -1111,7 +1133,7 @@ function buildFlashLiveConfig(state, systemInstruction) {
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
-    temperature: 0.3,
+    temperature: 0.0,
     systemInstruction: { parts: [{ text: systemInstruction }] },
     speechConfig: {
       voiceConfig: {
@@ -1121,7 +1143,7 @@ function buildFlashLiveConfig(state, systemInstruction) {
       },
     },
     thinkingConfig: {
-      thinkingLevel: 'minimal', // Lowest latency for real-time translation
+      thinkingLevel: 'low', // Low latency for real-time translation
     },
     contextWindowCompression: {
       triggerTokens: '104857',
@@ -1140,7 +1162,7 @@ function buildNativeAudioConfig(state, systemInstruction) {
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
-    temperature: 0.3,
+    temperature: 0.0,
     systemInstruction: { parts: [{ text: systemInstruction }] },
     speechConfig: {
       voiceConfig: {
@@ -1212,14 +1234,14 @@ async function connectGeminiSession(state) {
                   if (state.flashModelAudioParts.length > MAX_FLASH_MODEL_PARTS) {
                     state.flashModelAudioParts.splice(0, state.flashModelAudioParts.length - MAX_FLASH_MODEL_PARTS);
                   }
-                  // Reset timeout — if turnComplete doesn't arrive in 30s, clear the buffer
+                  // Reset timeout — if turnComplete doesn't arrive in 180s, log warning
                   if (state.flashModelPartsTimer) clearTimeout(state.flashModelPartsTimer);
                   state.flashModelPartsTimer = setTimeout(() => {
                     if (state.flashModelAudioParts.length > 0) {
-                      log.warn(`⚠️ flashModelAudioParts timeout — clearing ${state.flashModelAudioParts.length} stale parts`);
-                      state.flashModelAudioParts = [];
+                      log.warn(`⚠️ flashModelAudioParts stale (${state.flashModelAudioParts.length} parts, ${180}s timeout)`);
+                      // Don't clear — Gemini may still be generating. Only log.
                     }
-                  }, 30000);
+                  }, 180000);
                 }
                 // Log any text parts for debugging
                 if (part.text) {
@@ -1246,9 +1268,13 @@ async function connectGeminiSession(state) {
                   const translatedDurationMs = Math.round((combined.length / 2) / GEMINI_OUTPUT_RATE * 1000);
                   log.success(`🔊 Turn-based model complete — received ${(combined.length / 1024).toFixed(1)} KB translated audio (${translatedDurationMs}ms)`);
 
-                  // Use chunk-list: store chunks, only concat at playback time
-                  state.translatedChunks.push(combined);
-                  state.translatedChunksSize += combined.length;
+                  // Use chunk-list: split into 1-second chunks so playback works incrementally
+                  const chunkSize = GEMINI_OUTPUT_RATE * 2 * PLAYBACK_CHUNK_SECONDS;
+                  for (let offset = 0; offset < combined.length; offset += chunkSize) {
+                    const chunk = combined.subarray(offset, Math.min(offset + chunkSize, combined.length));
+                    state.translatedChunks.push(chunk);
+                    state.translatedChunksSize += chunk.length;
+                  }
 
                   // Cap chunks to prevent unbounded growth (by count AND byte size)
                   while (state.translatedChunks.length > state.maxTranslatedChunks || state.translatedChunksSize > MAX_BUFFER_SIZE) {
