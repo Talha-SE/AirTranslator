@@ -1076,21 +1076,17 @@ function setupRealtimeAudioPipeline(state) {
 
 /**
  * Build the config for gemini-3.5-live-translate-preview.
- * Uses speechConfig + systemInstruction (top-level) for bidirectional translation.
+ * Uses translationConfig (NOT systemInstruction/speechConfig — those are unsupported).
+ * Official docs: https://ai.google.dev/gemini-api/docs/live-api/live-translate
  */
-function buildTranslateConfig(state, systemInstruction) {
-  const voiceName = state.voiceName || 'Aoede';
+function buildTranslateConfig(state) {
   return {
     responseModalities: ['AUDIO'],
-    mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
-    temperature: 0.0,
-    systemInstruction: { parts: [{ text: systemInstruction }] },
-    speechConfig: {
-      voiceConfig: {
-        prebuiltVoiceConfig: {
-          voiceName,
-        },
-      },
+    inputAudioTranscription: {},
+    outputAudioTranscription: {},
+    translationConfig: {
+      targetLanguageCode: state.targetLanguage,
+      echoTargetLanguage: true,
     },
   };
 }
@@ -1192,7 +1188,7 @@ async function connectGeminiSession(state) {
 
   const genAI = getGenAIClient();
 
-  // Build the system instruction for bidirectional translation
+  // Build the system instruction for bidirectional translation (only used by 3.1/2.5 — 3.5 uses translationConfig)
   const systemInstruction = buildTranslationSystemInstruction(
     state.sourceLanguage, state.targetLanguage
   );
@@ -1206,8 +1202,8 @@ async function connectGeminiSession(state) {
     config = buildFlashLiveConfig(state, systemInstruction);
     log.info(`📖 Using Flash Live config (voice: ${state.voiceName || 'Zephyr'})`);
   } else {
-    config = buildTranslateConfig(state, systemInstruction);
-    log.info(`📖 Using Live Translate config (voice: ${state.voiceName || 'Aoede'})`);
+    config = buildTranslateConfig(state);
+    log.info(`📖 Using Live Translate config (target: ${state.targetLanguage}, echoTarget: true)`);
   }
 
   const session = await genAI.live.connect({
@@ -1343,9 +1339,11 @@ async function connectGeminiSession(state) {
   state.geminiSession = session;
   state.isReconnecting = false;
 
-  // System instruction is already embedded in the config at connect time
-  // (no need for sendClientContent — that causes the model to respond with audio confirmation)
-  log.info(`📝 System instruction set: ${getLanguageName(state.sourceLanguage)} ↔ ${getLanguageName(state.targetLanguage)}`);
+  if (isNativeAudio || isFlash) {
+    log.info(`📝 System instruction set: ${getLanguageName(state.sourceLanguage)} ↔ ${getLanguageName(state.targetLanguage)}`);
+  } else {
+    log.info(`📝 Translation config: ${getLanguageName(state.sourceLanguage)} → ${getLanguageName(state.targetLanguage)} (echo: true)`);
+  }
 
   const modeLabel = isNativeAudio ? 'Native Audio batch' : isFlash ? 'Flash Live turn-based' : 'Live Translate continuous';
   log.success(`✅ Gemini Live session established (${modeLabel} mode)`);
