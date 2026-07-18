@@ -516,7 +516,7 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
         log.info(`🔄 Reconnect attempt ${attempt}/${VOICE_RECONNECT_MAX_ATTEMPTS} (${delay}ms delay)...`);
         
         try {
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise(resolve => setTimeout(resolve, Math.max(1, delay)));
           await Promise.race([
             entersState(connection, VoiceConnectionStatus.Ready, 5000),
             entersState(connection, VoiceConnectionStatus.Connecting, 5000),
@@ -944,6 +944,16 @@ function setupUserStream(state, userId, source = 'direct') {
         }
         log.success(`📤 Queued utterance for ${username} (${(downsampled.length / 1024).toFixed(1)} KB, ${durationMs}ms)`);
 
+        // Signal turn complete to stop Gemini from generating endlessly
+        if (state.geminiSession) {
+          try {
+            state.geminiSession.sendClientContent({ turnComplete: true });
+            log.debug(`🔚 Sent turnComplete signal for ${username}`);
+          } catch (e) {
+            log.warn(`⚠️ Failed to send turnComplete: ${e.message}`);
+          }
+        }
+
         // Transition to next speaker — this user's stream ended
         await transitionFromSpeaker(state, userId);
       } else {
@@ -1082,11 +1092,9 @@ function setupRealtimeAudioPipeline(state) {
 function buildTranslateConfig(state) {
   return {
     responseModalities: ['AUDIO'],
-    inputAudioTranscription: {},
-    outputAudioTranscription: {},
     translationConfig: {
       targetLanguageCode: state.targetLanguage,
-      echoTargetLanguage: true,
+      echoTargetLanguage: false,
     },
   };
 }
@@ -1164,7 +1172,7 @@ function buildNativeAudioConfig(state, systemInstruction) {
       },
     },
     thinkingConfig: {
-      thinkingBudget: 0, // Disabled — translation is deterministic, no reasoning needed
+      thinkingBudget: 1024, // Small budget for contextual reasoning (disambiguating homonyms, tone/idioms)
     },
     contextWindowCompression: {
       triggerTokens: '104857',
@@ -1361,7 +1369,7 @@ async function reconnectGeminiSession(state) {
     const delay = RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt - 1);
     log.info(`🔄 Gemini reconnection attempt ${attempt}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms...`);
 
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await new Promise(resolve => setTimeout(resolve, Math.max(1, delay)));
 
     if (!state.isRunning || state.geminiSession) {
       // Already connected or stopped — nothing to do
