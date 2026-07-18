@@ -1346,7 +1346,7 @@ const translateTextToMultipleLanguages = async (
         const { processedText, nameMap } = markNamesForTransliteration(sourceForModel);
         
         // Build comprehensive system prompt for batch translation
-        let systemContent = `You are a professional native translator. Translate text accurately while preserving meaning and style.
+        let systemContent = `You are a native translator. Translate text accurately while preserving meaning and style and translate like native language speaker because native people understand the context and culture better. and use the correct words and phrases that are natural in the target language.
 
 CRITICAL BATCH TRANSLATION INSTRUCTIONS:
 1. You will translate ONE message into MULTIPLE languages: ${targetLanguageNames}

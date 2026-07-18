@@ -1092,10 +1092,6 @@ function buildTranslateConfig(state, systemInstruction) {
         },
       },
     },
-    contextWindowCompression: {
-      triggerTokens: '104857',
-      slidingWindow: { targetTokens: '52428' },
-    },
   };
 }
 
