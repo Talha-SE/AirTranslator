@@ -617,12 +617,7 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       if (oldState.channelId === targetChannelId && newState.channelId !== targetChannelId) {
         if (!oldState.member?.user?.bot) {
           log.info(`👋 User left voice channel: ${oldState.member?.user?.username || oldState.id}`);
-          const streamInfo = state.activeStreams.get(oldState.id);
-          if (streamInfo) {
-            try { streamInfo.audioStream?.destroy(); } catch (e) { /* ignore */ }
-            try { streamInfo.decoder?.destroy(); } catch (e) { /* ignore */ }
-            state.activeStreams.delete(oldState.id);
-          }
+          clearUserStream(state, oldState.id, log);
         }
       }
     };
@@ -845,7 +840,7 @@ function setupUserStream(state, userId, source = 'direct') {
         // Prune old chunks from array to prevent unbounded growth
         if (streamInfo.lastFlushIndex > 20) {
           pcmChunks.splice(0, streamInfo.lastFlushIndex);
-          streamInfo.lastFlushIndex = 0;
+          streamInfo.lastFlushIndex = pcmChunks.length;
         }
         const downsampled = downsamplePcm(buffer, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
         if (downsampled.length > 0) {
@@ -871,7 +866,7 @@ function setupUserStream(state, userId, source = 'direct') {
         // Prune old chunks to prevent unbounded growth
         if (streamInfo.lastFlushIndex > 20) {
           pcmChunks.splice(0, streamInfo.lastFlushIndex);
-          streamInfo.lastFlushIndex = 0;
+          streamInfo.lastFlushIndex = pcmChunks.length;
         }
         const downsampled = downsamplePcm(buffer, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
         if (downsampled.length > 0) {
