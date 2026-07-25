@@ -27,6 +27,8 @@ const { GoogleGenAI } = require('@google/genai');
 const { pipeline: streamPipeline } = require('stream/promises');
 const { Readable, Transform, PassThrough } = require('stream');
 const VoiceCallTranslation = require('../models/VoiceCallTranslation');
+const { createUserVAD, VAD_SPEECH_THRESHOLD } = require('./vadService');
+const { SampleRate: SampleRateStream } = require('libsamplerate');
 
 // ==============================
 // Cached GoogleGenAI Client (reused across reconnects)
@@ -165,6 +167,15 @@ const MAX_STREAM_RECOVERY_ATTEMPTS = 5;
 /** Max number of flashModelAudioParts before dropping oldest (prevents unbounded growth for turn-based models) */
 const MAX_FLASH_MODEL_PARTS = 10000; // Support ~16 min of continuous audio at ~100ms parts
 
+/** VAD: Minimum speech probability to consider audio as speech */
+const VAD_MIN_SPEECH_PROB = 0.4;
+
+/** VAD: Max consecutive noise frames before skipping audio send */
+const VAD_MAX_NOISE_FRAMES = 20;
+
+/** VAD: Min speech ratio (speech/total frames) required to send utterance to Gemini */
+const VAD_MIN_SPEECH_RATIO = 0.15;
+
 /** How often to force-flush accumulated PCM for turn-based models (prevents buffer bloat on long speech) */
 const TURN_BASED_FLUSH_INTERVAL_MS = 30000; // 30s
 
@@ -203,48 +214,114 @@ function getLogger(guildId) {
 }
 
 // ==============================
-// Audio Processing Utilities
+// Audio Processing Utilities (libsamplerate - Windowed Sinc)
 // ==============================
 
 /**
- * Downsample PCM audio from 48kHz to target sample rate
- * Simple linear interpolation downsampling
+ * Synchronous resampler using libsamplerate's native transform.
+ * Wraps the async Stream API to expose a sync process() method.
  */
-function downsamplePcm(inputBuffer, inputRate, outputRate) {
-  if (inputRate === outputRate) return inputBuffer;
-  
-  const ratio = inputRate / outputRate;
-  const outputLength = Math.floor(inputBuffer.length / ratio);
-  const output = Buffer.alloc(outputLength * 2); // 16-bit samples
-  
-  for (let i = 0; i < outputLength; i++) {
-    const srcIndex = Math.floor(i * ratio);
-    if (srcIndex * 2 + 1 < inputBuffer.length) {
-      output.writeInt16LE(inputBuffer.readInt16LE(srcIndex * 2), i * 2);
-    }
+class SyncResampler {
+  constructor(opts) {
+    this.stream = new SampleRateStream(opts);
+    this.output = [];
+    this.stream.on('data', (chunk) => this.output.push(chunk));
   }
   
-  return output;
+  process(buffer) {
+    this.output = [];
+    this.stream.write(buffer);
+    // Force flush by ending and recreating
+    this.stream.end();
+    // Synchronously collect (stream events fire in same tick for sync data)
+    return Buffer.concat(this.output);
+  }
+}
+
+/** No caching — SyncResampler ends the stream after each call, so reuse is broken */
+
+
+/**
+ * Get or create a resampler instance for a given conversion.
+ * Reuses instances to maintain filter state across calls (better quality).
+ * 
+ * @param {number} fromRate - Source sample rate
+ * @param {number} toRate - Target sample rate
+ * @returns {SyncResampler} - libsamplerate wrapper
+ */
+function getResampler(fromRate, toRate) {
+  return new SyncResampler({
+    type: 1, // SRC_SINC_MEDIUM_QUALITY (best balance of quality/speed)
+    channels: 1,
+    fromRate: fromRate,
+    fromDepth: 16,
+    toRate: toRate,
+    toDepth: 16,
+  });
 }
 
 /**
- * Upsample PCM audio from source rate to target rate
+ * Downsample PCM audio from input rate to target rate using libsamplerate.
+ * Uses Windowed Sinc interpolation (SRC_SINC_MEDIUM_QUALITY) for professional-grade quality.
+ * Proper anti-aliasing filter prevents frequency folding.
+ * 
+ * @param {Buffer} inputBuffer - 16-bit PCM input (mono)
+ * @param {number} inputRate - Input sample rate (e.g., 48000)
+ * @param {number} outputRate - Output sample rate (e.g., 16000)
+ * @returns {Buffer} - Downsampled 16-bit PCM
+ */
+function downsamplePcm(inputBuffer, inputRate, outputRate) {
+  if (inputRate === outputRate) return inputBuffer;
+  if (inputBuffer.length === 0) return inputBuffer;
+  
+  try {
+    const resampler = getResampler(inputRate, outputRate);
+    return resampler.process(inputBuffer);
+  } catch (err) {
+    // Fallback: simple decimation if libsamplerate fails
+    const ratio = inputRate / outputRate;
+    const inputSamples = inputBuffer.length / 2;
+    const outputLength = Math.floor(inputSamples / ratio);
+    const output = Buffer.alloc(outputLength * 2);
+    for (let i = 0; i < outputLength; i++) {
+      const srcIndex = Math.floor(i * ratio);
+      if (srcIndex * 2 + 1 < inputBuffer.length) {
+        output.writeInt16LE(inputBuffer.readInt16LE(srcIndex * 2), i * 2);
+      }
+    }
+    return output;
+  }
+}
+
+/**
+ * Upsample PCM audio from source rate to target rate using libsamplerate.
+ * Uses Windowed Sinc interpolation for high-quality sample rate conversion.
+ * 
+ * @param {Buffer} inputBuffer - 16-bit PCM input (mono)
+ * @param {number} inputRate - Input sample rate (e.g., 24000)
+ * @param {number} outputRate - Target sample rate (e.g., 48000)
+ * @returns {Buffer} - Upsampled 16-bit PCM
  */
 function upsamplePcm(inputBuffer, inputRate, outputRate) {
   if (inputRate === outputRate) return inputBuffer;
+  if (inputBuffer.length === 0) return inputBuffer;
   
-  const ratio = outputRate / inputRate;
-  const outputLength = Math.floor(inputBuffer.length * ratio / 2) * 2;
-  const output = Buffer.alloc(outputLength);
-  
-  for (let i = 0; i < outputLength / 2; i++) {
-    const srcIndex = Math.floor(i / ratio);
-    if (srcIndex * 2 + 1 < inputBuffer.length) {
-      output.writeInt16LE(inputBuffer.readInt16LE(srcIndex * 2), i * 2);
+  try {
+    const resampler = getResampler(inputRate, outputRate);
+    return resampler.process(inputBuffer);
+  } catch (err) {
+    // Fallback: simple interpolation if libsamplerate fails
+    const ratio = outputRate / inputRate;
+    const outputLength = Math.floor(inputBuffer.length * ratio / 2) * 2;
+    const output = Buffer.alloc(outputLength);
+    for (let i = 0; i < outputLength / 2; i++) {
+      const srcIndex = Math.floor(i / ratio);
+      if (srcIndex * 2 + 1 < inputBuffer.length) {
+        output.writeInt16LE(inputBuffer.readInt16LE(srcIndex * 2), i * 2);
+      }
     }
+    return output;
   }
-  
-  return output;
 }
 
 /**
@@ -481,8 +558,9 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
     const silenceFrame = Buffer.alloc(960 * 2 * 2); // 20ms stereo silence at 48kHz 16-bit PCM
     state.keepAliveInterval = setInterval(() => {
       if (!state.isRunning || !state.connection) return;
-      // Only send keep-alive if audio player is idle (no translation playing)
-      if (state.audioPlayer.state.status === AudioPlayerStatus.Idle) {
+      // Only send keep-alive if audio player is idle AND no translation chunks are queued
+      // (prevents silence from taking over the player between translation chunks)
+      if (state.audioPlayer.state.status === AudioPlayerStatus.Idle && state.translatedChunks.length === 0) {
         try {
           const resource = createAudioResource(Readable.from([silenceFrame]), { inputType: StreamType.Raw });
           state.audioPlayer.play(resource);
@@ -677,6 +755,11 @@ function clearUserStream(state, userId, log) {
   if (info.flushInterval) clearInterval(info.flushInterval);
   try { info.decoder?.destroy(); } catch (e) { /* ignore */ }
   try { info.audioStream?.destroy(); } catch (e) { /* ignore */ }
+  // Cleanup VAD instance
+  if (info.userVAD) {
+    info.userVAD.destroy().catch(() => {});
+    info.userVAD = null;
+  }
   state.activeStreams.delete(userId);
   if (log) log.debug(`🧹 Cleaned stream for ${info.username || userId}`);
 }
@@ -772,7 +855,7 @@ function appendSilenceTail(stereoBuffer) {
  * @param {string} userId - Discord user ID to subscribe to
  * @param {string} source - Where this subscription came from (direct, sweep, recovery-N, voiceStateUpdate)
  */
-function setupUserStream(state, userId, source = 'direct') {
+async function setupUserStream(state, userId, source = 'direct') {
   const log = getLogger(state.guildId);
   const receiver = state.connection?.receiver;
   if (!receiver) return;
@@ -817,8 +900,24 @@ function setupUserStream(state, userId, source = 'direct') {
     subscribedAt: Date.now(),
     subscribeSource: source,
     utteranceCount: 0,
+    /** Silero VAD instance for this user */
+    userVAD: null,
+    /** Track speech probability for current chunk */
+    lastSpeechProbability: 0,
+    /** Count consecutive noise frames (no speech) */
+    consecutiveNoiseFrames: 0,
+    /** Track if any speech was detected in current utterance */
+    hasSpeechBeenDetected: false,
   };
   state.activeStreams.set(userId, streamInfo);
+
+  // Create per-user Silero VAD instance
+  try {
+    streamInfo.userVAD = await createUserVAD(userId, username);
+    log.debug(`🎤 VAD initialized for ${username}`);
+  } catch (vadErr) {
+    log.warn(`⚠️ VAD init failed for ${username}: ${vadErr.message} — proceeding without VAD`);
+  }
 
   const pcmStream = audioStream.pipe(decoder);
   const pcmChunks = streamInfo.pcmChunks;
@@ -832,7 +931,7 @@ function setupUserStream(state, userId, source = 'direct') {
 
   if (!state.isTurnBased) {
     const FLUSH_INTERVAL_MS = 200;
-    streamInfo.flushInterval = setInterval(() => {
+    streamInfo.flushInterval = setInterval(async () => {
       if (pcmChunks.length > streamInfo.lastFlushIndex && state.geminiSession && state.isRunning) {
         const newChunks = pcmChunks.slice(streamInfo.lastFlushIndex);
         streamInfo.lastFlushIndex = pcmChunks.length;
@@ -844,19 +943,61 @@ function setupUserStream(state, userId, source = 'direct') {
         }
         const downsampled = downsamplePcm(buffer, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
         if (downsampled.length > 0) {
-          // Push to per-user queue instead of shared queue — prevents interleaving
-          const userQueue = state.userSendQueues.get(userId) || [];
-          userQueue.push(downsampled);
-          state.userSendQueues.set(userId, userQueue);
-          processUserQueue(state, userId).catch((err) => {
-            log.warn(`⚠️ processUserQueue error for ${username}: ${err.message}`);
-          });
+          // === VAD CHECK: Only send if speech is detected ===
+          let shouldSend = true;
+          if (streamInfo.userVAD) {
+            try {
+              const vadResult = await streamInfo.userVAD.processChunk(downsampled);
+              streamInfo.lastSpeechProbability = vadResult.probability;
+              
+              // Log VAD debug info for first few frames to diagnose audio levels
+              if (streamInfo.consecutiveNoiseFrames < 5 || vadResult.isSpeech) {
+                const dbg = vadResult.debug || {};
+                log.debug(`📊 ${username}: VAD rms=${dbg.rms?.toFixed(6) || 'N/A'} peak=${dbg.peakAmplitude?.toFixed(6) || 'N/A'} speech=${vadResult.isSpeech} frames=${dbg.samplesProcessed} chunk=${(downsampled.length / 1024).toFixed(1)}KB`);
+              }
+              
+              if (vadResult.isSpeech) {
+                // Speech detected — reset noise counter, mark speech as detected
+                streamInfo.consecutiveNoiseFrames = 0;
+                streamInfo.hasSpeechBeenDetected = true;
+                shouldSend = true;
+              } else {
+                // No speech detected
+                streamInfo.consecutiveNoiseFrames++;
+                
+                if (streamInfo.consecutiveNoiseFrames > VAD_MAX_NOISE_FRAMES) {
+                  // Too much noise — skip sending to Gemini
+                  shouldSend = false;
+                  log.debug(`🔇 ${username}: VAD noise filter — skipping ${(downsampled.length / 1024).toFixed(1)} KB (rms: ${vadResult.rms?.toFixed(6)}, noise: ${streamInfo.consecutiveNoiseFrames})`);
+                } else if (!streamInfo.hasSpeechBeenDetected) {
+                  // No speech yet in this utterance — skip
+                  shouldSend = false;
+                }
+                // If speech was detected earlier, allow trailing audio through (word endings)
+              }
+            } catch (vadErr) {
+              // VAD error — send audio anyway as fallback
+              log.debug(`⚠️ VAD error for ${username}: ${vadErr.message}`);
+              shouldSend = true;
+            }
+          }
+          
+          if (shouldSend) {
+            // Push to per-user queue instead of shared queue — prevents interleaving
+            const userQueue = state.userSendQueues.get(userId) || [];
+            userQueue.push(downsampled);
+            state.userSendQueues.set(userId, userQueue);
+            processUserQueue(state, userId).catch((err) => {
+              log.warn(`⚠️ processUserQueue error for ${username}: ${err.message}`);
+            });
+          }
         }
       }
     }, FLUSH_INTERVAL_MS);
   } else {
     // Turn-based mode: periodic force-flush prevents PCM buffer bloat on long continuous speech
-    streamInfo.flushInterval = setInterval(() => {
+    // Also runs VAD to track speech state for filtering the final utterance
+    streamInfo.flushInterval = setInterval(async () => {
       if (pcmChunks.length > streamInfo.lastFlushIndex && state.geminiSession && state.isRunning) {
         const newChunks = pcmChunks.slice(streamInfo.lastFlushIndex);
         streamInfo.lastFlushIndex = pcmChunks.length;
@@ -870,6 +1011,28 @@ function setupUserStream(state, userId, source = 'direct') {
         }
         const downsampled = downsamplePcm(buffer, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
         if (downsampled.length > 0) {
+          // Run VAD on this chunk to track speech state
+          if (streamInfo.userVAD) {
+            try {
+              const vadResult = await streamInfo.userVAD.processChunk(downsampled);
+              streamInfo.lastSpeechProbability = vadResult.probability;
+              
+              // Log VAD debug info for first few frames
+              if (streamInfo.consecutiveNoiseFrames < 5 || vadResult.isSpeech) {
+                const dbg = vadResult.debug || {};
+                log.debug(`📊 ${username}: VAD rms=${dbg.rms?.toFixed(6) || 'N/A'} peak=${dbg.peakAmplitude?.toFixed(6) || 'N/A'} speech=${vadResult.isSpeech} frames=${dbg.samplesProcessed} chunk=${(downsampled.length / 1024).toFixed(1)}KB`);
+              }
+              
+              if (vadResult.isSpeech) {
+                streamInfo.hasSpeechBeenDetected = true;
+                streamInfo.consecutiveNoiseFrames = 0;
+              } else {
+                streamInfo.consecutiveNoiseFrames++;
+              }
+            } catch (vadErr) {
+              // VAD error — continue without filtering
+            }
+          }
           sendChunkToGemini(state, downsampled).catch((err) => {
             log.warn(`⚠️ ${username}: Force-flush send error: ${err.message}`);
           });
@@ -894,6 +1057,11 @@ function setupUserStream(state, userId, source = 'direct') {
     // Input diagnostics: no PCM data at all
     if (pcmChunks.length === 0 || totalBytes === 0) {
       log.warn(`🔇 ${username}: Speech ended but NO PCM received — likely Discord client input/VAD/mic issue (source: ${streamInfo.subscribeSource})`);
+      // Cleanup VAD
+      if (streamInfo.userVAD) {
+        await streamInfo.userVAD.destroy().catch(() => {});
+        streamInfo.userVAD = null;
+      }
       scheduleUserStreamRecovery(state, userId, 'empty-audio');
       return;
     }
@@ -901,12 +1069,22 @@ function setupUserStream(state, userId, source = 'direct') {
     if (!state.geminiSession || !state.isRunning) {
       const durationMs = Math.round((totalBytes / 2) / PCM_SAMPLE_RATE * 1000);
       log.debug(`⏹️ ${username}: Speech ended — skipped (${(totalBytes / 1024).toFixed(1)} KB, ${durationMs}ms) — no active session`);
+      // Cleanup VAD
+      if (streamInfo.userVAD) {
+        await streamInfo.userVAD.destroy().catch(() => {});
+        streamInfo.userVAD = null;
+      }
       return;
     }
 
     const startIndex = info?.lastFlushIndex || 0;
     if (startIndex >= pcmChunks.length) {
       log.debug(`⏹️ ${username}: No new audio since last stream flush — skipping final send`);
+      // Cleanup VAD
+      if (streamInfo.userVAD) {
+        await streamInfo.userVAD.destroy().catch(() => {});
+        streamInfo.userVAD = null;
+      }
       return;
     }
 
@@ -916,17 +1094,64 @@ function setupUserStream(state, userId, source = 'direct') {
 
     if (durationMs < 200) {
       log.debug(`⏹️ ${username}: Speech too short (${durationMs}ms), skipping`);
+      // Cleanup VAD instance
+      if (streamInfo.userVAD) {
+        await streamInfo.userVAD.destroy().catch(() => {});
+        streamInfo.userVAD = null;
+      }
+      return;
+    }
+
+    // === Downsample once, reuse for both VAD and Gemini ===
+    const downsampled = downsamplePcm(fullUtterance, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
+    if (downsampled.length === 0) {
+      log.warn(`⚠️ ${username}: Downsampled audio empty, skipping`);
+      if (streamInfo.userVAD) {
+        await streamInfo.userVAD.destroy().catch(() => {});
+        streamInfo.userVAD = null;
+      }
+      return;
+    }
+
+    // === Run VAD on the full accumulated utterance ===
+    // In turn-based mode, the 30s flushInterval may never fire before the stream ends,
+    // so VAD hasn't processed any audio yet. Run it now on the complete utterance.
+    if (streamInfo.userVAD && !streamInfo.hasSpeechBeenDetected) {
+      try {
+        // Feed audio to VAD in chunks to simulate real-time processing
+        const CHUNK_SIZE = GEMINI_INPUT_RATE * 2; // 1 second of 16kHz audio = 32000 bytes
+        for (let offset = 0; offset < downsampled.length; offset += CHUNK_SIZE) {
+          const chunk = downsampled.subarray(offset, Math.min(offset + CHUNK_SIZE, downsampled.length));
+          const vadResult = streamInfo.userVAD.processChunk(chunk);
+          if (vadResult.isSpeech) {
+            streamInfo.hasSpeechBeenDetected = true;
+            log.debug(`🎤 ${username}: VAD detected speech in final utterance (rms=${vadResult.rms?.toFixed(6)}, frames: speech=${vadResult.totalSpeechFrames}, noise=${vadResult.totalNoiseFrames})`);
+            break;
+          }
+        }
+        if (!streamInfo.hasSpeechBeenDetected) {
+          log.debug(`🔇 ${username}: VAD scan found no speech in ${durationMs}ms utterance (all frames below threshold)`);
+        }
+      } catch (vadErr) {
+        log.debug(`⚠️ ${username}: VAD scan error: ${vadErr.message} — sending anyway`);
+        streamInfo.hasSpeechBeenDetected = true;
+      }
+    }
+
+    // Cleanup VAD instance
+    if (streamInfo.userVAD) {
+      await streamInfo.userVAD.destroy().catch(() => {});
+      streamInfo.userVAD = null;
+    }
+
+    // === VAD FILTER: Skip utterance if no speech was detected ===
+    if (!streamInfo.hasSpeechBeenDetected) {
+      log.debug(`🔇 ${username}: Utterance skipped — no speech detected by VAD (${(fullUtterance.length / 1024).toFixed(1)} KB, ${durationMs}ms, noise-only)`);
       return;
     }
 
     streamInfo.utteranceCount++;
     log.info(`⏹️ ${username}: Utterance #${streamInfo.utteranceCount} ended — ${(fullUtterance.length / 1024).toFixed(1)} KB PCM, ${durationMs}ms (source: ${streamInfo.subscribeSource})`);
-
-    const downsampled = downsamplePcm(fullUtterance, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
-    if (downsampled.length === 0) {
-      log.warn(`⚠️ ${username}: Downsampled audio empty, skipping`);
-      return;
-    }
 
     try {
       if (!state.isTurnBased) {
@@ -952,9 +1177,13 @@ function setupUserStream(state, userId, source = 'direct') {
         // Transition to next speaker — this user's stream ended
         await transitionFromSpeaker(state, userId);
       } else {
-        // Turn-based mode: use shared queue as before
-        await sendChunkToGemini(state, downsampled);
-        log.success(`📤 Sent utterance to Gemini (${(downsampled.length / 1024).toFixed(1)} KB, ${durationMs}ms)`);
+        // Turn-based mode: send full utterance + silence tail — model's internal VAD detects silence and responds
+        const SILENCE_TAIL_SAMPLES = GEMINI_INPUT_RATE; // 1 second of silence at 16kHz
+        const silenceTail = Buffer.alloc(SILENCE_TAIL_SAMPLES * 2); // 16-bit PCM = 2 bytes/sample
+        const audioWithSilence = Buffer.concat([downsampled, silenceTail]);
+        await sendChunkToGemini(state, audioWithSilence);
+        log.success(`📤 Sent utterance to Gemini (${(downsampled.length / 1024).toFixed(1)} KB, ${durationMs}ms + 1s silence tail)`);
+        // NOTE: Do NOT send turnComplete for turn-based models — they auto-detect silence via internal VAD
       }
     } catch (err) {
       log.error(`❌ Failed to send utterance to Gemini: ${err.message}`);
@@ -986,7 +1215,7 @@ function setupUserStream(state, userId, source = 'direct') {
     scheduleUserStreamRecovery(state, userId, `pcm-error: ${err.message}`);
   });
 
-  log.info(`🎧 Subscribed to ${username} (${userId}) [${streamInfo.subscribeSource}]`);
+  log.info(`🎧 Subscribed to ${username} (${userId}) [${streamInfo.subscribeSource}] ${streamInfo.userVAD ? '(VAD enabled)' : '(VAD disabled)'}`);
 }
 
 /**
@@ -1102,11 +1331,11 @@ function buildTranslationSystemInstruction(sourceLanguage, targetLanguage) {
   const lang1 = getLanguageName(sourceLanguage);
   const lang2 = getLanguageName(targetLanguage);
   return [
+    `You have to understand the user voice message meaning as a native speaker of that language, and translate it to the other language return same meaning that the speaker meant to say because the words have different meanings in different languages so u have to understand what user wanted to say and return complete proper grammar sentence.`,
     `You are a native speaker of both ${lang1} and ${lang2}. You are a translator. Your ONLY output is a spoken translation in the target language of whatever the speaker says. Speak in a natural, fluent, and native style. Do NOT add any commentary, explanations, or text. Do NOT repeat the original text. Do NOT add your own thoughts or questions. Do NOT output any text — only audio translation.`,
     `You MUST translate bidirectionally between ${lang1} and ${lang2}.`,
     `If the speaker is speaking in ${lang1}, output ONLY the ${lang2} translation. If the speaker is speaking in ${lang2}, output ONLY the ${lang1} translation. Dont output same language translation.`,
-    `If the speaker is speaking in ${lang2}, output ONLY the ${lang1} translation. If the speaker is speaking in ${lang1}, output ONLY the ${lang2} translation. Dont output same language translation.`,
-    `You must auto-detect which language is being spoken by the speaker`,
+    `You must auto-detect which language is being spoken by the speaker, don't return the same language, and always translate to the other language.`,
     ``,
     `ABSOLUTE RULES - VIOLATION BREAKS THE SERVICE:`,
     `- NEVER add greetings, explanations, or any text.`,
@@ -1128,7 +1357,7 @@ function buildFlashLiveConfig(state, systemInstruction) {
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
-    temperature: 0.0,
+    temperature: 0.2,
     systemInstruction: { parts: [{ text: systemInstruction }] },
     speechConfig: {
       voiceConfig: {
@@ -1138,7 +1367,7 @@ function buildFlashLiveConfig(state, systemInstruction) {
       },
     },
     thinkingConfig: {
-      thinkingLevel: 'low', // Low latency for real-time translation
+      thinkingLevel: 'high',
     },
     contextWindowCompression: {
       triggerTokens: '104857',
@@ -1157,7 +1386,7 @@ function buildNativeAudioConfig(state, systemInstruction) {
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
-    temperature: 0.0,
+    temperature: 0.2,
     systemInstruction: { parts: [{ text: systemInstruction }] },
     speechConfig: {
       voiceConfig: {
@@ -1167,7 +1396,7 @@ function buildNativeAudioConfig(state, systemInstruction) {
       },
     },
     thinkingConfig: {
-      thinkingBudget: 1024, // Small budget for contextual reasoning (disambiguating homonyms, tone/idioms)
+      thinkingBudget: 2048,
     },
     contextWindowCompression: {
       triggerTokens: '104857',
@@ -1218,6 +1447,9 @@ async function connectGeminiSession(state) {
       },
       onmessage: (message) => {
         try {
+          // Debug: log all incoming messages to diagnose response issues
+          const msgType = message?.serverContent ? 'serverContent' : message?.toolCall ? 'toolCall' : message?.setupComplete ? 'setupComplete' : 'other';
+          log.debug(`📨 Gemini message: type=${msgType} keys=${Object.keys(message || {}).join(',')}`);
           if (isTurnBasedModel) {
             // Turn-based models (Flash Live, Native Audio): buffer audio parts until turnComplete
             const modelTurn = message?.serverContent?.modelTurn;
@@ -1325,6 +1557,12 @@ async function connectGeminiSession(state) {
       },
       onerror: (error) => {
         log.error(`❌ Gemini Live WebSocket error: ${error?.message || JSON.stringify(error)}`);
+        state.geminiSession = null;
+        // Attempt reconnection if still running (same as onclose)
+        if (state.isRunning && !state.isReconnecting) {
+          state.isReconnecting = true;
+          reconnectGeminiSession(state).catch(() => {});
+        }
       },
       onclose: (event) => {
         const closeCode = event?.code || 'unknown';
@@ -1770,13 +2008,18 @@ async function stopTranslation(guildId, client) {
     state.recoveryTimers.clear();
     state.recoveryAttempts.clear();
 
-    // Destroy all active streams, decoders, and clear flushing intervals
+    // Destroy all active streams, decoders, VAD instances, and clear flushing intervals
     for (const [userId, streamInfo] of state.activeStreams) {
       if (streamInfo.flushInterval) {
         clearInterval(streamInfo.flushInterval);
       }
       try { streamInfo.decoder?.destroy(); } catch (e) { /* ignore */ }
       try { streamInfo.audioStream?.destroy(); } catch (e) { /* ignore */ }
+      // Destroy VAD instance
+      if (streamInfo.userVAD) {
+        streamInfo.userVAD.destroy().catch(() => {});
+        streamInfo.userVAD = null;
+      }
     }
     state.activeStreams.clear();
 
