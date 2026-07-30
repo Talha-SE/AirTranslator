@@ -9,6 +9,17 @@ const Feedback = require('../models/Feedback');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
+const DEFAULT_FREE_TRANSLATION_LIMIT = 100;
+
+const getDefaultFreeTranslationLimit = async () => {
+    try {
+        const settings = await MonetizationSettings.findOne({ settingsId: 'global' }).lean();
+        return settings?.defaultFreeTranslationLimit || DEFAULT_FREE_TRANSLATION_LIMIT;
+    } catch {
+        return DEFAULT_FREE_TRANSLATION_LIMIT;
+    }
+};
+
 const connectDB = async () => {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
@@ -315,6 +326,7 @@ const deleteVoteEventById = async (voteId) => {
 };
 
 const saveServerConfig = async (serverId, config) => {
+    const defaultLimit = await getDefaultFreeTranslationLimit();
     const server = await Server.findOneAndUpdate(
         { serverId },
         {
@@ -323,18 +335,22 @@ const saveServerConfig = async (serverId, config) => {
                 serverUniqueId: uuidv4(),
                 serverName: config.serverName || 'Unknown Server',
                 translationCount: 0,
-                monetization: {
-                    freeTranslationLimit: 20,
-                    isRestricted: true,
-                    isExempt: false,
-                    lastReset: new Date(),
-                    customLimit: null
+                    monetization: {
+                        freeTranslationLimit: defaultLimit,
+                        isRestricted: true,
+                        isExempt: false,
+                        lastReset: new Date(),
+                        customLimit: null
+                    }
                 }
-            }
-        },
-        { new: true, upsert: true }
-    );
-    return server;
+            },
+            { new: true, upsert: true }
+        );
+        return server;
+    } catch (error) {
+        console.error('Error marking server as newly joined:', error);
+        throw error;
+    }
 };
 
 const getServerConfig = async (serverId) => {
@@ -620,6 +636,15 @@ const getMonetizationSettings = async () => {
     }
 };
 
+const getDefaultFreeTranslationLimit = async () => {
+    try {
+        const settings = await MonetizationSettings.findOne({ settingsId: 'global' }).lean();
+        return (settings && settings.defaultFreeTranslationLimit) || 50;
+    } catch (error) {
+        return 50;
+    }
+};
+
 /**
  * Save monetization settings
  * @param {Object} settings - The settings to save
@@ -813,6 +838,7 @@ const markServerAsNewlyJoined = async (serverId, serverName = 'Unknown Server', 
     try {
         const normalizedJoinedAt = new Date(joinedAt || new Date());
         const safeJoinedAt = Number.isNaN(normalizedJoinedAt.getTime()) ? new Date() : normalizedJoinedAt;
+        const defaultLimit = await getDefaultFreeTranslationLimit();
 
         const server = await Server.findOneAndUpdate(
             { serverId },
@@ -828,7 +854,7 @@ const markServerAsNewlyJoined = async (serverId, serverName = 'Unknown Server', 
                     serverUniqueId: uuidv4(),
                     translationCount: 0,
                     monetization: {
-                        freeTranslationLimit: 20,
+                        freeTranslationLimit: defaultLimit,
                         isRestricted: true,
                         isExempt: false,
                         lastReset: new Date(),
@@ -884,6 +910,7 @@ const markUnlimitedUsageOfferSent = async (serverId, translationCount = null) =>
  */
 const incrementTranslationCount = async (serverId) => {
     try {
+        const defaultLimit = await getDefaultFreeTranslationLimit();
         const server = await Server.findOneAndUpdate(
             { serverId },
             {
@@ -892,7 +919,7 @@ const incrementTranslationCount = async (serverId) => {
                     serverUniqueId: uuidv4(),
                     serverName: 'Unknown Server',
                     monetization: {
-                        freeTranslationLimit: 20,
+                        freeTranslationLimit: defaultLimit,
                         isRestricted: true,
                         isExempt: false,
                         lastReset: new Date(),
@@ -936,6 +963,7 @@ const resetTranslationCount = async (serverId) => {
  */
 const updateServerTranslationCount = async (serverId, count) => {
     try {
+        const defaultLimit = await getDefaultFreeTranslationLimit();
         const server = await Server.findOneAndUpdate(
             { serverId },
             {
@@ -944,7 +972,7 @@ const updateServerTranslationCount = async (serverId, count) => {
                     serverUniqueId: uuidv4(),
                     serverName: 'Unknown Server',
                     monetization: {
-                        freeTranslationLimit: 20,
+                        freeTranslationLimit: defaultLimit,
                         isRestricted: true,
                         isExempt: false,
                         lastReset: new Date(),

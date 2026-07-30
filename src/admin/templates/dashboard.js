@@ -2081,6 +2081,7 @@ async function generateVoiceTab() {
     const client = global.discordClient;
     const VoiceCallTranslation = require('../../models/VoiceCallTranslation');
     const STTSettings = require('../../models/STTSettings');
+    const Server = require('../../models/Server');
     const voiceCallTranslationService = require('../../services/voiceCallTranslationService');
 
     // Fetch all data in parallel
@@ -2094,11 +2095,18 @@ async function generateVoiceTab() {
         Promise.resolve(voiceCallTranslationService.getActiveCount())
     ]);
 
+    const vctGuildIds = vctRecords.map(r => r.guildId);
+    const serverDocs = await Server.find({ serverId: { $in: vctGuildIds } }).lean();
+    const serverMap = new Map(serverDocs.map(s => [s.serverId, s]));
+
+    const now = new Date();
+    const today = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+
     const vctEnabled = vctRecords.filter(v => v.enabled).length;
     const sttEnabled = sttRecords.filter(s => s.enabled).length;
-    const vctGuildIds = new Set(vctRecords.filter(v => v.enabled).map(v => v.guildId));
-    const sttGuildIds = new Set(sttRecords.filter(s => s.enabled).map(s => s.guildId));
-    const totalVoiceServers = new Set([...vctGuildIds, ...sttGuildIds]).size;
+    const vctGuildIdsSet = new Set(vctRecords.filter(v => v.enabled).map(v => v.guildId));
+    const sttGuildIdsSet = new Set(sttRecords.filter(s => s.enabled).map(s => s.guildId));
+    const totalVoiceServers = new Set([...vctGuildIdsSet, ...sttGuildIdsSet]).size;
 
     // Model distribution
     const modelDist = {};
@@ -2135,6 +2143,11 @@ async function generateVoiceTab() {
             ? new Date(record.lastStartedAt).toLocaleString()
             : '—';
 
+        const serverDoc = serverMap.get(record.guildId);
+        const isPremium = serverDoc?.monetization?.isExempt === true;
+        const dailyMinutesUsed = record.dailyUsageDate === today ? (record.dailyMinutesUsed || 0) : 0;
+        const dailyRemaining = isPremium ? null : Math.max(0, 60 - dailyMinutesUsed);
+
         return `
             <tr>
                 <td>
@@ -2147,6 +2160,12 @@ async function generateVoiceTab() {
                 <td><span class="badge badge-info">${record.sourceLanguage || 'auto'} → ${record.targetLanguage || '—'}</span></td>
                 <td style="font-size: 13px;">${record.model || '—'}</td>
                 <td style="font-size: 13px;">${record.voice || '—'}</td>
+                <td style="text-align: center;">
+                    ${isPremium
+                        ? '<span class="badge badge-success" style="font-size: 11px;">💎 Premium</span>'
+                        : `<span class="badge badge-warning" style="font-size: 11px;">Free ${dailyMinutesUsed}/60m</span>`
+                    }
+                </td>
                 <td style="text-align: center;">
                     ${isActive
                         ? '<span class="badge badge-success" style="display: inline-flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block;"></span> Live</span>'
@@ -2360,12 +2379,13 @@ async function generateVoiceTab() {
                                 <th>Languages</th>
                                 <th>Model</th>
                                 <th>Voice</th>
+                                <th style="text-align: center;">Plan</th>
                                 <th style="text-align: center;">Status</th>
                                 <th>Last Started</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${vctRows || '<tr><td colspan="7" style="text-align: center; padding: 40px; color: var(--text-tertiary);">No VCT configurations found.</td></tr>'}
+                            ${vctRows || '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-tertiary);">No VCT configurations found.</td></tr>'}
                         </tbody>
                     </table>
                 </div>

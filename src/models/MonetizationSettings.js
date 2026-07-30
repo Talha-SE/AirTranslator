@@ -8,7 +8,7 @@ const monetizationSettingsSchema = new mongoose.Schema({
     },
     defaultFreeTranslationLimit: {
         type: Number,
-        default: 50
+        default: 100
     },
     enableGlobalRestriction: {
         type: Boolean,
@@ -24,7 +24,7 @@ const monetizationSettingsSchema = new mongoose.Schema({
     },
     voteBonusAmount: {
         type: Number,
-        default: 20,
+        default: 30,
         min: 1,
         max: 1000
     }

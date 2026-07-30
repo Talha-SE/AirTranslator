@@ -63,7 +63,7 @@ function createLogger(scope) {
 
 const logger = createLogger('bot');
 
-const TOPGG_VOTE_BONUS_AMOUNT = 20;
+const TOPGG_VOTE_BONUS_AMOUNT = 30;
 const PENDING_VOTE_TARGET_TTL_MS = 60 * 60 * 1000;
 const TOPGG_CLICK_REWARD_DELAY_MS = 60 * 1000;
 
@@ -634,7 +634,86 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             }
         }
     } catch (e) {
-        logger.debug('[STT] voiceStateUpdate handler failed', { error: e?.message || e });
+        logger.debug('[STT] voiceStateUpdate handler failed', { error: e?.message });
+    }
+
+    // VCT auto-join/leave
+    try {
+        const guild = newState?.guild || oldState?.guild;
+        if (!guild) return;
+
+        const VoiceCallTranslation = require('./models/VoiceCallTranslation');
+        const Server = require('./models/Server');
+        const voiceCallTranslationService = require('./services/voiceCallTranslationService');
+
+        const vctSettings = await VoiceCallTranslation.findOne({ guildId: guild.id }).lean();
+        if (!vctSettings || !vctSettings.enabled || !vctSettings.voiceChannelId) return;
+
+        const targetChannelId = vctSettings.voiceChannelId;
+        const userJoined = newState.channelId === targetChannelId && oldState.channelId !== targetChannelId;
+        const userLeft = oldState.channelId === targetChannelId && newState.channelId !== targetChannelId;
+
+        if (!userJoined && !userLeft) return;
+
+        // Skip bots
+        const member = userJoined ? newState.member : oldState.member;
+        if (member?.user?.bot) return;
+
+        const voiceChannel = guild.channels.cache.get(targetChannelId);
+        if (!voiceChannel) return;
+
+        const humanMembers = voiceChannel.members.filter(m => !m.user.bot);
+
+        if (userJoined && humanMembers.size === 1) {
+            // First human user joined — auto-start VCT if not already active
+            if (voiceCallTranslationService.isTranslationActive(guild.id)) return;
+
+            const serverDoc = await Server.findOne({ serverId: guild.id }).lean();
+            const isPremium = serverDoc?.monetization?.isExempt === true;
+
+            // Check daily free limit for non-premium
+            let remainingMinutes = null;
+            if (!isPremium) {
+                const now = new Date();
+                const today = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+                let vctDoc = await VoiceCallTranslation.findOne({ guildId: guild.id });
+                if (vctDoc) {
+                    if (vctDoc.dailyUsageDate !== today) {
+                        vctDoc.dailyMinutesUsed = 0;
+                        vctDoc.dailyUsageDate = today;
+                        await vctDoc.save();
+                    }
+                    if (vctDoc.dailyMinutesUsed >= 60) {
+                        logger.info(`[VCT Auto-Join] ⏰ Free limit reached for guild ${guild.id} — skipping auto-start`);
+                        return;
+                    }
+                    remainingMinutes = 60 - vctDoc.dailyMinutesUsed;
+                }
+            }
+
+            logger.info(`[VCT Auto-Join] 🎤 First user joined — auto-starting VCT in "${voiceChannel.name}" (${guild.name})`);
+
+            await voiceCallTranslationService.startTranslation(
+                guild.id,
+                targetChannelId,
+                vctSettings.sourceLanguage || 'auto',
+                vctSettings.targetLanguage,
+                vctSettings.model || 'gemini-3.1-flash-live-preview',
+                client,
+                vctSettings.voice || 'Aoede',
+                remainingMinutes
+            );
+        }
+
+        if (userLeft && humanMembers.size === 0) {
+            // Last human user left — auto-stop VCT
+            if (!voiceCallTranslationService.isTranslationActive(guild.id)) return;
+
+            logger.info(`[VCT Auto-Leave] 🔇 Channel empty — auto-stopping VCT (${guild.name})`);
+            await voiceCallTranslationService.stopTranslation(guild.id, client);
+        }
+    } catch (e) {
+        logger.debug('[VCT] voiceStateUpdate handler failed', { error: e?.message });
     }
 });
 

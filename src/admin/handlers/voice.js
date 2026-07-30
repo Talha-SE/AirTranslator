@@ -4,7 +4,13 @@
  */
 const VoiceCallTranslation = require('../../models/VoiceCallTranslation');
 const STTSettings = require('../../models/STTSettings');
+const Server = require('../../models/Server');
 const voiceCallTranslationService = require('../../services/voiceCallTranslationService');
+
+function getTodayUTC() {
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+}
 
 /**
  * Get aggregated voice stats
@@ -73,9 +79,20 @@ async function getVctServers(req, res) {
         const client = global.discordClient;
         const vctRecords = await VoiceCallTranslation.find({}).sort({ updatedAt: -1 }).lean();
 
+        const guildIds = vctRecords.map(r => r.guildId);
+        const serverDocs = await Server.find({ serverId: { $in: guildIds } }).lean();
+        const serverMap = new Map(serverDocs.map(s => [s.serverId, s]));
+
+        const today = getTodayUTC();
+
         const enriched = vctRecords.map(record => {
             const guild = client ? client.guilds.cache.get(record.guildId) : null;
             const liveStatus = voiceCallTranslationService.getTranslationStatus(record.guildId);
+            const serverDoc = serverMap.get(record.guildId);
+            const isPremium = serverDoc?.monetization?.isExempt === true;
+
+            const dailyMinutesUsed = record.dailyUsageDate === today ? (record.dailyMinutesUsed || 0) : 0;
+            const dailyRemaining = isPremium ? null : Math.max(0, 60 - dailyMinutesUsed);
 
             return {
                 guildId: record.guildId,
@@ -90,6 +107,9 @@ async function getVctServers(req, res) {
                 targetLanguage: record.targetLanguage || '—',
                 model: record.model || 'unknown',
                 voice: record.voice || '—',
+                isPremium,
+                dailyMinutesUsed,
+                dailyRemaining,
                 lastStartedAt: record.lastStartedAt,
                 lastStoppedAt: record.lastStoppedAt,
                 updatedAt: record.updatedAt

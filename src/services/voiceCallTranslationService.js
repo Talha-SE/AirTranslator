@@ -46,22 +46,13 @@ function getGenAIClient() {
 // ==============================
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
-// Models — gemini-3.5-live-translate-preview (continuous), gemini-3.1-flash-live-preview & gemini-2.5-flash-native-audio (turn-based)
-const MODEL_ID = 'gemini-3.5-live-translate-preview';
+// Models — gemini-3.1-flash-live-preview & gemini-2.5-flash-native-audio (turn-based)
 const FLASH_MODEL_ID = 'gemini-3.1-flash-live-preview';
 const NATIVE_AUDIO_MODEL_ID = 'gemini-2.5-flash-native-audio-preview-12-2025';
 const GEMINI_INPUT_RATE = 16000;  // Gemini accepts 16kHz input
 const GEMINI_OUTPUT_RATE = 24000; // Gemini outputs translated audio at 24kHz
 
 const GEMINI_LIVE_MODELS = {
-  [MODEL_ID]: {
-    modelId: MODEL_ID,
-    label: 'Live Translate',
-    sampleRate: GEMINI_INPUT_RATE,
-    encoding: 'LINEAR16',
-    supportsBidi: true,
-    isTurnBased: false, // continuous mode — uses translationConfig (not speechConfig)
-  },
   [FLASH_MODEL_ID]: {
     modelId: FLASH_MODEL_ID,
     label: 'Flash Live',
@@ -143,6 +134,9 @@ const VOICE_RECONNECT_MAX_ATTEMPTS = 3;
 /** Session timeout: 6 hours */
 const SESSION_MAX_DURATION_MS = 6 * 60 * 60 * 1000;
 
+/** Free daily VCT limit for non-premium servers (minutes) */
+const FREE_DAILY_LIMIT_MINUTES = 60;
+
 /** Minimum playback buffer in seconds (300ms — play as soon as translation arrives) */
 const MIN_PLAYBACK_BUFFER_SECONDS = 0.3;
 
@@ -152,7 +146,7 @@ const PLAYBACK_CHUNK_SECONDS = 1.0;
 /** Silence tail appended to end of translated audio to prevent Opus interpolation artifacts (ms) */
 const SILENCE_TAIL_MS = 100;
 
-/** Maximum items in Gemini send queue before dropping oldest continuous chunks */
+/** Maximum items in Gemini send queue before dropping oldest chunks */
 const MAX_SEND_QUEUE_ITEMS = 30;
 
 /** How often to sweep voice channel for missing subscriptions (ms) */
@@ -165,7 +159,7 @@ const STREAM_RECOVERY_DELAY_MS = 500;
 const MAX_STREAM_RECOVERY_ATTEMPTS = 5;
 
 /** Max number of flashModelAudioParts before dropping oldest (prevents unbounded growth for turn-based models) */
-const MAX_FLASH_MODEL_PARTS = 10000; // Support ~16 min of continuous audio at ~100ms parts
+const MAX_FLASH_MODEL_PARTS = 10000; // Support ~16 min of audio at ~100ms parts
 
 /** VAD: Minimum speech probability to consider audio as speech */
 const VAD_MIN_SPEECH_PROB = 0.4;
@@ -374,9 +368,10 @@ function getLanguageName(langCode) {
  * @param {string} targetLanguage - Target language code
  * @param {string} modelId - Gemini model ID
  * @param {Object} client - Discord.js client
+ * @param {number|null} remainingMinutes - Free minutes remaining for non-premium servers
  * @returns {Promise<Object>} - Result object
  */
-async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetLanguage, modelId, client, voiceName) {
+async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetLanguage, modelId, client, voiceName, remainingMinutes = null) {
   const log = getLogger(guildId);
   
   // Prevent concurrent starts for the same guild (race condition guard)
@@ -482,7 +477,6 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       flashModelAudioParts: [],
       /** Timeout to clear flashModelAudioParts if turnComplete stalls */
       flashModelPartsTimer: null,
-      isTurnBased: [FLASH_MODEL_ID, NATIVE_AUDIO_MODEL_ID].includes(modelId || DEFAULT_MODEL),
       /** Map of userId → { pcmBuffer, flushTimer } for active real-time streams */
       activeStreams: new Map(),
       /** Interval ID for periodic activity check */
@@ -495,16 +489,6 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       audioSendQueue: [],
       /** Whether a send is currently in progress (queue processing flag) */
       isSendingAudio: false,
-      /** Per-user audio send queues (continuous mode only — buffers non-active speakers) */
-      userSendQueues: new Map(),
-      /** Per-user queue processing locks (continuous mode) */
-      userQueueProcessing: new Map(),
-      /** Currently active speaker userId for continuous mode gating */
-      activeSpeakerId: null,
-      /** Map of userId → timestamp when they started speaking */
-      speakerTimestamps: new Map(),
-      /** Crosstalk flush timer — force-flushes queued speakers if active speaker talks too long */
-      crosstalkFlushTimer: null,
       /** Interval ID for subscription sweep */
       subscriptionSweepInterval: null,
       /** Timeout ID for playback drain timer */
@@ -513,6 +497,10 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       recoveryTimers: new Map(),
       /** Map of userId → recovery attempt count */
       recoveryAttempts: new Map(),
+      /** Free usage tracking for non-premium servers */
+      remainingMinutes,
+      freeUsageAutoStopTimer: null,
+      freeUsageWarningTimer: null,
     };
 
     // Subscribe audio player to connection
@@ -576,6 +564,49 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       log.warn(`⏰ Session timeout reached (${SESSION_MAX_DURATION_MS / 3600000}h) — stopping translation`);
       await stopTranslation(guildId, client);
     }, SESSION_MAX_DURATION_MS);
+
+    // Free usage timers for non-premium servers
+    if (remainingMinutes !== null && remainingMinutes > 0) {
+      const ONE_MINUTE_MS = 60 * 1000;
+      const WARNING_THRESHOLD = 10;
+
+      // Warning timer — 10 minutes before limit (or immediately if < 10 min remaining)
+      const warningDelay = remainingMinutes > WARNING_THRESHOLD
+        ? (remainingMinutes - WARNING_THRESHOLD) * ONE_MINUTE_MS
+        : 0;
+
+      if (warningDelay === 0) {
+        // Less than 10 min remaining — send warning immediately
+        setTimeout(() => {
+          sendFreeUsageWarning(guildId, client, remainingMinutes);
+        }, 5000);
+      } else {
+        state.freeUsageWarningTimer = setTimeout(() => {
+          sendFreeUsageWarning(guildId, client, WARNING_THRESHOLD);
+        }, warningDelay);
+      }
+
+      // Auto-stop timer — when free minutes run out
+      state.freeUsageAutoStopTimer = setTimeout(async () => {
+        log.warn(`⏰ Free usage limit reached (${remainingMinutes} min) — auto-stopping translation`);
+        const channel = client.guilds.cache.get(guildId)?.channels.cache.get(state.voiceChannelId);
+        if (channel) {
+          const limitEmbed = new EmbedBuilder()
+            .setColor(0xFF4444)
+            .setTitle('⏰ Free Limit Reached')
+            .setDescription(
+              `Voice Call Translation has been **automatically stopped**.\n\n` +
+              `You've used all **${FREE_DAILY_LIMIT_MINUTES} free minutes** for today.\n` +
+              'Come back tomorrow or [go premium](https://www.patreon.com/c/tsio/membership) for unlimited access.'
+            )
+            .setTimestamp();
+          try {
+            await channel.send({ embeds: [limitEmbed] });
+          } catch (e) { /* ignore send errors */ }
+        }
+        await stopTranslation(guildId, client);
+      }, remainingMinutes * ONE_MINUTE_MS);
+    }
 
     // Handle connection state changes with detailed logging
     connection.on(VoiceConnectionStatus.Connecting, () => {
@@ -847,9 +878,8 @@ function appendSilenceTail(stereoBuffer) {
  * Called proactively for all users in channel on join, and when new users join.
  * Also triggered by speaking.start as a fallback.
  *
- * BEHAVIOR BY MODEL:
+ * BEHAVIOR:
  * - Turn-based (3.1 Flash, 2.5 Native): batch mode — accumulate FULL utterance, send on silence
- * - Continuous (3.5 Live): streaming mode — flush PCM every 200ms for real-time translation
  *
  * @param {Object} state - The guild's voice call translation state
  * @param {string} userId - Discord user ID to subscribe to
@@ -869,7 +899,7 @@ async function setupUserStream(state, userId, source = 'direct') {
   // Reset recovery attempts on successful subscribe
   state.recoveryAttempts.set(userId, 0);
 
-  const silenceDuration = state.isTurnBased ? FLASH_SILENCE_DURATION_MS : SILENCE_DURATION_MS;
+  const silenceDuration = FLASH_SILENCE_DURATION_MS;
   const audioStream = receiver.subscribe(userId, {
     end: {
       behavior: EndBehaviorType.AfterSilence,
@@ -929,117 +959,50 @@ async function setupUserStream(state, userId, source = 'direct') {
     state.lastActivityTime = Date.now();
   });
 
-  if (!state.isTurnBased) {
-    const FLUSH_INTERVAL_MS = 200;
-    streamInfo.flushInterval = setInterval(async () => {
-      if (pcmChunks.length > streamInfo.lastFlushIndex && state.geminiSession && state.isRunning) {
-        const newChunks = pcmChunks.slice(streamInfo.lastFlushIndex);
+  // Turn-based mode: periodic force-flush prevents PCM buffer bloat on long speech
+  // Also runs VAD to track speech state for filtering the final utterance
+  streamInfo.flushInterval = setInterval(async () => {
+    if (pcmChunks.length > streamInfo.lastFlushIndex && state.geminiSession && state.isRunning) {
+      const newChunks = pcmChunks.slice(streamInfo.lastFlushIndex);
+      streamInfo.lastFlushIndex = pcmChunks.length;
+      const buffer = Buffer.concat(newChunks);
+      const durationMs = Math.round((buffer.length / 2) / PCM_SAMPLE_RATE * 1000);
+      log.debug(`⏰ ${username}: Force-flushing ${(buffer.length / 1024).toFixed(1)} KB (${durationMs}ms)`);
+      // Prune old chunks to prevent unbounded growth
+      if (streamInfo.lastFlushIndex > 20) {
+        pcmChunks.splice(0, streamInfo.lastFlushIndex);
         streamInfo.lastFlushIndex = pcmChunks.length;
-        const buffer = Buffer.concat(newChunks);
-        // Prune old chunks from array to prevent unbounded growth
-        if (streamInfo.lastFlushIndex > 20) {
-          pcmChunks.splice(0, streamInfo.lastFlushIndex);
-          streamInfo.lastFlushIndex = pcmChunks.length;
-        }
-        const downsampled = downsamplePcm(buffer, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
-        if (downsampled.length > 0) {
-          // === VAD CHECK: Only send if speech is detected ===
-          let shouldSend = true;
-          if (streamInfo.userVAD) {
-            try {
-              const vadResult = await streamInfo.userVAD.processChunk(downsampled);
-              streamInfo.lastSpeechProbability = vadResult.probability;
-              
-              // Log VAD debug info for first few frames to diagnose audio levels
-              if (streamInfo.consecutiveNoiseFrames < 5 || vadResult.isSpeech) {
-                const dbg = vadResult.debug || {};
-                log.debug(`📊 ${username}: VAD rms=${dbg.rms?.toFixed(6) || 'N/A'} peak=${dbg.peakAmplitude?.toFixed(6) || 'N/A'} speech=${vadResult.isSpeech} frames=${dbg.samplesProcessed} chunk=${(downsampled.length / 1024).toFixed(1)}KB`);
-              }
-              
-              if (vadResult.isSpeech) {
-                // Speech detected — reset noise counter, mark speech as detected
-                streamInfo.consecutiveNoiseFrames = 0;
-                streamInfo.hasSpeechBeenDetected = true;
-                shouldSend = true;
-              } else {
-                // No speech detected
-                streamInfo.consecutiveNoiseFrames++;
-                
-                if (streamInfo.consecutiveNoiseFrames > VAD_MAX_NOISE_FRAMES) {
-                  // Too much noise — skip sending to Gemini
-                  shouldSend = false;
-                  log.debug(`🔇 ${username}: VAD noise filter — skipping ${(downsampled.length / 1024).toFixed(1)} KB (rms: ${vadResult.rms?.toFixed(6)}, noise: ${streamInfo.consecutiveNoiseFrames})`);
-                } else if (!streamInfo.hasSpeechBeenDetected) {
-                  // No speech yet in this utterance — skip
-                  shouldSend = false;
-                }
-                // If speech was detected earlier, allow trailing audio through (word endings)
-              }
-            } catch (vadErr) {
-              // VAD error — send audio anyway as fallback
-              log.debug(`⚠️ VAD error for ${username}: ${vadErr.message}`);
-              shouldSend = true;
-            }
-          }
-          
-          if (shouldSend) {
-            // Push to per-user queue instead of shared queue — prevents interleaving
-            const userQueue = state.userSendQueues.get(userId) || [];
-            userQueue.push(downsampled);
-            state.userSendQueues.set(userId, userQueue);
-            processUserQueue(state, userId).catch((err) => {
-              log.warn(`⚠️ processUserQueue error for ${username}: ${err.message}`);
-            });
-          }
-        }
       }
-    }, FLUSH_INTERVAL_MS);
-  } else {
-    // Turn-based mode: periodic force-flush prevents PCM buffer bloat on long continuous speech
-    // Also runs VAD to track speech state for filtering the final utterance
-    streamInfo.flushInterval = setInterval(async () => {
-      if (pcmChunks.length > streamInfo.lastFlushIndex && state.geminiSession && state.isRunning) {
-        const newChunks = pcmChunks.slice(streamInfo.lastFlushIndex);
-        streamInfo.lastFlushIndex = pcmChunks.length;
-        const buffer = Buffer.concat(newChunks);
-        const durationMs = Math.round((buffer.length / 2) / PCM_SAMPLE_RATE * 1000);
-        log.debug(`⏰ ${username}: Force-flushing ${(buffer.length / 1024).toFixed(1)} KB (${durationMs}ms)`);
-        // Prune old chunks to prevent unbounded growth
-        if (streamInfo.lastFlushIndex > 20) {
-          pcmChunks.splice(0, streamInfo.lastFlushIndex);
-          streamInfo.lastFlushIndex = pcmChunks.length;
-        }
-        const downsampled = downsamplePcm(buffer, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
-        if (downsampled.length > 0) {
-          // Run VAD on this chunk to track speech state
-          if (streamInfo.userVAD) {
-            try {
-              const vadResult = await streamInfo.userVAD.processChunk(downsampled);
-              streamInfo.lastSpeechProbability = vadResult.probability;
-              
-              // Log VAD debug info for first few frames
-              if (streamInfo.consecutiveNoiseFrames < 5 || vadResult.isSpeech) {
-                const dbg = vadResult.debug || {};
-                log.debug(`📊 ${username}: VAD rms=${dbg.rms?.toFixed(6) || 'N/A'} peak=${dbg.peakAmplitude?.toFixed(6) || 'N/A'} speech=${vadResult.isSpeech} frames=${dbg.samplesProcessed} chunk=${(downsampled.length / 1024).toFixed(1)}KB`);
-              }
-              
-              if (vadResult.isSpeech) {
-                streamInfo.hasSpeechBeenDetected = true;
-                streamInfo.consecutiveNoiseFrames = 0;
-              } else {
-                streamInfo.consecutiveNoiseFrames++;
-              }
-            } catch (vadErr) {
-              // VAD error — continue without filtering
+      const downsampled = downsamplePcm(buffer, PCM_SAMPLE_RATE, GEMINI_INPUT_RATE);
+      if (downsampled.length > 0) {
+        // Run VAD on this chunk to track speech state
+        if (streamInfo.userVAD) {
+          try {
+            const vadResult = await streamInfo.userVAD.processChunk(downsampled);
+            streamInfo.lastSpeechProbability = vadResult.probability;
+            
+            // Log VAD debug info for first few frames
+            if (streamInfo.consecutiveNoiseFrames < 5 || vadResult.isSpeech) {
+              const dbg = vadResult.debug || {};
+              log.debug(`📊 ${username}: VAD rms=${dbg.rms?.toFixed(6) || 'N/A'} peak=${dbg.peakAmplitude?.toFixed(6) || 'N/A'} speech=${vadResult.isSpeech} frames=${dbg.samplesProcessed} chunk=${(downsampled.length / 1024).toFixed(1)}KB`);
             }
+            
+            if (vadResult.isSpeech) {
+              streamInfo.hasSpeechBeenDetected = true;
+              streamInfo.consecutiveNoiseFrames = 0;
+            } else {
+              streamInfo.consecutiveNoiseFrames++;
+            }
+          } catch (vadErr) {
+            // VAD error — continue without filtering
           }
-          sendChunkToGemini(state, downsampled).catch((err) => {
-            log.warn(`⚠️ ${username}: Force-flush send error: ${err.message}`);
-          });
         }
+        sendChunkToGemini(state, downsampled).catch((err) => {
+          log.warn(`⚠️ ${username}: Force-flush send error: ${err.message}`);
+        });
       }
-    }, TURN_BASED_FLUSH_INTERVAL_MS);
-  }
+    }
+  }, TURN_BASED_FLUSH_INTERVAL_MS);
 
   pcmStream.on('end', async () => {
     const info = state.activeStreams.get(userId);
@@ -1154,37 +1117,12 @@ async function setupUserStream(state, userId, source = 'direct') {
     log.info(`⏹️ ${username}: Utterance #${streamInfo.utteranceCount} ended — ${(fullUtterance.length / 1024).toFixed(1)} KB PCM, ${durationMs}ms (source: ${streamInfo.subscribeSource})`);
 
     try {
-      if (!state.isTurnBased) {
-        // Continuous mode: push final utterance to per-user queue, then flush if active
-        const userQueue = state.userSendQueues.get(userId) || [];
-        userQueue.push(downsampled);
-        state.userSendQueues.set(userId, userQueue);
-        if (state.activeSpeakerId === userId) {
-          await processUserQueue(state, userId);
-        }
-        log.success(`📤 Queued utterance for ${username} (${(downsampled.length / 1024).toFixed(1)} KB, ${durationMs}ms)`);
-
-        // Signal turn complete to stop Gemini from generating endlessly
-        if (state.geminiSession) {
-          try {
-            state.geminiSession.sendClientContent({ turnComplete: true });
-            log.debug(`🔚 Sent turnComplete signal for ${username}`);
-          } catch (e) {
-            log.warn(`⚠️ Failed to send turnComplete: ${e.message}`);
-          }
-        }
-
-        // Transition to next speaker — this user's stream ended
-        await transitionFromSpeaker(state, userId);
-      } else {
-        // Turn-based mode: send full utterance + silence tail — model's internal VAD detects silence and responds
-        const SILENCE_TAIL_SAMPLES = GEMINI_INPUT_RATE; // 1 second of silence at 16kHz
-        const silenceTail = Buffer.alloc(SILENCE_TAIL_SAMPLES * 2); // 16-bit PCM = 2 bytes/sample
-        const audioWithSilence = Buffer.concat([downsampled, silenceTail]);
-        await sendChunkToGemini(state, audioWithSilence);
-        log.success(`📤 Sent utterance to Gemini (${(downsampled.length / 1024).toFixed(1)} KB, ${durationMs}ms + 1s silence tail)`);
-        // NOTE: Do NOT send turnComplete for turn-based models — they auto-detect silence via internal VAD
-      }
+      // Turn-based mode: send full utterance + silence tail — model's internal VAD detects silence and responds
+      const SILENCE_TAIL_SAMPLES = GEMINI_INPUT_RATE; // 1 second of silence at 16kHz
+      const silenceTail = Buffer.alloc(SILENCE_TAIL_SAMPLES * 2); // 16-bit PCM = 2 bytes/sample
+      const audioWithSilence = Buffer.concat([downsampled, silenceTail]);
+      await sendChunkToGemini(state, audioWithSilence);
+      log.success(`📤 Sent utterance to Gemini (${(downsampled.length / 1024).toFixed(1)} KB, ${durationMs}ms + 1s silence tail)`);
     } catch (err) {
       log.error(`❌ Failed to send utterance to Gemini: ${err.message}`);
     } finally {
@@ -1224,47 +1162,24 @@ async function setupUserStream(state, userId, source = 'direct') {
  * KEY DESIGN:
  * - Turn-based models (3.1 Flash, 2.5 Native): batch mode — accumulate FULL utterance, send on silence.
  *   Gemini receives a complete sentence → produces a coherent translation.
- *   Speech ends after 2s of silence (EndBehaviorType.AfterSilence).
- *
- * - Continuous model (3.5 Live): streaming mode — flush small PCM chunks to Gemini every 200ms.
- *   Gemini translates in real-time as audio arrives.
- *   Each user's stream also sends a final chunk on silence.
+ *   Speech ends after 1.5s of silence (EndBehaviorType.AfterSilence).
  */
 function setupRealtimeAudioPipeline(state) {
   const log = getLogger(state.guildId);
   const receiver = state.connection.receiver;
 
-  log.info(`🔍 Listening for speakers in voice channel (${state.isTurnBased ? 'batch' : 'streaming'} mode)...`);
+  log.info(`🔍 Listening for speakers in voice channel (batch mode)...`);
 
   /**
    * BATCH MODE: Accumulate the ENTIRE utterance, then send to Gemini at once.
    * Gemini receives a complete sentence → produces a coherent translation.
-   * Speech ends after 2s of silence (EndBehaviorType.AfterSilence).
+   * Speech ends after 1.5s of silence (EndBehaviorType.AfterSilence).
    */
   // Listen for speaking start — triggers subscription (proactive setup below covers existing users)
   receiver.speaking.on('start', (userId) => {
     if (userId === state.client.user.id) return;
     // If user already subscribed via proactive setup, this is a no-op
     setupUserStream(state, userId);
-
-    // Continuous mode: track active speaker for per-user queue gating
-    if (!state.isTurnBased && state.isRunning) {
-      const prevSpeaker = state.activeSpeakerId;
-      state.activeSpeakerId = userId;
-      state.speakerTimestamps.set(userId, Date.now());
-
-      if (prevSpeaker && prevSpeaker !== userId) {
-        const prevUser = state.client.users.cache.get(prevSpeaker);
-        const curUser = state.client.users.cache.get(userId);
-        log.info(`🗣️ Speaker switch: ${prevUser?.username || prevSpeaker} → ${curUser?.username || userId}`);
-      }
-
-      // Set up crosstalk timer if other users have buffered audio waiting
-      setupCrosstalkTimer(state, userId);
-
-      // Process this user's queue immediately (drains any buffered audio from previous turns)
-      processUserQueue(state, userId).catch(() => {});
-    }
   });
 
   receiver.speaking.on('end', (userId) => {
@@ -1273,10 +1188,6 @@ function setupRealtimeAudioPipeline(state) {
     if (state.onActivityChange) {
       state.onActivityChange('silence', userId);
     }
-    // Note for continuous mode: speaker transition happens in pcmStream.on('end'),
-    // not here. The speaking.end event fires immediately on silence detection, but
-    // the Opus stream continues for another ~1.1s (AfterSilence window). We wait
-    // for the actual stream end before switching, so the final audio data is captured.
   });
 
   // Handle audio playback state — when current chunk finishes, try playing next batch
@@ -1297,7 +1208,7 @@ function setupRealtimeAudioPipeline(state) {
     }
   });
 
-  log.success(`✅ Audio pipeline ready — ${state.isTurnBased ? 'batch mode (full utterance → Gemini → translation)' : 'streaming mode (200ms chunks → real-time translation)'}`);
+  log.success(`✅ Audio pipeline ready — batch mode (full utterance → Gemini → translation)`);
 
   // Proactively subscribe to ALL users currently in the voice channel
   ensureVoiceChannelSubscriptions(state);
@@ -1309,23 +1220,8 @@ function setupRealtimeAudioPipeline(state) {
 }
 
 /**
- * Build the config for gemini-3.5-live-translate-preview.
- * Uses translationConfig (NOT systemInstruction/speechConfig — those are unsupported).
- * Official docs: https://ai.google.dev/gemini-api/docs/live-api/live-translate
- */
-function buildTranslateConfig(state) {
-  return {
-    responseModalities: ['AUDIO'],
-    translationConfig: {
-      targetLanguageCode: state.targetLanguage,
-      echoTargetLanguage: false,
-    },
-  };
-}
-
-/**
  * Build a system instruction for bidirectional translation between two languages.
- * Works for ALL models (3.5 Live, Flash Live, Native Audio).
+ * Works for ALL models (Flash Live, Native Audio).
  */
 function buildTranslationSystemInstruction(sourceLanguage, targetLanguage) {
   const lang1 = getLanguageName(sourceLanguage);
@@ -1341,7 +1237,7 @@ function buildTranslationSystemInstruction(sourceLanguage, targetLanguage) {
     `- NEVER add greetings, explanations, or any text.`,
     `- NEVER say "I understand", "Here is", "The speaker said", "In other words", or similar.`,
     `- NEVER add your own thoughts, questions, or comments.`,
-    `- NEVER repeat the original text back.`,
+    `- NEVER repeat the original text back.`
     `- If unsure, translate as best you can, output ONLY that. No disclaimers.`,
     `Your job is to translate speech to speech, nothing else.`,
   ].join('\n');
@@ -1367,7 +1263,7 @@ function buildFlashLiveConfig(state, systemInstruction) {
       },
     },
     thinkingConfig: {
-      thinkingLevel: 'high',
+      thinkingLevel: 'medium',
     },
     contextWindowCompression: {
       triggerTokens: '104857',
@@ -1414,13 +1310,12 @@ async function connectGeminiSession(state) {
   const model = GEMINI_LIVE_MODELS[state.modelId] || GEMINI_LIVE_MODELS[DEFAULT_MODEL];
   const isFlash = state.modelId === FLASH_MODEL_ID;
   const isNativeAudio = state.modelId === NATIVE_AUDIO_MODEL_ID;
-  const isTurnBasedModel = isFlash || isNativeAudio;
 
   log.info(`🔌 Opening Gemini Live WebSocket session for model: ${state.modelId}...`);
 
   const genAI = getGenAIClient();
 
-  // Build the system instruction for bidirectional translation (only used by 3.1/2.5 — 3.5 uses translationConfig)
+  // Build the system instruction for bidirectional translation
   const systemInstruction = buildTranslationSystemInstruction(
     state.sourceLanguage, state.targetLanguage
   );
@@ -1430,12 +1325,9 @@ async function connectGeminiSession(state) {
   if (isNativeAudio) {
     config = buildNativeAudioConfig(state, systemInstruction);
     log.info(`📖 Using Native Audio config (voice: ${state.voiceName || 'Aoede'})`);
-  } else if (isFlash) {
+  } else {
     config = buildFlashLiveConfig(state, systemInstruction);
     log.info(`📖 Using Flash Live config (voice: ${state.voiceName || 'Zephyr'})`);
-  } else {
-    config = buildTranslateConfig(state);
-    log.info(`📖 Using Live Translate config (target: ${state.targetLanguage}, echoTarget: true)`);
   }
 
   const session = await genAI.live.connect({
@@ -1450,104 +1342,69 @@ async function connectGeminiSession(state) {
           // Debug: log all incoming messages to diagnose response issues
           const msgType = message?.serverContent ? 'serverContent' : message?.toolCall ? 'toolCall' : message?.setupComplete ? 'setupComplete' : 'other';
           log.debug(`📨 Gemini message: type=${msgType} keys=${Object.keys(message || {}).join(',')}`);
-          if (isTurnBasedModel) {
-            // Turn-based models (Flash Live, Native Audio): buffer audio parts until turnComplete
-            const modelTurn = message?.serverContent?.modelTurn;
-            if (modelTurn?.parts) {
-              for (const part of modelTurn.parts) {
-                if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData?.data) {
-                  state.flashModelAudioParts.push(part.inlineData.data);
-                  // Cap count to prevent unbounded growth (each part is a base64 audio chunk)
-                  if (state.flashModelAudioParts.length > MAX_FLASH_MODEL_PARTS) {
-                    state.flashModelAudioParts.splice(0, state.flashModelAudioParts.length - MAX_FLASH_MODEL_PARTS);
+          // Turn-based models (Flash Live, Native Audio): buffer audio parts until turnComplete
+          const modelTurn = message?.serverContent?.modelTurn;
+          if (modelTurn?.parts) {
+            for (const part of modelTurn.parts) {
+              if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData?.data) {
+                state.flashModelAudioParts.push(part.inlineData.data);
+                // Cap count to prevent unbounded growth (each part is a base64 audio chunk)
+                if (state.flashModelAudioParts.length > MAX_FLASH_MODEL_PARTS) {
+                  state.flashModelAudioParts.splice(0, state.flashModelAudioParts.length - MAX_FLASH_MODEL_PARTS);
+                }
+                // Reset timeout — if turnComplete doesn't arrive in 180s, log warning
+                if (state.flashModelPartsTimer) clearTimeout(state.flashModelPartsTimer);
+                state.flashModelPartsTimer = setTimeout(() => {
+                  if (state.flashModelAudioParts.length > 0) {
+                    log.warn(`⚠️ flashModelAudioParts stale (${state.flashModelAudioParts.length} parts, ${180}s timeout)`);
+                    // Don't clear — Gemini may still be generating. Only log.
                   }
-                  // Reset timeout — if turnComplete doesn't arrive in 180s, log warning
-                  if (state.flashModelPartsTimer) clearTimeout(state.flashModelPartsTimer);
-                  state.flashModelPartsTimer = setTimeout(() => {
-                    if (state.flashModelAudioParts.length > 0) {
-                      log.warn(`⚠️ flashModelAudioParts stale (${state.flashModelAudioParts.length} parts, ${180}s timeout)`);
-                      // Don't clear — Gemini may still be generating. Only log.
-                    }
-                  }, 180000);
-                }
-                // Log any text parts for debugging
-                if (part.text) {
-                  log.debug(`📝 Turn-based model text: ${part.text}`);
-                }
+                }, 180000);
+              }
+              // Log any text parts for debugging
+              if (part.text) {
+                log.debug(`📝 Turn-based model text: ${part.text}`);
               }
             }
+          }
 
-            // When turn is complete, concatenate all buffered audio and play
-            if (message?.serverContent?.turnComplete) {
-              // Clear the timeout — turnComplete arrived
-              if (state.flashModelPartsTimer) {
-                clearTimeout(state.flashModelPartsTimer);
-                state.flashModelPartsTimer = null;
-              }
-              if (state.flashModelAudioParts.length > 0) {
-                const combined = Buffer.concat(
-                  state.flashModelAudioParts.map(d => Buffer.from(d, 'base64'))
-                );
-                state.flashModelAudioParts = [];
-
-                if (combined.length > 0) {
-                  state.totalAudioReceived += combined.length;
-                  const translatedDurationMs = Math.round((combined.length / 2) / GEMINI_OUTPUT_RATE * 1000);
-                  log.success(`🔊 Turn-based model complete — received ${(combined.length / 1024).toFixed(1)} KB translated audio (${translatedDurationMs}ms)`);
-
-                  // Use chunk-list: split into 1-second chunks so playback works incrementally
-                  const chunkSize = GEMINI_OUTPUT_RATE * 2 * PLAYBACK_CHUNK_SECONDS;
-                  for (let offset = 0; offset < combined.length; offset += chunkSize) {
-                    const chunk = combined.subarray(offset, Math.min(offset + chunkSize, combined.length));
-                    state.translatedChunks.push(chunk);
-                    state.translatedChunksSize += chunk.length;
-                  }
-
-                  // Cap chunks to prevent unbounded growth (by count AND byte size)
-                  while (state.translatedChunks.length > state.maxTranslatedChunks || state.translatedChunksSize > MAX_BUFFER_SIZE) {
-                    const oldest = state.translatedChunks.shift();
-                    if (oldest) state.translatedChunksSize -= oldest.length;
-                  }
-
-                  // Start playing if idle
-                  if (state.audioPlayer.state.status === AudioPlayerStatus.Idle) {
-                    log.info(`▶️ Starting playback of ${isNativeAudio ? 'Native Audio' : 'Flash Live'} translated audio...`);
-                    playTranslatedAudio(state);
-                  }
-                }
-              }
+          // When turn is complete, concatenate all buffered audio and play
+          if (message?.serverContent?.turnComplete) {
+            // Clear the timeout — turnComplete arrived
+            if (state.flashModelPartsTimer) {
+              clearTimeout(state.flashModelPartsTimer);
+              state.flashModelPartsTimer = null;
             }
-          } else {
-            // Continuous model: play audio chunks as they arrive
-            const modelTurn = message?.serverContent?.modelTurn;
-            if (modelTurn?.parts) {
-              let audioParts = 0;
-              for (const part of modelTurn.parts) {
-                if (part.inlineData?.mimeType?.startsWith('audio/')) {
-                  const audioData = Buffer.from(part.inlineData.data, 'base64');
-                  if (audioData.length > 0) {
-                    audioParts++;
-                    state.totalAudioReceived += audioData.length;
+            if (state.flashModelAudioParts.length > 0) {
+              const combined = Buffer.concat(
+                state.flashModelAudioParts.map(d => Buffer.from(d, 'base64'))
+              );
+              state.flashModelAudioParts = [];
 
-                    // Use chunk-list: store chunks, only concat at playback time
-                    state.translatedChunks.push(audioData);
-                    state.translatedChunksSize += audioData.length;
+              if (combined.length > 0) {
+                state.totalAudioReceived += combined.length;
+                const translatedDurationMs = Math.round((combined.length / 2) / GEMINI_OUTPUT_RATE * 1000);
+                log.success(`🔊 Turn-based model complete — received ${(combined.length / 1024).toFixed(1)} KB translated audio (${translatedDurationMs}ms)`);
 
-                    // Cap chunks to prevent unbounded growth (by count AND byte size)
-                    while (state.translatedChunks.length > state.maxTranslatedChunks || state.translatedChunksSize > MAX_BUFFER_SIZE) {
-                      const oldest = state.translatedChunks.shift();
-                      if (oldest) state.translatedChunksSize -= oldest.length;
-                    }
-
-                    // Start playing if idle
-                    if (state.audioPlayer.state.status === AudioPlayerStatus.Idle) {
-                      playTranslatedAudio(state);
-                    }
-                  }
+                // Use chunk-list: split into 1-second chunks so playback works incrementally
+                const chunkSize = GEMINI_OUTPUT_RATE * 2 * PLAYBACK_CHUNK_SECONDS;
+                for (let offset = 0; offset < combined.length; offset += chunkSize) {
+                  const chunk = combined.subarray(offset, Math.min(offset + chunkSize, combined.length));
+                  state.translatedChunks.push(chunk);
+                  state.translatedChunksSize += chunk.length;
                 }
-              }
-              if (audioParts > 0) {
-                log.success(`✅ Received ${audioParts} audio part(s) from Gemini Live`);
+
+                // Cap chunks to prevent unbounded growth (by count AND byte size)
+                while (state.translatedChunks.length > state.maxTranslatedChunks || state.translatedChunksSize > MAX_BUFFER_SIZE) {
+                  const oldest = state.translatedChunks.shift();
+                  if (oldest) state.translatedChunksSize -= oldest.length;
+                }
+
+                // Start playing if idle
+                if (state.audioPlayer.state.status === AudioPlayerStatus.Idle) {
+                  log.info(`▶️ Starting playback of ${isNativeAudio ? 'Native Audio' : 'Flash Live'} translated audio...`);
+                  playTranslatedAudio(state);
+                }
               }
             }
           }
@@ -1580,13 +1437,9 @@ async function connectGeminiSession(state) {
   state.geminiSession = session;
   state.isReconnecting = false;
 
-  if (isNativeAudio || isFlash) {
-    log.info(`📝 System instruction set: ${getLanguageName(state.sourceLanguage)} ↔ ${getLanguageName(state.targetLanguage)}`);
-  } else {
-    log.info(`📝 Translation config: ${getLanguageName(state.sourceLanguage)} → ${getLanguageName(state.targetLanguage)} (echo: true)`);
-  }
+  log.info(`📝 System instruction set: ${getLanguageName(state.sourceLanguage)} ↔ ${getLanguageName(state.targetLanguage)}`);
 
-  const modeLabel = isNativeAudio ? 'Native Audio batch' : isFlash ? 'Flash Live turn-based' : 'Live Translate continuous';
+  const modeLabel = isNativeAudio ? 'Native Audio batch' : 'Flash Live turn-based';
   log.success(`✅ Gemini Live session established (${modeLabel} mode)`);
   return session;
 }
@@ -1626,11 +1479,10 @@ async function reconnectGeminiSession(state) {
 
 /**
  * Send audio PCM data to Gemini Live API for translation.
- * Uses a sequential queue for ALL models to prevent concurrent writes
+ * Uses a sequential queue to prevent concurrent writes
  * to the single WebSocket session.
  *
- * For turn-based models (2.5, 3.1): one full utterance per queue item.
- * For continuous model (3.5 Live): small 200ms streaming chunks per queue item.
+ * One full utterance per queue item.
  */
 async function sendChunkToGemini(state, pcmBuffer) {
   // Queue to serialize all sends: no concurrent writes to the single Gemini WebSocket
@@ -1698,133 +1550,6 @@ async function doSendToGemini(state, pcmBuffer) {
       log.error('🔑 Gemini API key may be invalid or model not available - check your GEMINI_API_KEY');
     }
     throw error;
-  }
-}
-
-// ==============================
-// Continuous Mode: Per-User Queue Gating
-// ==============================
-
-/**
- * Process a single user's audio queue for continuous mode (3.5 Live Translate).
- * Only sends audio to Gemini if this user is the currently active speaker.
- * Otherwise, audio stays buffered in their per-user queue (prevents interleaving).
- *
- * This serializes sends per-user with a per-user processing lock.
- */
-async function processUserQueue(state, userId) {
-  if (state.isTurnBased) return; // Only for continuous mode
-
-  const userQueue = state.userSendQueues.get(userId);
-  if (!userQueue || userQueue.length === 0) return;
-
-  // Per-user processing lock to prevent concurrent sends for the same user
-  if (state.userQueueProcessing.get(userId)) return;
-  state.userQueueProcessing.set(userId, true);
-
-  try {
-    // Only send if this user is the active speaker (otherwise buffer)
-    if (state.activeSpeakerId !== userId) return;
-
-    // Drain this user's queue sequentially to Gemini
-    while (userQueue.length > 0) {
-      // Queue backpressure: drop oldest if queue is too deep
-      if (userQueue.length > MAX_SEND_QUEUE_ITEMS) {
-        userQueue.shift();
-        continue;
-      }
-
-      const pcmBuffer = userQueue.shift();
-      try {
-        await doSendToGemini(state, pcmBuffer);
-      } catch (err) {
-        // On send failure, push back to front for retry, then stop this drain cycle
-        userQueue.unshift(pcmBuffer);
-        throw err;
-      }
-    }
-  } finally {
-    state.userQueueProcessing.set(userId, false);
-  }
-}
-
-/**
- * Transition from a finished speaker to the next queued speaker.
- * Cleans up the finished user's queue state, then finds the next speaker
- * with buffered audio (oldest first) and starts draining their queue.
- */
-async function transitionFromSpeaker(state, finishedUserId) {
-  const log = getLogger(state.guildId);
-
-  // Clean up the finished user's queue state
-  state.userSendQueues.delete(finishedUserId);
-  state.userQueueProcessing.delete(finishedUserId);
-  state.speakerTimestamps.delete(finishedUserId);
-
-  // Cancel any crosstalk timer — will be re-set if needed
-  if (state.crosstalkFlushTimer) {
-    clearTimeout(state.crosstalkFlushTimer);
-    state.crosstalkFlushTimer = null;
-  }
-
-  // Find next speaker with buffered audio (oldest timestamp first)
-  let nextSpeakerId = null;
-  let oldestTimestamp = Infinity;
-  for (const [uid, queue] of state.userSendQueues) {
-    if (queue && queue.length > 0) {
-      const ts = state.speakerTimestamps.get(uid) || Date.now();
-      if (ts < oldestTimestamp) {
-        oldestTimestamp = ts;
-        nextSpeakerId = uid;
-      }
-    }
-  }
-
-  if (nextSpeakerId) {
-    state.activeSpeakerId = nextSpeakerId;
-    const nextUser = state.client.users.cache.get(nextSpeakerId);
-    log.info(`🗣️ Switching to next speaker: ${nextUser?.username || nextSpeakerId}`);
-    // Process the next speaker's queued audio
-    setupCrosstalkTimer(state, nextSpeakerId);
-    await processUserQueue(state, nextSpeakerId).catch(() => {});
-  } else {
-    state.activeSpeakerId = null;
-  }
-}
-
-/**
- * Set up a crosstalk timeout for the current speaker.
- * If other users have buffered audio waiting, start a 5s timer.
- * When the timer fires, force-switch to the next queued speaker
- * (prevents one speaker from hogging the queue indefinitely).
- */
-function setupCrosstalkTimer(state, currentSpeakerId) {
-  // Cancel any existing timer
-  if (state.crosstalkFlushTimer) {
-    clearTimeout(state.crosstalkFlushTimer);
-    state.crosstalkFlushTimer = null;
-  }
-
-  // Check if other users have buffered audio
-  let hasWaitingUsers = false;
-  for (const [uid, queue] of state.userSendQueues) {
-    if (uid !== currentSpeakerId && queue && queue.length > 0) {
-      hasWaitingUsers = true;
-      break;
-    }
-  }
-
-  if (hasWaitingUsers) {
-    state.crosstalkFlushTimer = setTimeout(async () => {
-      state.crosstalkFlushTimer = null;
-      if (!state.isRunning) return;
-      if (state.activeSpeakerId !== currentSpeakerId) return; // Already switched
-
-      const log = getLogger(state.guildId);
-      log.info(`⏰ Crosstalk timeout (5s) — force-switching to next queued speaker`);
-
-      await transitionFromSpeaker(state, currentSpeakerId);
-    }, 5000);
   }
 }
 
@@ -1917,6 +1642,62 @@ function playNextChunk(state) {
 }
 
 /**
+ * Send a free usage warning embed to the voice channel
+ */
+async function sendFreeUsageWarning(guildId, client, minutesRemaining) {
+  try {
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return;
+    const state = activeConnections.get(guildId);
+    if (!state) return;
+    const channel = guild.channels.cache.get(state.voiceChannelId);
+    if (!channel) return;
+
+    const warningEmbed = new EmbedBuilder()
+      .setColor(0xFFAA00)
+      .setTitle('⚠️ Free Limit Warning')
+      .setDescription(
+        `Only **${minutesRemaining} minute(s)** of free Voice Call Translation remaining today.\n` +
+        'The bot will auto-stop when the limit is reached.\n\n' +
+        '[Go Premium](https://www.patreon.com/c/tsio/membership) for unlimited access.'
+      )
+      .setTimestamp();
+
+    await channel.send({ embeds: [warningEmbed] });
+  } catch (e) { /* ignore send errors */ }
+}
+
+/**
+ * Record daily usage for free servers
+ */
+async function recordDailyUsage(guildId, elapsedMinutes) {
+  try {
+    const VoiceCallTranslation = require('../models/VoiceCallTranslation');
+    const now = new Date();
+    const today = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+
+    await VoiceCallTranslation.findOneAndUpdate(
+      { guildId },
+      [
+        {
+          $set: {
+            dailyUsageDate: {
+              $cond: { if: { $ne: ['$dailyUsageDate', today] }, then: today, else: '$dailyUsageDate' }
+            },
+            dailyMinutesUsed: {
+              $cond: { if: { $ne: ['$dailyUsageDate', today] }, then: elapsedMinutes, else: { $add: ['$dailyMinutesUsed', elapsedMinutes] } }
+            }
+          }
+        }
+      ],
+      { new: true }
+    );
+  } catch (e) {
+    console.error('Failed to record daily VCT usage:', e);
+  }
+}
+
+/**
  * Stop voice call translation for a guild
  * @param {string} guildId - Discord guild ID
  * @param {Object} client - Discord.js client (optional)
@@ -1941,6 +1722,23 @@ async function stopTranslation(guildId, client) {
     if (state.sessionTimeout) {
       clearTimeout(state.sessionTimeout);
       state.sessionTimeout = null;
+    }
+
+    // Clear free usage timers
+    if (state.freeUsageAutoStopTimer) {
+      clearTimeout(state.freeUsageAutoStopTimer);
+      state.freeUsageAutoStopTimer = null;
+    }
+    if (state.freeUsageWarningTimer) {
+      clearTimeout(state.freeUsageWarningTimer);
+      state.freeUsageWarningTimer = null;
+    }
+
+    // Record daily usage for free servers
+    if (state.remainingMinutes !== null && state.startTime) {
+      const elapsedMs = Date.now() - state.startTime;
+      const elapsedMinutes = Math.max(1, Math.ceil(elapsedMs / 60000));
+      await recordDailyUsage(guildId, elapsedMinutes);
     }
 
     // Clear activity check interval
@@ -1971,16 +1769,6 @@ async function stopTranslation(guildId, client) {
       if (item?.reject) item.reject(new Error('Translation stopped'));
     }
     state.isSendingAudio = false;
-
-    // Clear per-user queues and speaker gating state (continuous mode)
-    state.userSendQueues.clear();
-    state.userQueueProcessing.clear();
-    state.speakerTimestamps.clear();
-    state.activeSpeakerId = null;
-    if (state.crosstalkFlushTimer) {
-      clearTimeout(state.crosstalkFlushTimer);
-      state.crosstalkFlushTimer = null;
-    }
 
     // Clear subscription sweep interval
     if (state.subscriptionSweepInterval) {
@@ -2066,7 +1854,8 @@ async function stopTranslation(guildId, client) {
     );
 
     log.success('✅ Voice call translation stopped successfully');
-    return { success: true, message: 'Voice translation stopped' };
+    const elapsedMinutes = state.startTime ? Math.max(1, Math.ceil((Date.now() - state.startTime) / 60000)) : 0;
+    return { success: true, message: 'Voice translation stopped', elapsedMinutes };
   } catch (error) {
     log.error(`❌ Error stopping translation: ${error.message}`);
     activeConnections.delete(guildId);
@@ -2162,7 +1951,6 @@ module.exports = {
   GEMINI_LIVE_MODELS,
   DEFAULT_VOICE,
   DEFAULT_MODEL,
-  MODEL_ID,
   FLASH_MODEL_ID,
   NATIVE_AUDIO_MODEL_ID,
 };

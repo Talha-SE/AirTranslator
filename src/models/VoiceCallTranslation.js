@@ -12,6 +12,8 @@ const voiceCallTranslationSchema = new mongoose.Schema({
   updatedBy: { type: String, default: null },
   lastStartedAt: { type: Date, default: null },
   lastStoppedAt: { type: Date, default: null },
+  dailyMinutesUsed: { type: Number, default: 0 },
+  dailyUsageDate: { type: String, default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('VoiceCallTranslation', voiceCallTranslationSchema);

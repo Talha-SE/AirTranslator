@@ -15,7 +15,7 @@ const { maybeSendUnlimitedUsageOffer } = require('../services/unlimitedUsageCamp
 
 // Local vote tracking (mirrors messageCreate.js behavior) for flag-reaction path
 const VOTE_CREDIT_DELAY = 15 * 1000; // 15 seconds
-const VOTE_BONUS_AMOUNT = 20; // Free translations to grant
+const VOTE_BONUS_AMOUNT = 30; // Free translations to grant
 
 // Helper function to get language flag emoji
 function getLanguageFlag(langCode) {

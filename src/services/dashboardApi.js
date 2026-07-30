@@ -482,7 +482,7 @@ router.get('/servers/:serverId', async (req, res) => {
           channels: {}
         },
         monetization: {
-          freeTranslationLimit: 20,
+          freeTranslationLimit: 100,
           isRestricted: true,
           isExempt: false,
           exemptUntil: null,

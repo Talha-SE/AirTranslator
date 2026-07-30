@@ -17,7 +17,7 @@ const { generateDashboard } = require('./templates/dashboard');
 const analyticsService = require('../services/analyticsService');
 const monetizationService = require('../services/monetizationService');
 
-const TOPGG_VOTE_BONUS_AMOUNT = 20;
+const TOPGG_VOTE_BONUS_AMOUNT = 30;
 const TOPGG_VOTE_TARGET_TTL_MS = 60 * 60 * 1000;
 
 // Dashboard cache

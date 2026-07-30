@@ -3,10 +3,10 @@ const databaseService = require('./databaseService');
 class MonetizationService {
     constructor() {
         this.globalSettings = {
-            defaultFreeTranslationLimit: 50,
+            defaultFreeTranslationLimit: 100,
             enableGlobalRestriction: false,
             autoUnlimitedUsageCampaignEnabled: true,
-            voteBonusAmount: 20
+            voteBonusAmount: 30
         };
         this.settingsLoaded = false;
         // Vote tracking will now use database instead of in-memory storage

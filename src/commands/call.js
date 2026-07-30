@@ -3,6 +3,23 @@ const VoiceCallTranslation = require('../models/VoiceCallTranslation');
 const voiceCallTranslationService = require('../services/voiceCallTranslationService');
 const Server = require('../models/Server');
 
+const FREE_DAILY_LIMIT_MINUTES = 60;
+const WARNING_MINUTES = 50;
+
+function getTodayUTC() {
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+}
+
+function resetIfNeeded(settings) {
+    const today = getTodayUTC();
+    if (settings.dailyUsageDate !== today) {
+        settings.dailyMinutesUsed = 0;
+        settings.dailyUsageDate = today;
+    }
+    return settings;
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('call')
@@ -27,18 +44,8 @@ module.exports = {
             return;
         }
 
-        // Check if user has Manage Guild permission
-        if (!member.permissions.has('ManageGuild')) {
-            await interaction.reply({
-                content: '❌ You need the **Manage Server** permission to use this command.',
-                flags: MessageFlags.Ephemeral
-            });
-            return;
-        }
-
         const action = interaction.options.getString('action') || 'start';
 
-        // If stop action
         if (action === 'stop') {
             if (!voiceCallTranslationService.isTranslationActive(guild.id)) {
                 await interaction.reply({
@@ -48,15 +55,16 @@ module.exports = {
                 return;
             }
 
-            await interaction.deferReply();
+            await interaction.reply({ content: '⏹️ Stopping voice translation...', flags: MessageFlags.Ephemeral });
 
             const result = await voiceCallTranslationService.stopTranslation(guild.id, interaction.client);
 
             if (result.success) {
+                const elapsed = result.elapsedMinutes || 0;
                 const embed = new EmbedBuilder()
                     .setColor(0xFF4444)
                     .setTitle('⏹️ Voice Translation Stopped')
-                    .setDescription('The bot has left the voice channel.')
+                    .setDescription(`The bot has left the voice channel.\n\n⏱️ Session duration: **${elapsed} minute(s)**`)
                     .setTimestamp();
 
                 await interaction.editReply({ embeds: [embed] });
@@ -68,14 +76,10 @@ module.exports = {
             return;
         }
 
-        // Start action — check if already active
         if (voiceCallTranslationService.isTranslationActive(guild.id)) {
-            // Check if the connection is actually healthy, or just stale
             const isHealthy = voiceCallTranslationService.isConnectionHealthy(guild.id);
             if (isHealthy === false) {
-                // Stale connection — auto-cleanup and proceed
                 await voiceCallTranslationService.stopTranslation(guild.id, interaction.client);
-                // Continue to start flow below
             } else {
                 const status = voiceCallTranslationService.getTranslationStatus(guild.id);
                 const channel = guild.channels.cache.get(status.voiceChannelId);
@@ -87,28 +91,10 @@ module.exports = {
             }
         }
 
-        // Premium gate — VCT requires premium (isExempt)
         const serverDoc = await Server.findOne({ serverId: guild.id });
-        if (!serverDoc?.monetization?.isExempt) {
-            const premiumEmbed = new EmbedBuilder()
-                .setColor(0xFFAA00)
-                .setTitle('🔒 Premium Feature')
-                .setDescription(
-                    'Voice Call Translation is a **premium-only** feature.\n\n' +
-                    '**To unlock:**\n' +
-                    '1. Visit [Patreon](https://www.patreon.com/c/tsio/membership)\n' +
-                    '2. Subscribe to a premium plan\n' +
-                    '3. Your server will be activated automatically\n\n' +
-                    '✨ *Premium also unlocks unlimited translations and priority support!*'
-                )
-                .setTimestamp();
+        const isPremium = serverDoc?.monetization?.isExempt === true;
 
-            await interaction.reply({ embeds: [premiumEmbed], flags: MessageFlags.Ephemeral });
-            return;
-        }
-
-        // Load saved settings
-        const settings = await VoiceCallTranslation.findOne({ guildId: guild.id });
+        let settings = await VoiceCallTranslation.findOne({ guildId: guild.id });
 
         if (!settings || !settings.enabled) {
             const embed = new EmbedBuilder()
@@ -146,7 +132,6 @@ module.exports = {
             return;
         }
 
-        // Check bot permissions in the voice channel
         const voiceChannel = guild.channels.cache.get(settings.voiceChannelId);
         if (!voiceChannel) {
             await interaction.reply({
@@ -172,38 +157,66 @@ module.exports = {
             return;
         }
 
-        // Check if there are users in the channel (optional — warn but proceed)
         const humanMembers = voiceChannel.members.filter(m => !m.user.bot).size;
 
-        // Defer reply — joining may take a moment
         await interaction.deferReply();
+
+        // Daily usage check for non-premium servers
+        let remainingMinutes = null;
+        if (!isPremium) {
+            settings = resetIfNeeded(settings);
+
+            if (settings.dailyMinutesUsed >= FREE_DAILY_LIMIT_MINUTES) {
+                const limitEmbed = new EmbedBuilder()
+                    .setColor(0xFF4444)
+                    .setTitle('⏰ Daily Free Limit Reached')
+                    .setDescription(
+                        `You've used all **${FREE_DAILY_LIMIT_MINUTES} free minutes** of Voice Call Translation today.\n\n` +
+                        '**💡 Options:**\n' +
+                        '• Come back tomorrow — your free minutes reset daily\n' +
+                        '• [Go Premium](https://www.patreon.com/c/tsio/membership) for unlimited access'
+                    )
+                    .setTimestamp();
+
+                await interaction.editReply({ embeds: [limitEmbed] });
+                await settings.save();
+                return;
+            }
+
+            remainingMinutes = FREE_DAILY_LIMIT_MINUTES - settings.dailyMinutesUsed;
+        }
 
         const sourceLang = settings.sourceLanguage === 'auto' ? 'Auto-Detect' : settings.sourceLanguage;
         const targetLang = settings.targetLanguage;
 
+        let description =
+            `Connecting to **${voiceChannel.name}**...\n\n` +
+            `🌐 **${sourceLang}** → **${targetLang}**\n` +
+            `🤖 Model: \`${settings.model || 'gemini-3.1-flash-live-preview'}\`\n` +
+            `🔊 Voice: \`${settings.voice || 'Aoede'}\``;
+
+        if (remainingMinutes !== null) {
+            description += `\n\n⏱️ Free minutes remaining today: **${remainingMinutes} min**`;
+        }
+
         const embed = new EmbedBuilder()
             .setColor(0x7C3AED)
             .setTitle('🎤 Joining Voice Channel...')
-            .setDescription(
-                `Connecting to **${voiceChannel.name}**...\n\n` +
-                `🌐 **${sourceLang}** → **${targetLang}**\n` +
-                    `🤖 Model: \`${settings.model || 'gemini-3.5-live-translate-preview'}\`\n` +
-                `🔊 Voice: \`${settings.voice || 'Aoede'}\``
-            )
+            .setDescription(description)
             .setFooter({ text: 'The bot will start translating once connected.' })
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed] });
 
-        // Start the translation
         const result = await voiceCallTranslationService.startTranslation(
             guild.id,
             settings.voiceChannelId,
             settings.sourceLanguage || 'auto',
             settings.targetLanguage,
-            settings.model || 'gemini-3.5-live-translate-preview',
+            settings.model || 'gemini-3.1-flash-live-preview',
             interaction.client,
-            settings.voice || 'Aoede'
+            settings.voice || 'Aoede',
+            remainingMinutes
         );
 
         if (result.success) {
