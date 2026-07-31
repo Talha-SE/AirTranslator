@@ -1238,7 +1238,7 @@ function buildTranslationSystemInstruction(sourceLanguage, targetLanguage) {
     `- NEVER add greetings, explanations, or any text.`,
     `- NEVER say "I understand", "Here is", "The speaker said", "In other words", or similar.`,
     `- NEVER add your own thoughts, questions, or comments.`,
-    `- NEVER repeat the original text back.`
+    `- NEVER repeat the original text back.`,
     `- If unsure, translate as best you can, output ONLY that. No disclaimers.`,
     `Your job is to translate speech to speech, nothing else.`,
   ].join('\n');
