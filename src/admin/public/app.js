@@ -604,7 +604,8 @@ async function sendMessage() {
         color: document.getElementById('messageColor')?.value,
         includeFooter: document.getElementById('includeFooter')?.checked,
         urgentMessage: document.getElementById('urgentMessage')?.checked,
-        sendAsText: document.getElementById('sendAsText')?.checked
+        sendAsText: document.getElementById('sendAsText')?.checked,
+        sendAsV2Container: document.getElementById('sendAsV2Container')?.checked
     };
     
     if (!messageData.content) {
@@ -737,6 +738,7 @@ async function scheduleMessage() {
         includeFooter: document.getElementById('includeFooter')?.checked,
         urgentMessage: document.getElementById('urgentMessage')?.checked,
         sendAsText: document.getElementById('sendAsText')?.checked,
+        sendAsV2Container: document.getElementById('sendAsV2Container')?.checked,
         schedule: document.getElementById('schedule')?.value,
         time: document.getElementById('scheduleTime')?.value,
         timezone: document.getElementById('timezone')?.value,

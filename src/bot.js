@@ -9,7 +9,7 @@ const monetizationService = require('./services/monetizationService');
 const translationQueueService = require('./services/translationQueueService');
 const voteCheckService = require('./services/voteCheckService');
 const { markServerAsNewlyJoined } = require('./services/unlimitedUsageCampaignService');
-const { translateTextToMultipleLanguages, detectLanguage } = require('./services/mistralService');
+const { translateTextToMultipleLanguages, detectLanguage, translateText } = require('./services/mistralService');
 const { AutoPoster } = require('topgg-autoposter');
 require('dotenv').config();
 const { AUTO_DETECT_LANGUAGE } = require('./utils/constants');
@@ -1233,6 +1233,216 @@ client.on(Events.InteractionCreate, async interaction => {
                     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
                 } else {
                     await interaction.reply({ embeds: [embed] });
+                }
+                return;
+            }
+
+            // Handle Broadcast Translate button — show flag buttons for server languages
+            if (customId === 'translate_broadcast') {
+                try {
+                    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+                    // Extract IDs from interaction context
+                    const guildId = interaction.guildId;
+                    const messageId = interaction.message?.id;
+
+                    if (!guildId || !messageId) {
+                        await interaction.editReply({ content: '❌ Could not identify this message.' });
+                        return;
+                    }
+
+                    // Get original content — try Map first, then fetch from Discord
+                    let broadcastData = global.broadcastMessages?.get(messageId);
+                    if (!broadcastData) {
+                        // Fetch directly from Discord message
+                        try {
+                            const msg = await interaction.message.fetch();
+                            const embed = msg.embeds?.[0];
+                            broadcastData = {
+                                title: embed?.title || null,
+                                content: embed?.description || msg.content || null,
+                                guildId: guildId
+                            };
+                        } catch {}
+                    }
+                    if (!broadcastData?.content) {
+                        await interaction.editReply({ content: '❌ Could not read this message content.' });
+                        return;
+                    }
+
+                    // Get server's configured languages
+                    const Server = require('./models/Server');
+                    const serverDoc = await Server.findOne({ serverId: guildId }).lean();
+                    
+                    let languages = [];
+                    if (serverDoc) {
+                        // Collect languages from server-wide config and setups
+                        if (serverDoc.serverWideLanguages?.length) {
+                            languages.push(...serverDoc.serverWideLanguages);
+                        }
+                        if (serverDoc.setups?.length) {
+                            for (const setup of serverDoc.setups) {
+                                if (setup.languages?.length) {
+                                    languages.push(...setup.languages);
+                                }
+                            }
+                        }
+                        // Deduplicate and normalize
+                        languages = [...new Set(languages.map(l => l.toLowerCase().trim()))];
+                    }
+
+                    if (!languages.length) {
+                        await interaction.editReply({ content: '❌ No translation languages configured for this server. Server admins can set languages with `/quicksetup`.' });
+                        return;
+                    }
+
+                    // Filter out 'auto' and 'english' (original is likely English)
+                    const translateLangs = languages.filter(l => l !== 'auto' && l !== 'english');
+
+                    if (!translateLangs.length) {
+                        await interaction.editReply({ content: '❌ No target languages available for translation.' });
+                        return;
+                    }
+
+                    // Build flag buttons (max 5 per row, max 3 rows = 15 languages max)
+                    const { ActionRowBuilder, ButtonBuilder, ButtonStyle: BS, EmbedBuilder: EB } = require('discord.js');
+                    const components = [];
+                    const flagLangs = translateLangs.slice(0, 15); // Cap at 15 languages
+
+                    for (let i = 0; i < flagLangs.length; i += 5) {
+                        const row = new ActionRowBuilder();
+                        for (const lang of flagLangs.slice(i, i + 5)) {
+                            const flag = getLanguageFlag(lang);
+                            row.addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId(`tfl:${guildId}:${messageId}:${lang}`)
+                                    .setLabel(flag)
+                                    .setStyle(BS.Secondary)
+                            );
+                        }
+                        components.push(row);
+                    }
+
+                    // Build ephemeral message with original content + flag buttons
+                    const previewEmbed = new EB()
+                        .setColor('#3498db')
+                        .setTimestamp();
+
+                    if (broadcastData.title) {
+                        previewEmbed.setTitle(broadcastData.title);
+                    }
+                    previewEmbed.setDescription(broadcastData.content);
+
+                    await interaction.editReply({
+                        embeds: [previewEmbed],
+                        components,
+                        content: `🌐 **Click a flag to translate this message** (${flagLangs.length} languages available)`
+                    });
+                } catch (err) {
+                    logger.warn('translate_broadcast handler error', { error: err?.message || err });
+                    try {
+                        await interaction.editReply({ content: '❌ Error loading translation options.' });
+                    } catch {}
+                }
+                return;
+            }
+
+            // Handle Broadcast Language flag click — translate and edit message
+            if (customId.startsWith('tfl:')) {
+                try {
+                    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+                    const parts = customId.split(':');
+                    const guildId = parts[1];
+                    const messageId = parts[2];
+                    const targetLang = parts.slice(3).join(':');
+
+                    // Get original content — try Map first, then fetch from Discord
+                    let broadcastData = global.broadcastMessages?.get(messageId);
+                    if (!broadcastData) {
+                        try {
+                            const msg = await interaction.message.fetch();
+                            const embed = msg.embeds?.[0];
+                            broadcastData = {
+                                title: embed?.title || null,
+                                content: embed?.description || msg.content || null,
+                                guildId: guildId
+                            };
+                        } catch {}
+                    }
+                    if (!broadcastData?.content) {
+                        await interaction.editReply({ content: '❌ Could not read this message content.' });
+                        return;
+                    }
+
+                    const flag = getLanguageFlag(targetLang);
+                    const langName = getLanguageDisplayName(targetLang);
+
+                    // Translate using Mistral Small 2506 (don't pass null — let it use default API key)
+                    const translatedContent = await translateText(
+                        broadcastData.content,
+                        targetLang,
+                        'english',
+                        false,
+                        undefined,
+                        'mistral-small-2506'
+                    );
+
+                    // Build translated preview embed
+                    const { EmbedBuilder: EB, ActionRowBuilder: AR, ButtonBuilder: BB, ButtonStyle: BS } = require('discord.js');
+                    
+                    const translatedEmbed = new EB()
+                        .setColor('#00ff88')
+                        .setTimestamp();
+
+                    if (broadcastData.title) {
+                        translatedEmbed.setTitle(broadcastData.title);
+                    }
+                    translatedEmbed.setDescription(translatedContent);
+                    translatedEmbed.setFooter({ text: `Translated to ${flag} ${langName} • Original in English` });
+
+                    // Re-build flag buttons so user can translate to another language
+                    const Server = require('./models/Server');
+                    const serverDoc = await Server.findOne({ serverId: guildId }).lean();
+                    let languages = [];
+                    if (serverDoc) {
+                        if (serverDoc.serverWideLanguages?.length) languages.push(...serverDoc.serverWideLanguages);
+                        if (serverDoc.setups?.length) {
+                            for (const setup of serverDoc.setups) {
+                                if (setup.languages?.length) languages.push(...setup.languages);
+                            }
+                        }
+                        languages = [...new Set(languages.map(l => l.toLowerCase().trim()))];
+                    }
+                    const translateLangs = languages.filter(l => l !== 'auto' && l !== 'english');
+                    const flagLangs = translateLangs.slice(0, 15);
+                    const components = [];
+
+                    for (let i = 0; i < flagLangs.length; i += 5) {
+                        const row = new AR();
+                        for (const lang of flagLangs.slice(i, i + 5)) {
+                            const f = getLanguageFlag(lang);
+                            row.addComponents(
+                                new BB()
+                                    .setCustomId(`tfl:${guildId}:${messageId}:${lang}`)
+                                    .setLabel(f)
+                                    .setStyle(BS.Secondary)
+                            );
+                        }
+                        components.push(row);
+                    }
+
+                    // Edit the ephemeral message with translated content
+                    await interaction.editReply({
+                        content: `✅ **Translated to ${flag} ${langName}** — Click another flag to translate again`,
+                        embeds: [translatedEmbed],
+                        components
+                    });
+                } catch (err) {
+                    logger.warn('translate_broadcast_lang handler error', { error: err?.message || err });
+                    try {
+                        await interaction.editReply({ content: '❌ Translation failed. Please try again.' });
+                    } catch {}
                 }
                 return;
             }

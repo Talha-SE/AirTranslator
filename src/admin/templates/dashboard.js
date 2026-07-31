@@ -403,6 +403,10 @@ function generateMessagingTab() {
                             <input type="checkbox" id="sendAsText" />
                             <span>Send as plain text (no card)</span>
                         </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="sendAsV2Container" />
+                            <span>Send as V2 Container (modern card)</span>
+                        </label>
                     </div>
                 </div>
             </div>

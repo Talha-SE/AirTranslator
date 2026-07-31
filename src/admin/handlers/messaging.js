@@ -1,7 +1,11 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const nodeCron = require('node-cron');
 const monetizationService = require('../../services/monetizationService');
 const { CAMPAIGN_TRIGGER_COUNT } = require('../../services/unlimitedUsageCampaignService');
+
+// Store original broadcast message content for translation feature
+// Key: messageId, Value: { title, content, guildId, timestamp }
+if (!global.broadcastMessages) global.broadcastMessages = new Map();
 
 // Scheduled messages storage
 const scheduledMessages = new Map(); // job metadata only (JSON-safe)
@@ -82,7 +86,8 @@ async function sendServerMessage(messageData, onProgress) {
         color,
         includeFooter,
         urgentMessage,
-        sendAsText
+        sendAsText,
+        sendAsV2Container
     } = messageData;
     
     if (!content) {
@@ -99,6 +104,28 @@ async function sendServerMessage(messageData, onProgress) {
         if (includeFooter) textParts.push(`\n_Sent via AirTranslator Bot_`);
         
         messagePayload = { content: textParts.join('\n\n') };
+    } else if (sendAsV2Container) {
+        // Build Discord Components V2 Container (flags: 32768)
+        const innerComponents = [];
+
+        if (title) {
+            innerComponents.push({ type: 10, content: `**${title}**` });
+        }
+        innerComponents.push({ type: 10, content: content });
+        if (includeFooter) {
+            innerComponents.push({ type: 10, content: `_Sent via AirTranslator Bot • <t:${Math.floor(Date.now() / 1000)}:R>_` });
+        }
+        if (urgentMessage) {
+            innerComponents.push({ type: 10, content: '⚠️ **Important Message**' });
+        }
+
+        messagePayload = {
+            flags: 32768, // IS_COMPONENTS_V2
+            components: [{
+                type: 17, // Container
+                components: innerComponents
+            }]
+        };
     } else {
         const embed = new EmbedBuilder()
             .setDescription(content)
@@ -118,6 +145,32 @@ async function sendServerMessage(messageData, onProgress) {
         }
         
         messagePayload = { embeds: [embed] };
+    }
+
+    // Add Translate button (only for card/container messages, not plain text)
+    if (!sendAsText) {
+        const translateRow = { type: 1, components: [{
+            type: 2,
+            custom_id: 'translate_broadcast',
+            label: 'Translate',
+            emoji: { name: '✨' },
+            style: 2 // Secondary
+        }]};
+
+        if (messagePayload.flags === 32768 && messagePayload.components?.[0]) {
+            // V2 Container — add button inside the Container
+            messagePayload.components[0].components.push(translateRow);
+        } else if (messagePayload.embeds) {
+            // Embed — add button as separate ActionRow
+            const { ActionRowBuilder, ButtonBuilder, ButtonStyle: BS } = require('discord.js');
+            messagePayload.components = [new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('translate_broadcast')
+                    .setLabel('Translate')
+                    .setEmoji('✨')
+                    .setStyle(BS.Secondary)
+            )];
+        }
     }
     
     let targetGuilds = [];
@@ -177,7 +230,23 @@ async function sendServerMessage(messageData, onProgress) {
             }
             
             if (channel) {
-                await channel.send(messagePayload);
+                const sentMessage = await channel.send(messagePayload);
+                
+                // Store original content for translation feature
+                if (!sendAsText && sentMessage && sentMessage.id) {
+                    global.broadcastMessages.set(sentMessage.id, {
+                        title: title || null,
+                        content: content,
+                        guildId: guild.id,
+                        timestamp: Date.now()
+                    });
+                    
+                    // Auto-cleanup after 24 hours
+                    setTimeout(() => {
+                        global.broadcastMessages.delete(sentMessage.id);
+                    }, 24 * 60 * 60 * 1000);
+                }
+                
                 results.sent++;
                 const detail = { 
                     serverId: guild.id, 
