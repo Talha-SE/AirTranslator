@@ -326,15 +326,16 @@ const deleteVoteEventById = async (voteId) => {
 };
 
 const saveServerConfig = async (serverId, config) => {
-    const defaultLimit = await getDefaultFreeTranslationLimit();
-    const server = await Server.findOneAndUpdate(
-        { serverId },
-        {
-            $set: config,
-            $setOnInsert: {
-                serverUniqueId: uuidv4(),
-                serverName: config.serverName || 'Unknown Server',
-                translationCount: 0,
+    try {
+        const defaultLimit = await getDefaultFreeTranslationLimit();
+        const server = await Server.findOneAndUpdate(
+            { serverId },
+            {
+                $set: config,
+                $setOnInsert: {
+                    serverUniqueId: uuidv4(),
+                    serverName: config.serverName || 'Unknown Server',
+                    translationCount: 0,
                     monetization: {
                         freeTranslationLimit: defaultLimit,
                         isRestricted: true,
@@ -633,15 +634,6 @@ const getMonetizationSettings = async () => {
     } catch (error) {
         console.error('Error getting monetization settings:', error);
         return null;
-    }
-};
-
-const getDefaultFreeTranslationLimit = async () => {
-    try {
-        const settings = await MonetizationSettings.findOne({ settingsId: 'global' }).lean();
-        return (settings && settings.defaultFreeTranslationLimit) || 50;
-    } catch (error) {
-        return 50;
     }
 };
 
