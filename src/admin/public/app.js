@@ -235,6 +235,9 @@ function clearMessageForm() {
     if (urgentMessage) urgentMessage.checked = false;
     if (sendAsText) sendAsText.checked = false;
 
+    const messageImageUrl = document.getElementById('messageImageUrl');
+    if (messageImageUrl) messageImageUrl.value = '';
+
     selectedServerIds.clear();
     const selectedServerSearch = document.getElementById('selectedServerSearch');
     const selectedMinMembers = document.getElementById('selectedMinMembers');
@@ -605,7 +608,8 @@ async function sendMessage() {
         includeFooter: document.getElementById('includeFooter')?.checked,
         urgentMessage: document.getElementById('urgentMessage')?.checked,
         sendAsText: document.getElementById('sendAsText')?.checked,
-        sendAsV2Container: document.getElementById('sendAsV2Container')?.checked
+        sendAsV2Container: document.getElementById('sendAsV2Container')?.checked,
+        imageUrl: document.getElementById('messageImageUrl')?.value?.trim() || null
     };
     
     if (!messageData.content) {
@@ -739,6 +743,7 @@ async function scheduleMessage() {
         urgentMessage: document.getElementById('urgentMessage')?.checked,
         sendAsText: document.getElementById('sendAsText')?.checked,
         sendAsV2Container: document.getElementById('sendAsV2Container')?.checked,
+        imageUrl: document.getElementById('messageImageUrl')?.value?.trim() || null,
         schedule: document.getElementById('schedule')?.value,
         time: document.getElementById('scheduleTime')?.value,
         timezone: document.getElementById('timezone')?.value,

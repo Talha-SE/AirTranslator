@@ -593,6 +593,7 @@ client.commands.set(translateMessageCommand.data.name, translateMessageCommand);
 // Load events
 const ready = require('./events/ready');
 const messageCreate = require('./events/messageCreate');
+const messageUpdate = require('./events/messageUpdate');
 const guildDelete = require('./events/guildDelete');
 const messageReactionAdd = require('./events/messageReactionAdd');
 
@@ -609,6 +610,12 @@ client.once('ready', () => {
 
 client.on('messageCreate', (message) => {
     messageCreate(client, message);
+});
+
+client.on('messageUpdate', (oldMessage, newMessage) => {
+    // Only process if content actually changed
+    if (oldMessage.content === newMessage.content) return;
+    messageUpdate(client, newMessage);
 });
 
 client.on('messageReactionAdd', (reaction, user) => {
@@ -1242,7 +1249,6 @@ client.on(Events.InteractionCreate, async interaction => {
                 try {
                     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-                    // Extract IDs from interaction context
                     const guildId = interaction.guildId;
                     const messageId = interaction.message?.id;
 
@@ -1251,16 +1257,17 @@ client.on(Events.InteractionCreate, async interaction => {
                         return;
                     }
 
-                    // Get original content — try Map first, then fetch from Discord
+                    // Get original content from the broadcast message
                     let broadcastData = global.broadcastMessages?.get(messageId);
                     if (!broadcastData) {
-                        // Fetch directly from Discord message
+                        // Fetch the original broadcast message from the channel
                         try {
-                            const msg = await interaction.message.fetch();
-                            const embed = msg.embeds?.[0];
+                            const originalMsg = await interaction.channel.messages.fetch(messageId);
+                            const embed = originalMsg.embeds?.[0];
                             broadcastData = {
                                 title: embed?.title || null,
-                                content: embed?.description || msg.content || null,
+                                content: embed?.description || originalMsg.content || null,
+                                imageUrl: embed?.image?.url || null,
                                 guildId: guildId
                             };
                         } catch {}
@@ -1276,7 +1283,6 @@ client.on(Events.InteractionCreate, async interaction => {
                     
                     let languages = [];
                     if (serverDoc) {
-                        // Collect languages from server-wide config and setups
                         if (serverDoc.serverWideLanguages?.length) {
                             languages.push(...serverDoc.serverWideLanguages);
                         }
@@ -1287,7 +1293,6 @@ client.on(Events.InteractionCreate, async interaction => {
                                 }
                             }
                         }
-                        // Deduplicate and normalize
                         languages = [...new Set(languages.map(l => l.toLowerCase().trim()))];
                     }
 
@@ -1296,7 +1301,6 @@ client.on(Events.InteractionCreate, async interaction => {
                         return;
                     }
 
-                    // Filter out 'auto' and 'english' (original is likely English)
                     const translateLangs = languages.filter(l => l !== 'auto' && l !== 'english');
 
                     if (!translateLangs.length) {
@@ -1304,39 +1308,57 @@ client.on(Events.InteractionCreate, async interaction => {
                         return;
                     }
 
-                    // Build flag buttons (max 5 per row, max 3 rows = 15 languages max)
-                    const { ActionRowBuilder, ButtonBuilder, ButtonStyle: BS, EmbedBuilder: EB } = require('discord.js');
-                    const components = [];
-                    const flagLangs = translateLangs.slice(0, 15); // Cap at 15 languages
+                    // Build ephemeral message using V2 Container (mirror original structure)
+                    const flagButtons = [];
+                    const flagLangs = translateLangs.slice(0, 15);
 
                     for (let i = 0; i < flagLangs.length; i += 5) {
-                        const row = new ActionRowBuilder();
+                        const row = { type: 1, components: [] };
                         for (const lang of flagLangs.slice(i, i + 5)) {
                             const flag = getLanguageFlag(lang);
-                            row.addComponents(
-                                new ButtonBuilder()
-                                    .setCustomId(`tfl:${guildId}:${messageId}:${lang}`)
-                                    .setLabel(flag)
-                                    .setStyle(BS.Secondary)
-                            );
+                            row.components.push({
+                                type: 2,
+                                custom_id: `tfl:${guildId}:${messageId}:${lang}`,
+                                label: flag,
+                                style: 2 // Secondary
+                            });
                         }
-                        components.push(row);
+                        flagButtons.push(row);
                     }
 
-                    // Build ephemeral message with original content + flag buttons
-                    const previewEmbed = new EB()
-                        .setColor('#3498db')
-                        .setTimestamp();
+                    // Build V2 Container matching original message structure
+                    const containerComponents = [];
 
+                    // Image (if original had one)
+                    if (broadcastData.imageUrl) {
+                        containerComponents.push({
+                            type: 12, // MediaGallery
+                            items: [{ media: { url: broadcastData.imageUrl } }]
+                        });
+                    }
+
+                    // Title (if original had one)
                     if (broadcastData.title) {
-                        previewEmbed.setTitle(broadcastData.title);
+                        containerComponents.push({ type: 10, content: `**${broadcastData.title}**` });
                     }
-                    previewEmbed.setDescription(broadcastData.content);
+
+                    // Content
+                    containerComponents.push({ type: 10, content: broadcastData.content });
+
+                    // Flag buttons at bottom
+                    for (const btn of flagButtons) {
+                        containerComponents.push(btn);
+                    }
+
+                    // "Click a flag" text inside the Container (V2 doesn't allow content field)
+                    containerComponents.unshift({ type: 10, content: `🌐 **Click a flag to translate** (${flagLangs.length} languages)` });
 
                     await interaction.editReply({
-                        embeds: [previewEmbed],
-                        components,
-                        content: `🌐 **Click a flag to translate this message** (${flagLangs.length} languages available)`
+                        flags: 32768,
+                        components: [{
+                            type: 17,
+                            components: containerComponents
+                        }]
                     });
                 } catch (err) {
                     logger.warn('translate_broadcast handler error', { error: err?.message || err });
@@ -1357,28 +1379,76 @@ client.on(Events.InteractionCreate, async interaction => {
                     const messageId = parts[2];
                     const targetLang = parts.slice(3).join(':');
 
-                    // Get original content — try Map first, then fetch from Discord
-                    let broadcastData = global.broadcastMessages?.get(messageId);
-                    if (!broadcastData) {
+                    // Get original content from the ephemeral V2 Container
+                    let broadcastData = null;
+                    try {
+                        const ephemeralMsg = await interaction.message.fetch();
+                        const container = ephemeralMsg.components?.[0];
+                        if (container?.components?.length) {
+                            let imageUrl = null;
+                            let title = null;
+                            let content = null;
+
+                            for (const comp of container.components) {
+                                if (comp.type === 12 && comp.items?.[0]?.media?.url) {
+                                    // MediaGallery = image
+                                    imageUrl = comp.items[0].media.url;
+                                } else if (comp.type === 10) {
+                                    // TextDisplay = title or content
+                                    const text = comp.content;
+                                    if (text.startsWith('**') && text.endsWith('**')) {
+                                        title = text.replace(/\*\*/g, '');
+                                    } else if (!content) {
+                                        content = text;
+                                    }
+                                }
+                            }
+
+                            if (content) {
+                                broadcastData = { title, content, imageUrl, guildId };
+                            }
+                        }
+                        // Fallback: try embed (for older messages)
+                        if (!broadcastData?.content) {
+                            const embed = ephemeralMsg.embeds?.[0];
+                            if (embed?.description) {
+                                broadcastData = {
+                                    title: embed.title || null,
+                                    content: embed.description,
+                                    imageUrl: embed.image?.url || null,
+                                    guildId
+                                };
+                            }
+                        }
+                    } catch {}
+
+                    // Fallback: try the Map
+                    if (!broadcastData?.content) {
+                        broadcastData = global.broadcastMessages?.get(messageId);
+                    }
+
+                    // Fallback: try fetching the original broadcast message from channel
+                    if (!broadcastData?.content) {
                         try {
-                            const msg = await interaction.message.fetch();
-                            const embed = msg.embeds?.[0];
+                            const originalMsg = await interaction.channel.messages.fetch(messageId);
+                            const embed = originalMsg.embeds?.[0];
                             broadcastData = {
                                 title: embed?.title || null,
-                                content: embed?.description || msg.content || null,
+                                content: embed?.description || originalMsg.content || null,
                                 guildId: guildId
                             };
                         } catch {}
                     }
+
                     if (!broadcastData?.content) {
-                        await interaction.editReply({ content: '❌ Could not read this message content.' });
+                        await interaction.editReply({ content: '❌ Could not read the original message content.' });
                         return;
                     }
 
                     const flag = getLanguageFlag(targetLang);
                     const langName = getLanguageDisplayName(targetLang);
 
-                    // Translate using Mistral Small 2506 (don't pass null — let it use default API key)
+                    // Translate using Mistral Small 2506
                     const translatedContent = await translateText(
                         broadcastData.content,
                         targetLang,
@@ -1387,19 +1457,6 @@ client.on(Events.InteractionCreate, async interaction => {
                         undefined,
                         'mistral-small-2506'
                     );
-
-                    // Build translated preview embed
-                    const { EmbedBuilder: EB, ActionRowBuilder: AR, ButtonBuilder: BB, ButtonStyle: BS } = require('discord.js');
-                    
-                    const translatedEmbed = new EB()
-                        .setColor('#00ff88')
-                        .setTimestamp();
-
-                    if (broadcastData.title) {
-                        translatedEmbed.setTitle(broadcastData.title);
-                    }
-                    translatedEmbed.setDescription(translatedContent);
-                    translatedEmbed.setFooter({ text: `Translated to ${flag} ${langName} • Original in English` });
 
                     // Re-build flag buttons so user can translate to another language
                     const Server = require('./models/Server');
@@ -1416,27 +1473,64 @@ client.on(Events.InteractionCreate, async interaction => {
                     }
                     const translateLangs = languages.filter(l => l !== 'auto' && l !== 'english');
                     const flagLangs = translateLangs.slice(0, 15);
-                    const components = [];
+                    const flagButtons = [];
 
                     for (let i = 0; i < flagLangs.length; i += 5) {
-                        const row = new AR();
+                        const row = { type: 1, components: [] };
                         for (const lang of flagLangs.slice(i, i + 5)) {
                             const f = getLanguageFlag(lang);
-                            row.addComponents(
-                                new BB()
-                                    .setCustomId(`tfl:${guildId}:${messageId}:${lang}`)
-                                    .setLabel(f)
-                                    .setStyle(BS.Secondary)
-                            );
+                            row.components.push({
+                                type: 2,
+                                custom_id: `tfl:${guildId}:${messageId}:${lang}`,
+                                label: f,
+                                style: 2
+                            });
                         }
-                        components.push(row);
+                        flagButtons.push(row);
                     }
 
-                    // Edit the ephemeral message with translated content
+                    // Build V2 Container with translated content (mirror original structure)
+                    const containerComponents = [];
+
+                    // Image (if original had one)
+                    if (broadcastData.imageUrl) {
+                        containerComponents.push({
+                            type: 12, // MediaGallery
+                            items: [{ media: { url: broadcastData.imageUrl } }]
+                        });
+                    }
+
+                    // Translated title (if original had one)
+                    if (broadcastData.title) {
+                        const translatedTitle = await translateText(
+                            broadcastData.title,
+                            targetLang,
+                            'english',
+                            false,
+                            undefined,
+                            'mistral-small-2506'
+                        );
+                        containerComponents.push({ type: 10, content: `**${translatedTitle}**` });
+                    }
+
+                    // Translated content
+                    containerComponents.push({ type: 10, content: translatedContent });
+
+                    // Flag buttons at bottom
+                    for (const btn of flagButtons) {
+                        containerComponents.push(btn);
+                    }
+
+                    // "Click another flag" text inside the Container
+                    containerComponents.unshift({ type: 10, content: `🌐 **Click another flag to translate**` });
+
+                    // Edit the ephemeral message
                     await interaction.editReply({
-                        content: `✅ **Translated to ${flag} ${langName}** — Click another flag to translate again`,
-                        embeds: [translatedEmbed],
-                        components
+                        flags: 32768,
+                        components: [{
+                            type: 17,
+                            components: containerComponents
+                        }]
                     });
                 } catch (err) {
                     logger.warn('translate_broadcast_lang handler error', { error: err?.message || err });

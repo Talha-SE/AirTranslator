@@ -87,7 +87,8 @@ async function sendServerMessage(messageData, onProgress) {
         includeFooter,
         urgentMessage,
         sendAsText,
-        sendAsV2Container
+        sendAsV2Container,
+        imageUrl
     } = messageData;
     
     if (!content) {
@@ -108,12 +109,23 @@ async function sendServerMessage(messageData, onProgress) {
         // Build Discord Components V2 Container (flags: 32768)
         const innerComponents = [];
 
+        // Add image before title if provided
+        if (imageUrl) {
+            innerComponents.push({
+                type: 12, // MediaGallery
+                items: [{
+                    media: { url: imageUrl },
+                    description: 'Broadcast image'
+                }]
+            });
+        }
+
         if (title) {
             innerComponents.push({ type: 10, content: `**${title}**` });
         }
         innerComponents.push({ type: 10, content: content });
         if (includeFooter) {
-            innerComponents.push({ type: 10, content: `_Sent via AirTranslator Bot • <t:${Math.floor(Date.now() / 1000)}:R>_` });
+            innerComponents.push({ type: 10, content: `_Sent via AirTranslator Bot_` });
         }
         if (urgentMessage) {
             innerComponents.push({ type: 10, content: '⚠️ **Important Message**' });
@@ -129,8 +141,7 @@ async function sendServerMessage(messageData, onProgress) {
     } else {
         const embed = new EmbedBuilder()
             .setDescription(content)
-            .setColor(color || '#3498db')
-            .setTimestamp();
+            .setColor(color || '#3498db');
         
         if (title) {
             embed.setTitle(title);
@@ -142,6 +153,11 @@ async function sendServerMessage(messageData, onProgress) {
         
         if (urgentMessage) {
             embed.addFields({ name: '⚠️ Priority', value: 'Important Message', inline: true });
+        }
+        
+        // Add image before title if provided
+        if (imageUrl) {
+            embed.setImage(imageUrl);
         }
         
         messagePayload = { embeds: [embed] };
@@ -238,6 +254,7 @@ async function sendServerMessage(messageData, onProgress) {
                         title: title || null,
                         content: content,
                         guildId: guild.id,
+                        imageUrl: imageUrl || null,
                         timestamp: Date.now()
                     });
                     

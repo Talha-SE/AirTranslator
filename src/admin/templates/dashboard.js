@@ -340,6 +340,12 @@ function generateMessagingTab() {
                         <div class="form-hint"><span id="charCount">0</span> / 1500 characters</div>
                     </div>
                     
+                    <div class="form-group">
+                        <label class="form-label">Image URL <span class="text-muted">(optional — PNG, JPG, GIF, or MP4)</span></label>
+                        <input type="url" class="form-control" id="messageImageUrl" placeholder="https://example.com/image.png" />
+                        <div class="form-hint">Added before the title. Supports images and short videos.</div>
+                    </div>
+                    
                     <div class="form-grid">
                         <div class="form-group">
                             <label class="form-label">Send To</label>
