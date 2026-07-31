@@ -146,6 +146,9 @@ const PLAYBACK_CHUNK_SECONDS = 1.0;
 /** Silence tail appended to end of translated audio to prevent Opus interpolation artifacts (ms) */
 const SILENCE_TAIL_MS = 100;
 
+/** Minimum streaming buffer bytes before playback starts (0.3s at 24kHz 16-bit mono) */
+const MIN_STREAMING_BUFFER_BYTES = GEMINI_OUTPUT_RATE * 2 * MIN_PLAYBACK_BUFFER_SECONDS;
+
 /** Maximum items in Gemini send queue before dropping oldest chunks */
 const MAX_SEND_QUEUE_ITEMS = 30;
 
@@ -478,6 +481,8 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       flashModelAudioParts: [],
       /** Timeout to clear flashModelAudioParts if turnComplete stalls */
       flashModelPartsTimer: null,
+      /** Streaming: raw PCM buffer accumulated from incoming audio parts (played before turnComplete) */
+      streamingBuffer: Buffer.alloc(0),
       /** Map of userId → { pcmBuffer, flushTimer } for active real-time streams */
       activeStreams: new Map(),
       /** Interval ID for periodic activity check */
@@ -1343,22 +1348,42 @@ async function connectGeminiSession(state) {
           // Debug: log all incoming messages to diagnose response issues
           const msgType = message?.serverContent ? 'serverContent' : message?.toolCall ? 'toolCall' : message?.setupComplete ? 'setupComplete' : 'other';
           log.debug(`📨 Gemini message: type=${msgType} keys=${Object.keys(message || {}).join(',')}`);
-          // Turn-based models (Flash Live, Native Audio): buffer audio parts until turnComplete
+
+          // Streaming mode: process each audio part immediately instead of batching at turnComplete
           const modelTurn = message?.serverContent?.modelTurn;
           if (modelTurn?.parts) {
             for (const part of modelTurn.parts) {
               if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData?.data) {
-                state.flashModelAudioParts.push(part.inlineData.data);
-                // Cap count to prevent unbounded growth (each part is a base64 audio chunk)
-                if (state.flashModelAudioParts.length > MAX_FLASH_MODEL_PARTS) {
-                  state.flashModelAudioParts.splice(0, state.flashModelAudioParts.length - MAX_FLASH_MODEL_PARTS);
+                // Decode base64 → raw PCM and accumulate in streaming buffer
+                const pcmData = Buffer.from(part.inlineData.data, 'base64');
+                state.streamingBuffer = Buffer.concat([state.streamingBuffer, pcmData]);
+
+                // Stream as soon as we have enough for a playback chunk
+                while (state.streamingBuffer.length >= MIN_STREAMING_BUFFER_BYTES) {
+                  const chunk = state.streamingBuffer.subarray(0, MIN_STREAMING_BUFFER_BYTES);
+                  state.streamingBuffer = state.streamingBuffer.subarray(MIN_STREAMING_BUFFER_BYTES);
+
+                  state.translatedChunks.push(chunk);
+                  state.translatedChunksSize += chunk.length;
+
+                  // Cap chunks to prevent unbounded growth
+                  while (state.translatedChunks.length > state.maxTranslatedChunks || state.translatedChunksSize > MAX_BUFFER_SIZE) {
+                    const oldest = state.translatedChunks.shift();
+                    if (oldest) state.translatedChunksSize -= oldest.length;
+                  }
+
+                  // Start playing immediately if idle
+                  if (state.audioPlayer.state.status === AudioPlayerStatus.Idle) {
+                    log.debug(`▶️ Streaming: playing chunk immediately`);
+                    playNextChunk(state);
+                  }
                 }
+
                 // Reset timeout — if turnComplete doesn't arrive in 180s, log warning
                 if (state.flashModelPartsTimer) clearTimeout(state.flashModelPartsTimer);
                 state.flashModelPartsTimer = setTimeout(() => {
-                  if (state.flashModelAudioParts.length > 0) {
-                    log.warn(`⚠️ flashModelAudioParts stale (${state.flashModelAudioParts.length} parts, ${180}s timeout)`);
-                    // Don't clear — Gemini may still be generating. Only log.
+                  if (state.streamingBuffer.length > 0 || state.flashModelAudioParts.length > 0) {
+                    log.warn(`⚠️ Gemini audio parts stale (${state.flashModelAudioParts.length} parts + ${(state.streamingBuffer.length / 1024).toFixed(1)} KB buffer, 180s timeout)`);
                   }
                 }, 180000);
               }
@@ -1369,44 +1394,37 @@ async function connectGeminiSession(state) {
             }
           }
 
-          // When turn is complete, concatenate all buffered audio and play
+          // When turn is complete, flush any remaining streaming buffer
           if (message?.serverContent?.turnComplete) {
             // Clear the timeout — turnComplete arrived
             if (state.flashModelPartsTimer) {
               clearTimeout(state.flashModelPartsTimer);
               state.flashModelPartsTimer = null;
             }
-            if (state.flashModelAudioParts.length > 0) {
-              const combined = Buffer.concat(
-                state.flashModelAudioParts.map(d => Buffer.from(d, 'base64'))
-              );
-              state.flashModelAudioParts = [];
 
-              if (combined.length > 0) {
-                state.totalAudioReceived += combined.length;
-                const translatedDurationMs = Math.round((combined.length / 2) / GEMINI_OUTPUT_RATE * 1000);
-                log.success(`🔊 Turn-based model complete — received ${(combined.length / 1024).toFixed(1)} KB translated audio (${translatedDurationMs}ms)`);
+            // Flush any remaining audio in the streaming buffer (below MIN_STREAMING_BUFFER_BYTES)
+            if (state.streamingBuffer.length > 0) {
+              state.totalAudioReceived += state.streamingBuffer.length;
+              const translatedDurationMs = Math.round((state.streamingBuffer.length / 2) / GEMINI_OUTPUT_RATE * 1000);
+              log.success(`🔊 Turn complete — flushing ${(state.streamingBuffer.length / 1024).toFixed(1)} KB remaining audio (${translatedDurationMs}ms)`);
 
-                // Use chunk-list: split into 1-second chunks so playback works incrementally
-                const chunkSize = GEMINI_OUTPUT_RATE * 2 * PLAYBACK_CHUNK_SECONDS;
-                for (let offset = 0; offset < combined.length; offset += chunkSize) {
-                  const chunk = combined.subarray(offset, Math.min(offset + chunkSize, combined.length));
-                  state.translatedChunks.push(chunk);
-                  state.translatedChunksSize += chunk.length;
-                }
+              state.translatedChunks.push(state.streamingBuffer);
+              state.translatedChunksSize += state.streamingBuffer.length;
+              state.streamingBuffer = Buffer.alloc(0);
 
-                // Cap chunks to prevent unbounded growth (by count AND byte size)
-                while (state.translatedChunks.length > state.maxTranslatedChunks || state.translatedChunksSize > MAX_BUFFER_SIZE) {
-                  const oldest = state.translatedChunks.shift();
-                  if (oldest) state.translatedChunksSize -= oldest.length;
-                }
-
-                // Start playing if idle
-                if (state.audioPlayer.state.status === AudioPlayerStatus.Idle) {
-                  log.info(`▶️ Starting playback of ${isNativeAudio ? 'Native Audio' : 'Flash Live'} translated audio...`);
-                  playTranslatedAudio(state);
-                }
+              // Cap chunks to prevent unbounded growth
+              while (state.translatedChunks.length > state.maxTranslatedChunks || state.translatedChunksSize > MAX_BUFFER_SIZE) {
+                const oldest = state.translatedChunks.shift();
+                if (oldest) state.translatedChunksSize -= oldest.length;
               }
+
+              // Start playing if idle
+              if (state.audioPlayer.state.status === AudioPlayerStatus.Idle) {
+                log.info(`▶️ Playing flushed turn-end audio...`);
+                playNextChunk(state);
+              }
+            } else {
+              log.success(`🔊 Turn complete — audio was streamed in real-time`);
             }
           }
         } catch (err) {
@@ -1575,7 +1593,7 @@ function playTranslatedAudio(state) {
           log.debug('⏰ Drain timer fired — playing remaining chunks');
           playNextChunk(state);
         }
-      }, 350);
+      }, 100);
     }
     return;
   }
@@ -1789,6 +1807,9 @@ async function stopTranslation(guildId, client) {
       state.flashModelPartsTimer = null;
     }
     state.flashModelAudioParts = [];
+
+    // Clear streaming buffer
+    state.streamingBuffer = Buffer.alloc(0);
 
     // Clear all per-user recovery timers
     for (const [userId, timer] of state.recoveryTimers) {
