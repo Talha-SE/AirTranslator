@@ -157,9 +157,205 @@ function buildFlagTranslationContainer({
     };
 }
 
+/**
+ * Build a Components V2 Container for the vote-on-Top.gg prompt.
+ *
+ * @param {Object}  options
+ * @param {string}  options.voteContent  – Translated vote message text
+ * @param {string}  options.serverId     – Server ID for the vote button custom_id
+ * @returns {Object} Raw payload with flags and components (ephemeral + V2)
+ */
+function buildVoteContainer({ voteContent, serverId }) {
+    return {
+        flags: FLAGS_COMPONENTS_V2 | 64, // ComponentsV2 | Ephemeral
+        components: [
+            {
+                type: TYPE_CONTAINER,
+                components: [
+                    {
+                        type: TYPE_TEXT_DISPLAY,
+                        content: '🗳️ **Vote on Top.gg**',
+                    },
+                    {
+                        type: TYPE_TEXT_DISPLAY,
+                        content: voteContent,
+                    },
+                    {
+                        type: TYPE_ACTION_ROW,
+                        components: [
+                            {
+                                type: TYPE_BUTTON,
+                                style: BUTTON_STYLE_PRIMARY,
+                                label: '🗳️ Vote on Top.gg',
+                                custom_id: `vote_choice_topgg:${serverId}`,
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    };
+}
+
+/**
+ * Build a Components V2 Container for vote instructions (after clicking vote button).
+ *
+ * @param {Object}  options
+ * @param {number}  options.bonus        – Number of free translations earned
+ * @param {number}  options.delaySeconds – Seconds until reward is granted
+ * @param {string}  options.siteName     – Site name (e.g. "Top.gg")
+ * @param {string}  options.linkUrl      – URL to vote on the site
+ * @returns {Object} Raw payload with flags and components (ephemeral + V2)
+ */
+function buildVoteInstructionsContainer({ bonus, delaySeconds, siteName, linkUrl }) {
+    return {
+        flags: FLAGS_COMPONENTS_V2 | 64, // ComponentsV2 | Ephemeral
+        components: [
+            {
+                type: TYPE_CONTAINER,
+                components: [
+                    {
+                        type: TYPE_TEXT_DISPLAY,
+                        content: '🗳️ **Vote Instructions**',
+                    },
+                    {
+                        type: TYPE_TEXT_DISPLAY,
+                        content: `We'll add **${bonus} free translations** to this server in about **${delaySeconds} seconds**.\nPlease complete the vote on ${siteName} in the meantime by clicking the button below 👇.`,
+                    },
+                    {
+                        type: TYPE_ACTION_ROW,
+                        components: [
+                            {
+                                type: TYPE_BUTTON,
+                                style: BUTTON_STYLE_LINK,
+                                label: `🔗 Open ${siteName}`,
+                                url: linkUrl,
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    };
+}
+
+/**
+ * Build a Components V2 Container for vote cooldown notice.
+ *
+ * @param {Object}  options
+ * @param {string}  options.siteName – Site name (e.g. "Top.gg")
+ * @param {number}  options.hours    – Hours remaining until cooldown expires
+ * @returns {Object} Raw payload with flags and components (ephemeral + V2)
+ */
+function buildVoteCooldownContainer({ siteName, hours }) {
+    return {
+        flags: FLAGS_COMPONENTS_V2 | 64, // ComponentsV2 | Ephemeral
+        components: [
+            {
+                type: TYPE_CONTAINER,
+                components: [
+                    {
+                        type: TYPE_TEXT_DISPLAY,
+                        content: '⏳ **Vote Cooldown Active**',
+                    },
+                    {
+                        type: TYPE_TEXT_DISPLAY,
+                        content: `You have already voted on **${siteName}** for this server within the last 12 hours. You can claim vote rewards again in about **${hours} hour(s)**.`,
+                    },
+                ],
+            },
+        ],
+    };
+}
+
+/**
+ * Build a Components V2 Container for reward-already-pending notice.
+ *
+ * @param {Object}  options
+ * @param {number}  options.minutes – Minutes remaining
+ * @returns {Object} Raw payload with flags and components (ephemeral + V2)
+ */
+function buildRewardPendingContainer({ minutes }) {
+    return {
+        flags: FLAGS_COMPONENTS_V2 | 64, // ComponentsV2 | Ephemeral
+        components: [
+            {
+                type: TYPE_CONTAINER,
+                components: [
+                    {
+                        type: TYPE_TEXT_DISPLAY,
+                        content: '⏳ **Reward Already Pending**',
+                    },
+                    {
+                        type: TYPE_TEXT_DISPLAY,
+                        content: `A vote reward is already scheduled for this server. Please wait about **${minutes} minute(s)** before clicking again.`,
+                    },
+                ],
+            },
+        ],
+    };
+}
+
+/**
+ * Build a Components V2 Container for premium payment review.
+ *
+ * @param {Object}  options
+ * @param {string}  options.description   – Translated premium description
+ * @param {string}  options.serverName    – Server name
+ * @param {string}  options.serverId      – Server ID
+ * @param {string}  options.pricingUrl    – Tracked pricing URL
+ * @returns {Object} Raw payload with flags and components (ephemeral + V2)
+ */
+function buildPremiumContainer({ description, serverName, serverId, pricingUrl }) {
+    return {
+        flags: FLAGS_COMPONENTS_V2 | 64, // ComponentsV2 | Ephemeral
+        components: [
+            {
+                type: TYPE_CONTAINER,
+                components: [
+                    {
+                        type: TYPE_TEXT_DISPLAY,
+                        content: '💎 **Premium Payment Review**',
+                    },
+                    {
+                        type: TYPE_TEXT_DISPLAY,
+                        content: description,
+                    },
+                    {
+                        type: TYPE_TEXT_DISPLAY,
+                        content: `**Server:** ${serverName}\n**Server ID:** ${serverId}`,
+                    },
+                    {
+                        type: TYPE_ACTION_ROW,
+                        components: [
+                            {
+                                type: TYPE_BUTTON,
+                                style: BUTTON_STYLE_LINK,
+                                label: '💳 Payment',
+                                url: pricingUrl,
+                            },
+                            {
+                                type: TYPE_BUTTON,
+                                style: BUTTON_STYLE_PRIMARY,
+                                label: '✅ Confirm',
+                                custom_id: `premium_request:${serverId}`,
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    };
+}
+
 module.exports = {
     buildAutoTranslationContainer,
     buildAutoTranslationButtons,
     buildFlagTranslationContainer,
+    buildVoteContainer,
+    buildVoteInstructionsContainer,
+    buildVoteCooldownContainer,
+    buildRewardPendingContainer,
+    buildPremiumContainer,
     FLAGS_COMPONENTS_V2,
 };

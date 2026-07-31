@@ -1,4 +1,5 @@
 const { Client, GatewayIntentBits, Collection, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, Partials, ChannelSelectMenuBuilder, ChannelType } = require('discord.js');
+const { buildVoteContainer, buildVoteInstructionsContainer, buildVoteCooldownContainer, buildRewardPendingContainer, buildPremiumContainer } = require('./utils/translationCardBuilder');
 const { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus } = require('@discordjs/voice');
 const axios = require('axios');
 
@@ -983,21 +984,9 @@ client.on(Events.InteractionCreate, async interaction => {
                     // Get translated vote message
                     const voteContent = await translateVoteMessage(serverId);
 
-                    const voteEmbed = new EmbedBuilder()
-                        .setTitle('🗳️ Vote on Top.gg')
-                        .setDescription(voteContent)
-                        .setColor('#5865F2')
-                        .setFooter({ text: 'Air Translator • Vote rewards' });
+                    const votePayload = buildVoteContainer({ voteContent, serverId });
 
-                    const voteRow = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder()
-                            .setCustomId(`vote_choice_topgg:${serverId}`)
-                            .setLabel('Vote on Top.gg')
-                            .setEmoji('🗳️')
-                            .setStyle(ButtonStyle.Primary)
-                    );
-
-                    await interaction.editReply({ embeds: [voteEmbed], components: [voteRow] });
+                    await interaction.editReply(votePayload);
                 } catch (err) {
                     logger.warn('vote_on_topgg handler error', { error: err?.message || err });
                     try {
@@ -1037,16 +1026,7 @@ client.on(Events.InteractionCreate, async interaction => {
                         const hrs = Math.ceil(remainingTime / (60 * 60 * 1000));
                         console.log(`⏳ Showing cooldown message to user ${interaction.user.id}: ${hrs} hours remaining`);
                         
-                        await interaction.reply({
-                            embeds: [new EmbedBuilder()
-                                .setColor('#f59e0b')
-                                .setTitle('⏳ Vote Cooldown Active')
-                                .setDescription(`You have already voted on **${SITE_NAME}** for this server within the last 12 hours. You can claim vote rewards again in about **${hrs} hour(s)**.`)
-                                .setFooter({ text: 'Air Translator • Vote rewards' })
-                                .setTimestamp(new Date())
-                            ],
-                            flags: MessageFlags.Ephemeral
-                        });
+                        await interaction.reply(buildVoteCooldownContainer({ siteName: SITE_NAME, hours: hrs }));
                         return;
                     }
                     
@@ -1067,35 +1047,20 @@ client.on(Events.InteractionCreate, async interaction => {
 
                     if (!scheduleResult.scheduled && scheduleResult.reason === 'already_pending') {
                         const pendingMins = Math.ceil((scheduleResult.remainingMs || 0) / 60000) || 1;
-                        await interaction.reply({
-                            embeds: [new EmbedBuilder()
-                                .setColor('#f59e0b')
-                                .setTitle('⏳ Reward Already Pending')
-                                .setDescription(`A vote reward is already scheduled for this server. Please wait about **${pendingMins} minute(s)** before clicking again.`)
-                                .setFooter({ text: 'Air Translator • Vote rewards' })
-                                .setTimestamp(new Date())
-                            ],
-                            flags: MessageFlags.Ephemeral
-                        });
+                        await interaction.reply(buildRewardPendingContainer({ minutes: pendingMins }));
                         return;
                     }
 
                     const linkUrl = `https://top.gg/bot/1380177061032759416/vote?guild=${serverId}`;
 
-                    const voteLinkRow = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder()
-                            .setLabel(`Open ${SITE_NAME}`)
-                            .setEmoji('🔗')
-                            .setURL(linkUrl)
-                            .setStyle(ButtonStyle.Link)
-                    );
+                    const instructionsPayload = buildVoteInstructionsContainer({
+                        bonus: BONUS,
+                        delaySeconds: Math.floor(DELAY_MS / 1000),
+                        siteName: SITE_NAME,
+                        linkUrl,
+                    });
 
-                    const pendingEmbed = new EmbedBuilder()
-                        .setColor('#129af5')
-                        .setTitle('🗳️ Vote Instructions')
-                        .setDescription(`We'll add **${BONUS} free translations** to this server in about **${Math.floor(DELAY_MS/1000)} seconds**.\nPlease complete the vote on ${SITE_NAME} in the meantime by clicking the button below 👇.`);
-
-                    await interaction.reply({ embeds: [pendingEmbed], components: [voteLinkRow], flags: MessageFlags.Ephemeral });
+                    await interaction.reply(instructionsPayload);
 
                 } catch (err) {
                     logger.warn('vote choice handler error', { error: err?.message || err });
@@ -1133,28 +1098,14 @@ client.on(Events.InteractionCreate, async interaction => {
                     // Get translated description based on server languages
                     const translatedDescription = await translatePremiumMessage(serverId);
 
-                    const infoEmbed = new EmbedBuilder()
-                        .setTitle('💎 Premium Payment Review')
-                        .setDescription(translatedDescription)
-                        .setColor('#5865F2')
-                        .addFields(
-                            { name: 'Server', value: serverName, inline: true },
-                            { name: 'Server ID', value: serverId, inline: true }
-                        )
-                        .setTimestamp(new Date());
+                    const premiumPayload = buildPremiumContainer({
+                        description: translatedDescription,
+                        serverName,
+                        serverId,
+                        pricingUrl: trackedPricingUrl,
+                    });
 
-                    const buttons = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder()
-                            .setLabel('💳')
-                            .setStyle(ButtonStyle.Link)
-                            .setURL(trackedPricingUrl),
-                        new ButtonBuilder()
-                            .setCustomId(`premium_request:${serverId}`)
-                            .setLabel('✅')
-                            .setStyle(ButtonStyle.Primary)
-                    );
-
-                    await interaction.editReply({ embeds: [infoEmbed], components: [buttons] });
+                    await interaction.editReply(premiumPayload);
                 } catch (err) {
                     logger.warn('see_payment_options handler error', { error: err?.message || err });
                     try {
