@@ -1263,14 +1263,48 @@ client.on(Events.InteractionCreate, async interaction => {
                         // Fetch the original broadcast message from the channel
                         try {
                             const originalMsg = await interaction.channel.messages.fetch(messageId);
+                            
+                            // Try embed first (old-style broadcasts)
                             const embed = originalMsg.embeds?.[0];
-                            broadcastData = {
-                                title: embed?.title || null,
-                                content: embed?.description || originalMsg.content || null,
-                                imageUrl: embed?.image?.url || null,
-                                guildId: guildId
-                            };
-                        } catch {}
+                            if (embed?.description) {
+                                broadcastData = {
+                                    title: embed.title || null,
+                                    content: embed.description,
+                                    imageUrl: embed.image?.url || null,
+                                    guildId: guildId
+                                };
+                            }
+                            
+                            // Try V2 Container (new-style broadcasts)
+                            if (!broadcastData?.content && originalMsg.components?.[0]) {
+                                const container = originalMsg.components[0];
+                                let imageUrl = null;
+                                let title = null;
+                                let content = null;
+                                for (const comp of (container.components || [])) {
+                                    if (comp.type === 12 && comp.items?.[0]?.media?.url) {
+                                        imageUrl = comp.items[0].media.url;
+                                    } else if (comp.type === 10) {
+                                        const text = comp.content;
+                                        if (text?.startsWith('**') && text?.endsWith('**')) {
+                                            title = text.replace(/\*\*/g, '');
+                                        } else if (!content && text) {
+                                            content = text;
+                                        }
+                                    }
+                                }
+                                if (content) {
+                                    broadcastData = { title, content, imageUrl, guildId };
+                                }
+                            }
+
+                            // Try plain content fallback
+                            if (!broadcastData?.content && originalMsg.content) {
+                                broadcastData = { title: null, content: originalMsg.content, imageUrl: null, guildId };
+                            }
+                        } catch (e) {
+                            logger.warn('Could not fetch broadcast message', { messageId, error: e?.message });
+                        }
                     }
                     if (!broadcastData?.content) {
                         await interaction.editReply({ content: '❌ Could not read this message content.' });
@@ -1380,8 +1414,9 @@ client.on(Events.InteractionCreate, async interaction => {
                     // Get original content from the ephemeral V2 Container
                     let broadcastData = null;
                     try {
-                        const ephemeralMsg = await interaction.message.fetch();
-                        const container = ephemeralMsg.components?.[0];
+                        // Read directly from interaction.message (no fetch needed)
+                        const msg = interaction.message;
+                        const container = msg.components?.[0];
                         if (container?.components?.length) {
                             let imageUrl = null;
                             let title = null;
@@ -1389,14 +1424,12 @@ client.on(Events.InteractionCreate, async interaction => {
 
                             for (const comp of container.components) {
                                 if (comp.type === 12 && comp.items?.[0]?.media?.url) {
-                                    // MediaGallery = image
                                     imageUrl = comp.items[0].media.url;
                                 } else if (comp.type === 10) {
-                                    // TextDisplay = title or content
                                     const text = comp.content;
-                                    if (text.startsWith('**') && text.endsWith('**')) {
+                                    if (text?.startsWith('**') && text?.endsWith('**')) {
                                         title = text.replace(/\*\*/g, '');
-                                    } else if (!content) {
+                                    } else if (!content && text && !text.startsWith('🌐')) {
                                         content = text;
                                     }
                                 }
@@ -1404,18 +1437,6 @@ client.on(Events.InteractionCreate, async interaction => {
 
                             if (content) {
                                 broadcastData = { title, content, imageUrl, guildId };
-                            }
-                        }
-                        // Fallback: try embed (for older messages)
-                        if (!broadcastData?.content) {
-                            const embed = ephemeralMsg.embeds?.[0];
-                            if (embed?.description) {
-                                broadcastData = {
-                                    title: embed.title || null,
-                                    content: embed.description,
-                                    imageUrl: embed.image?.url || null,
-                                    guildId
-                                };
                             }
                         }
                     } catch {}
@@ -1429,17 +1450,40 @@ client.on(Events.InteractionCreate, async interaction => {
                     if (!broadcastData?.content) {
                         try {
                             const originalMsg = await interaction.channel.messages.fetch(messageId);
+                            
+                            // Try embed first
                             const embed = originalMsg.embeds?.[0];
-                            broadcastData = {
-                                title: embed?.title || null,
-                                content: embed?.description || originalMsg.content || null,
-                                guildId: guildId
-                            };
+                            if (embed?.description) {
+                                broadcastData = { title: embed.title || null, content: embed.description, imageUrl: embed.image?.url || null, guildId };
+                            }
+
+                            // Try V2 Container
+                            if (!broadcastData?.content && originalMsg.components?.[0]) {
+                                const container = originalMsg.components[0];
+                                let imageUrl = null, title = null, content = null;
+                                for (const comp of (container.components || [])) {
+                                    if (comp.type === 12 && comp.items?.[0]?.media?.url) imageUrl = comp.items[0].media.url;
+                                    else if (comp.type === 10) {
+                                        const text = comp.content;
+                                        if (text?.startsWith('**') && text?.endsWith('**')) title = text.replace(/\*\*/g, '');
+                                        else if (!content && text) content = text;
+                                    }
+                                }
+                                if (content) broadcastData = { title, content, imageUrl, guildId };
+                            }
+
+                            // Plain text fallback
+                            if (!broadcastData?.content && originalMsg.content) {
+                                broadcastData = { title: null, content: originalMsg.content, imageUrl: null, guildId };
+                            }
                         } catch {}
                     }
 
                     if (!broadcastData?.content) {
-                        await interaction.update({ content: '❌ Could not read the original message content.' });
+                        await interaction.update({
+                            flags: 32768,
+                            components: [{ type: 17, components: [{ type: 10, content: '❌ Could not read the original message content.' }] }]
+                        });
                         return;
                     }
 
@@ -1533,7 +1577,10 @@ client.on(Events.InteractionCreate, async interaction => {
                 } catch (err) {
                     logger.warn('translate_broadcast_lang handler error', { error: err?.message || err });
                     try {
-                        await interaction.update({ content: '❌ Translation failed. Please try again.' });
+                        await interaction.update({
+                            flags: 32768,
+                            components: [{ type: 17, components: [{ type: 10, content: '❌ Translation failed. Please try again.' }] }]
+                        });
                     } catch {}
                 }
                 return;
