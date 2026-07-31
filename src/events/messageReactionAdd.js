@@ -1,4 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { buildFlagTranslationContainer } = require('../utils/translationCardBuilder');
 const {
     getFlagLanguage,
     getLanguageDisplayName,
@@ -811,32 +812,18 @@ async function messageReactionAdd(client, reaction, user) {
 
         const displayLanguage = getLanguageDisplayName(targetLanguage);
 
-        // Create embed using the same design as auto-translation system - only show translation
-        const embed = new EmbedBuilder()
-            .setColor('#00FF00')
-            .setAuthor({
-                name: `${message.author.displayName}`,
-                iconURL: message.author.displayAvatarURL({ dynamic: true, size: 128 })
-            })
-            .addFields({
-                name: `${displayFlag} ${displayLanguage}`,
-                value: translation.length > 1000 ? translation.substring(0, 997) + '...' : translation,
-                inline: false
-            })
-            .addFields({
-                name: '🔍 Info',
-                value: `**Original:** [Jump to message](${message.url})`,
-                inline: false
-            })
-            
-            .setFooter({
-                text: `Auto-deletes in 15 min • Requested by ${user.username}`,
-                iconURL: client.user.displayAvatarURL()
-            });
+        // Build Components V2 Container for flag translation
+        const containerPayload = buildFlagTranslationContainer({
+            flag: displayFlag,
+            displayLanguage,
+            translation,
+            messageUrl: message.url,
+            requestedByUsername: user.username,
+        });
 
-        console.log(`📤 Sending flag translation with unified design`);
+        console.log(`📤 Sending flag translation with V2 Container`);
         const translationReply = await message.reply({
-            embeds: [embed],
+            ...containerPayload,
             allowedMentions: { repliedUser: false }
         });
 

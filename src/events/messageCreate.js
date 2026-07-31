@@ -8,6 +8,7 @@ const analyticsService = require('../services/analyticsService');
 const translationQueueService = require('../services/translationQueueService');
 const { maybeSendUnlimitedUsageOffer } = require('../services/unlimitedUsageCampaignService');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { buildAutoTranslationContainer, buildAutoTranslationButtons } = require('../utils/translationCardBuilder');
 const Server = require('../models/Server');
 const {
     getLanguageDisplayName: getMappedLanguageDisplayName,
@@ -763,69 +764,48 @@ async function translateAndReply(message, languages, options = {}) {
 
             // Send each chunk as a modern embed
             for (let i = 0; i < chunks.length; i++) {
-                // Track which languages are too long to fit in an embed field
+                // Track which languages are too long to fit in a Text Display
                 const longTranslations = [];
-                const fields = chunks[i].map(([language, translation]) => {
+                const containerTranslations = chunks[i].map(([language, translation]) => {
                     const flag = getLanguageFlag(language);
-                    
                     const displayLanguage = getLanguageDisplayName(language);
                     
-                    // If translation fits in an embed field (<= 1024), show it fully.
+                    // If translation fits in a Text Display (<= 1024), show it fully.
                     // Otherwise, show a short preview and send full text below as messages.
                     let displayTranslation = translation;
-                    const EMBED_FIELD_LIMIT = 1024;
-                    if (translation.length > EMBED_FIELD_LIMIT) {
+                    const TEXT_LIMIT = 1024;
+                    if (translation.length > TEXT_LIMIT) {
                         longTranslations.push({ language, displayLanguage, translation });
                         const previewLen = 300;
                         displayTranslation = translation.substring(0, previewLen) + '...\n\n— View full translation below —';
                     }
                     
-                    return {
-                        name: `${flag} ${displayLanguage}`,
-                        value: displayTranslation,
-                        inline: false
-                    };
+                    return { flag, displayLanguage, translation: displayTranslation };
                 });
                 
-                const embed = new EmbedBuilder()
-                    .setColor('#129af5') // Blue color
-                    .setFields(fields);
-                
-                if (i === 0) {
-                    // First embed gets the author info
-                    embed.setAuthor({
-                        name: `${message.author.displayName}`,
-                        iconURL: message.author.displayAvatarURL({ dynamic: true, size: 128 })
+                // Build raw button objects for the Container (last chunk only)
+                let containerButtons = null;
+                if (i === chunks.length - 1) {
+                    containerButtons = buildAutoTranslationButtons({
+                        guildId: message.guild.id,
+                        isServerExempt,
+                        dashboardUrl: buildDashboardUrl(),
                     });
                 }
                 
+                // Build Components V2 Container payload
+                const containerPayload = buildAutoTranslationContainer({
+                    translations: containerTranslations,
+                    authorName: i === 0 ? message.author.displayName : null,
+                    detectedLanguage,
+                    isLastChunk: i === chunks.length - 1,
+                    buttons: containerButtons,
+                });
+                
                 const replyOptions = {
-                    embeds: [embed],
+                    ...containerPayload,
                     allowedMentions: { repliedUser: false }
                 };
-                
-                // Add interactive buttons only to the last embed
-                if (i === chunks.length - 1) {
-                    const buttons = isServerExempt
-                        ? new ActionRowBuilder().addComponents(
-                            new ButtonBuilder()
-                                .setLabel('Dashboard')
-                                .setStyle(ButtonStyle.Link)
-                                .setURL(buildDashboardUrl())
-                        )
-                        : new ActionRowBuilder().addComponents(
-                            new ButtonBuilder()
-                                .setCustomId(`vote_on_topgg:${message.guild.id}`)
-                                .setLabel('Free (Vote)')
-                                .setStyle(ButtonStyle.Success),
-                            new ButtonBuilder()
-                                .setCustomId(`see_payment_options:${message.guild.id}`)
-                                .setLabel('Paid Options')
-                                .setStyle(ButtonStyle.Primary)
-                        );
-
-                    replyOptions.components = [buttons];
-                }
                 
                 // Handle thread-based or text-based translation
                 if (useThreadTranslation) {
@@ -870,9 +850,10 @@ async function translateAndReply(message, languages, options = {}) {
                     }
                     
                     // Send translation to thread
+                    // Combine Components V2 flag (32768) with SuppressNotifications (4096)
                     const silentReplyOptions = {
                         ...replyOptions,
-                        flags: ['SuppressNotifications'] // Mute thread translation notifications
+                        flags: (replyOptions.flags || 0) | 4096 // Mute thread translation notifications
                     };
                     const sent = await thread.send(silentReplyOptions);
                     botMessages.push(sent);

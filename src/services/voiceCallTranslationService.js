@@ -350,7 +350,8 @@ function getLanguageName(langCode) {
     'pa': 'Punjabi', 'kn': 'Kannada', 'ml': 'Malayalam', 'bg': 'Bulgarian',
     'hr': 'Croatian', 'sk': 'Slovak', 'sl': 'Slovenian', 'et': 'Estonian',
     'lv': 'Latvian', 'lt': 'Lithuanian', 'ca': 'Catalan', 'af': 'Afrikaans',
-    'sw': 'Swahili', 'my': 'Burmese', 'ne': 'Nepali', 'si': 'Sinhala',
+    'sw': 'Swahili', 'zh-tw': 'Chinese (Traditional)', 'fa': 'Persian', 'sr': 'Serbian',
+    'my': 'Burmese', 'ne': 'Nepali', 'si': 'Sinhala',
     'auto': 'Auto-Detect'
   };
   return names[langCode?.toLowerCase()] || langCode || 'Unknown';
