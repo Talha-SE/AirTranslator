@@ -1369,11 +1369,9 @@ client.on(Events.InteractionCreate, async interaction => {
                 return;
             }
 
-            // Handle Broadcast Language flag click — translate and edit message
+            // Handle Broadcast Language flag click — translate and edit the SAME message
             if (customId.startsWith('tfl:')) {
                 try {
-                    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
                     const parts = customId.split(':');
                     const guildId = parts[1];
                     const messageId = parts[2];
@@ -1441,7 +1439,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     }
 
                     if (!broadcastData?.content) {
-                        await interaction.editReply({ content: '❌ Could not read the original message content.' });
+                        await interaction.update({ content: '❌ Could not read the original message content.' });
                         return;
                     }
 
@@ -1524,8 +1522,8 @@ client.on(Events.InteractionCreate, async interaction => {
                     // "Click another flag" text inside the Container
                     containerComponents.unshift({ type: 10, content: `🌐 **Click another flag to translate**` });
 
-                    // Edit the ephemeral message
-                    await interaction.editReply({
+                    // Update the SAME message in-place
+                    await interaction.update({
                         flags: 32768,
                         components: [{
                             type: 17,
@@ -1535,7 +1533,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 } catch (err) {
                     logger.warn('translate_broadcast_lang handler error', { error: err?.message || err });
                     try {
-                        await interaction.editReply({ content: '❌ Translation failed. Please try again.' });
+                        await interaction.update({ content: '❌ Translation failed. Please try again.' });
                     } catch {}
                 }
                 return;
