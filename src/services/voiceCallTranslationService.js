@@ -880,6 +880,46 @@ function appendSilenceTail(stereoBuffer) {
 }
 
 /**
+ * Check if a user ID belongs to a bot (including this bot).
+ *
+ * Order of checks (fastest → slowest):
+ * 1. This bot's own user ID
+ * 2. Member cache of the target voice channel
+ * 3. Global user cache
+ * 4. API fetch (rare fallback — e.g. member/user not cached)
+ *
+ * @param {Object} state - The guild's voice call translation state
+ * @param {string} userId - Discord user ID to check
+ * @returns {Promise<boolean>} - True if the user is a bot
+ */
+async function isBotUser(state, userId) {
+  if (!userId) return true;
+  // Fast path: this bot itself
+  if (state.client?.user?.id === userId) return true;
+
+  // Fast path: cached member in the voice channel
+  try {
+    const member = state.client.guilds.cache
+      .get(state.guildId)?.channels?.cache
+      .get(state.voiceChannelId)?.members?.get(userId);
+    if (member) return member.user.bot === true;
+  } catch (e) { /* fall through to cache/fetch */ }
+
+  // Fast path: cached user
+  const cached = state.client.users.cache.get(userId);
+  if (cached) return cached.bot === true;
+
+  // Slow path: API fetch (only when not cached)
+  try {
+    const user = await state.client.users.fetch(userId);
+    return user.bot === true;
+  } catch (e) {
+    // Can't determine — assume human so we don't drop real speakers
+    return false;
+  }
+}
+
+/**
  * Set up a full audio pipeline for a single user: subscribe → decode Opus → accumulate PCM → send to Gemini on silence.
  * Called proactively for all users in channel on join, and when new users join.
  * Also triggered by speaking.start as a fallback.
@@ -898,6 +938,14 @@ async function setupUserStream(state, userId, source = 'direct') {
 
   if (state.activeStreams.has(userId)) return;
   if (!state.isRunning) return;
+
+  // NEVER subscribe to bots — this bot never hears itself or other bots.
+  // This guard covers ALL entry paths (speaking.start, sweep, voice joins, recovery),
+  // preventing translating bot audio and infinite loops between translator bots.
+  if (await isBotUser(state, userId)) {
+    log.debug(`🤖 Skipping bot user ${userId} (source: ${source})`);
+    return;
+  }
 
   const user = state.client.users.cache.get(userId);
   const username = user?.username || userId;
