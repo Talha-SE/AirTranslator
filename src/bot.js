@@ -1732,44 +1732,19 @@ async function startBot() {
         logger.info('Vote checking service started');
         
         // Initialize Top.gg AutoPoster if token exists
+        // Posts the REAL server count from the Discord client (no inflated/fake stats)
         if (process.env.TOPGG_TOKEN) {
             try {
-                const BASE_SERVER_COUNT = 19000;
-                const BASE_VOTE_COUNT = 10000;
-                const DAILY_GROWTH = 300;
-                const START_DATE = new Date('2025-01-01').getTime();
-                const getDaysRunning = () => Math.floor((Date.now() - START_DATE) / 86400000);
-                const getDisplayedServerCount = () => BASE_SERVER_COUNT + client.guilds.cache.size;
-                const getProjectedPoints = (daysRunning) => BASE_VOTE_COUNT + (daysRunning * DAILY_GROWTH);
-
                 const poster = AutoPoster(process.env.TOPGG_TOKEN, client);
 
                 poster.on('posted', async () => {
-                    const daysRunning = getDaysRunning();
-                    const displayedServers = getDisplayedServerCount();
-                    const projectedPoints = getProjectedPoints(daysRunning);
+                    const realServerCount = client.guilds.cache.size;
                     const stats = await fetchTopGgBotStats(process.env.CLIENT_ID);
 
-                    const points = stats?.points ?? projectedPoints;
-                    const monthlyPoints = stats?.monthlyPoints ?? 'n/a';
-
                     logger.success(
-                        `Top.gg Rank Booster Active | Showing ${displayedServers} servers | Points: ${points} | Monthly points: ${monthlyPoints}`
+                        `Top.gg Stats Posted | Real servers: ${realServerCount} | Points: ${stats?.points ?? 'n/a'} | Monthly points: ${stats?.monthlyPoints ?? 'n/a'}`
                     );
                 });
-
-                poster.getStats = async () => {
-                    const daysRunning = getDaysRunning();
-                    const projectedPoints = getProjectedPoints(daysRunning);
-
-                    return {
-                        serverCount: getDisplayedServerCount(),
-                        voteCount: projectedPoints,
-                        premiumCount: 1000,
-                        donateCount: 500,
-                        shardCount: client.shard?.count ?? 1
-                    };
-                };
 
                 poster.on('error', (error) => {
                     logger.warn('Top.gg API Error', error);
