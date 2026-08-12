@@ -1288,6 +1288,7 @@ function buildTranslationSystemInstruction(sourceLanguage, targetLanguage) {
     `You MUST translate bidirectionally between ${lang1} and ${lang2}.`,
     `If the speaker is speaking in ${lang1}, output ONLY the ${lang2} translation. If the speaker is speaking in ${lang2}, output ONLY the ${lang1} translation. Dont output same language translation.`,
     `You must auto-detect which language is being spoken by the speaker, don't return the same language, and always translate to the other language.`,
+    `Before responding, identify the language of what you just heard. If it is the same as your planned output language, you made a mistake — switch to the other language.`,
     ``,
     `ABSOLUTE RULES - VIOLATION BREAKS THE SERVICE:`,
     `- NEVER add greetings, explanations, or any text.`,
