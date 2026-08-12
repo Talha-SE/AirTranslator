@@ -23,6 +23,18 @@ const {
   NoSubscriberBehavior
 } = require('@discordjs/voice');
 const prism = require('prism-media');
+// Native Opus decoder (@discordjs/opus) — lower CPU + better packet-loss handling
+// than the pure-JS prism-media decoder. If the native binary is missing/broken
+// (e.g. prebuilt .node not downloaded), fall back to prism-media so the bot
+// never crashes. Also try opusscript as a second fallback.
+let OpusDecoderClass = null;
+try {
+  const opusPkg = require('@discordjs/opus');
+  // @discordjs/opus v0.10 exposes `OpusEncoder`/`OpusDecoder` classes
+  OpusDecoderClass = opusPkg?.OpusDecoder || opusPkg?.default?.OpusDecoder || null;
+} catch (e) {
+  OpusDecoderClass = null; // native binary unavailable — use fallback
+}
 const { GoogleGenAI } = require('@google/genai');
 const { pipeline: streamPipeline } = require('stream/promises');
 const { Readable, Transform, PassThrough } = require('stream');
@@ -351,9 +363,27 @@ function upsamplePcm(inputBuffer, inputRate, outputRate) {
 }
 
 /**
- * Convert Opus packet to PCM buffer using prism-media decoder
+ * Convert Opus packet to PCM buffer.
+ * Uses the native @discordjs/opus decoder when available (lower CPU, better
+ * packet-loss handling), falling back to the pure-JS prism-media decoder if
+ * the native binary is missing/broken (e.g. no prebuild for this Node version).
  */
 function createOpusDecoder() {
+  // Native decoder (OpusDecoderClass) — supports { rate, channels } via a
+  // Transform-like stream; verified available only if the .node binary loads.
+  if (OpusDecoderClass) {
+    try {
+      const native = new OpusDecoderClass({ rate: PCM_SAMPLE_RATE, channels: 1 });
+      // prism-media Decoder emits 'data' after ._transform; the native class
+      // also exposes a readable/transform surface usable via pipe(). If it has
+      // no pipe surface, throw so we fall back to prism-media.
+      if (native && typeof native.pipe === 'function') {
+        return native;
+      }
+    } catch (e) {
+      // Native decoder failed to construct — fall through to prism-media
+    }
+  }
   return new prism.opus.Decoder({
     frameSize: DISCORD_FRAME_SIZE,
     channels: 1,
