@@ -1309,7 +1309,7 @@ function buildFlashLiveConfig(state, systemInstruction) {
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
-    temperature: 0.2,
+    temperature: 0.0,
     systemInstruction: { parts: [{ text: systemInstruction }] },
     speechConfig: {
       voiceConfig: {
@@ -1319,7 +1319,7 @@ function buildFlashLiveConfig(state, systemInstruction) {
       },
     },
     thinkingConfig: {
-      thinkingLevel: 'medium',
+      thinkingLevel: 'low',
     },
     contextWindowCompression: {
       triggerTokens: '104857',
@@ -1338,7 +1338,7 @@ function buildNativeAudioConfig(state, systemInstruction) {
   return {
     responseModalities: ['AUDIO'],
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
-    temperature: 0.2,
+    temperature: 0.0,
     systemInstruction: { parts: [{ text: systemInstruction }] },
     speechConfig: {
       voiceConfig: {

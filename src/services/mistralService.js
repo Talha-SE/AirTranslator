@@ -1221,7 +1221,7 @@ For Korean translations, you MUST add cute chatting elements:
                 }
             ],
             // Low temperature to reduce creative drift and repetition
-            temperature: 0.3,
+            temperature: 0.1,
             top_p: 0.1,
             // Deterministic per input to improve stability across retries
             random_seed: stableRandomSeed(processedText + ':' + targetLangName),
@@ -1597,8 +1597,8 @@ ${processedText}
 SOURCE_TEXT_END`
                 }
             ],
-            temperature: 0.3,
-            top_p: 0.95,
+            temperature: 0.1,
+            top_p: 0.1,
             random_seed: stableRandomSeed(processedText + ':batch:' + languageCodesStr),
             // Raise max_tokens for batch. When thinking (reasoning_effort) is active
             // the thinking trace consumes output tokens BEFORE the JSON answer — a
@@ -1627,8 +1627,8 @@ SOURCE_TEXT_END`
                         { role: 'system', content: systemContent },
                         { role: 'user', content: `Translate to language codes [${languageCodesStr}]:\n\nSOURCE_TEXT_START\n${processedText}\nSOURCE_TEXT_END` }
                     ],
-                    temperature: 0.3,
-                    top_p: 0.95,
+                    temperature: 0.1,
+                    top_p: 0.1,
                     random_seed: stableRandomSeed(processedText + ':batch:noreasoning:' + languageCodesStr),
                     max_tokens: Math.min(8192, Math.max(4000, Math.ceil(normalizedText.length * languagesToTranslate.length * 2)))
                 }, 3, apiKey);
