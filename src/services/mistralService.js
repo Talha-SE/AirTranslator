@@ -626,7 +626,7 @@ const analyzeToneContext = (text) => {
  * @param {string} [apiKey] - Optional custom API key
  */
 const RETRY_MODELS = {
-        alternate: 'mistral-small-2506',
+        alternate: 'mistral-small-latest',
 };
 
 const postMistralWithRetry = async (payload, maxRetries = 3, apiKey = MISTRAL_API_KEY) => {
@@ -690,11 +690,136 @@ const { MISTRAL_API_KEY, AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 const DETECT_API_KEY = process.env.MISTRAL_DETECT_API_KEY || MISTRAL_API_KEY;
 
 const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Translation model configuration
+// ─────────────────────────────────────────────────────────────────────────────
+// mistral-small-2506 is DEPRECATED. Migrate to mistral-small-latest which
+// supports the `reasoning_effort` parameter (Mistral's "thinking" mode).
+// See: https://docs.mistral.ai/capabilities/reasoning/
 //const TRANSLATION_MODEL = 'devstral-small-latest';
 //const TRANSLATION_MODEL = 'mistral-medium-latest';
-//const TRANSLATION_MODEL = 'mistral-small-2506';
-const TRANSLATION_MODEL = 'glm-5-2';
-//const THINKING_MODE_ENABLED = true; // Enable thinking mode for ministral-14b-latest
+//const TRANSLATION_MODEL = 'mistral-small-2506';   // ← DEPRECATED (Mistral Small 3.2)
+//const TRANSLATION_MODEL = 'glm-5-2';
+const TRANSLATION_MODEL = 'mistral-small-latest';   // ← ACTIVE: supports reasoning_effort (thinking)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Thinking / Reasoning configuration
+// ─────────────────────────────────────────────────────────────────────────────
+// Mistral's "thinking" mode is controlled via the `reasoning_effort` parameter
+// on the chat completions API. Valid values: "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
+// When reasoning_effort is set (anything other than "none"), the response
+// `message.content` becomes an ARRAY of chunks (ThinkChunk + TextChunk) instead
+// of a plain string. The `extractTextFromContent()` helper below handles both shapes.
+//
+// We set reasoning_effort to "high" for auto-translation to maximize translation
+// quality (context awareness, tone preservation, nuance capture).
+const REASONING_EFFORT = process.env.MISTRAL_REASONING_EFFORT || 'high'; // high for auto-translation
+const REASONING_EFFORT_TONE = process.env.MISTRAL_REASONING_EFFORT_TONE || 'high'; // tone-understanding path
+const REASONING_EFFORT_BATCH = process.env.MISTRAL_REASONING_EFFORT_BATCH || 'high'; // batch multi-lang path
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Thinking trace logging
+// ─────────────────────────────────────────────────────────────────────────────
+// When MISTRAL_THINKING_LOG=true (or THINKING_LOG=true), the bot logs the
+// actual thinking/reasoning trace received from the Mistral API in the console.
+// When off/false (default), no thinking trace is logged — translations still work.
+const THINKING_LOG = process.env.MISTRAL_THINKING_LOG === 'true' || process.env.THINKING_LOG === 'true';
+
+/**
+ * Logs the thinking trace received from the API, but ONLY when THINKING_LOG
+ * is enabled. Does nothing otherwise (no overhead when off).
+ * @param {string|Array} content - The message.content from Mistral API response
+ * @param {string} context - Short description of the call (e.g. "single", "batch", "emoji-retry")
+ */
+const logThinkingTrace = (content, context = '') => {
+    if (!THINKING_LOG) return;
+    const thinking = extractThinkingFromContent(content);
+    if (thinking) {
+        console.log(`🧠 [THINKING LOG]${context ? ` ${context}:` : ''} ${thinking}`);
+    }
+};
+
+// Models that support reasoning_effort (for validation / fallback decisions)
+const REASONING_CAPABLE_MODELS = new Set([
+    'mistral-small-latest',
+    'mistral-medium-3-5',
+    'mistral-medium-latest',
+]);
+
+/**
+ * Extracts the final answer text from a Mistral chat completion response.
+ *
+ * When `reasoning_effort` is "none" (or not set), `message.content` is a plain
+ * string and this returns it directly.
+ *
+ * When `reasoning_effort` is set to any other value ("low", "medium", "high",
+ * "xhigh"), `message.content` becomes an array of chunk objects:
+ *   - { type: "thinking", thinking: [{ type: "text", text: "..." }] }  ← reasoning trace
+ *   - { type: "text", text: "..." }                                    ← final answer
+ * This helper concatenates only the "text" type chunks (the final answer),
+ * discarding the "thinking" trace.
+ *
+ * @param {string|Array} content - The message.content from Mistral API response
+ * @returns {string} - The extracted answer text (empty string if nothing found)
+ */
+const extractTextFromContent = (content) => {
+    // Plain string — reasoning_effort="none" or not set
+    if (typeof content === 'string') return content;
+
+    // Array of chunks — reasoning_effort is active
+    if (Array.isArray(content)) {
+        return content
+            .filter(chunk => chunk && chunk.type === 'text' && typeof chunk.text === 'string')
+            .map(chunk => chunk.text)
+            .join('');
+    }
+
+    // Fallback: coerce to string
+    if (content == null) return '';
+    return String(content);
+};
+
+/**
+ * Extracts the thinking/reasoning trace from a Mistral chat completion response.
+ * Returns the concatenated thinking text (or empty string if no thinking trace).
+ * Useful for debugging or logging.
+ * @param {string|Array} content - The message.content from Mistral API response
+ * @returns {string} - The extracted thinking text
+ */
+const extractThinkingFromContent = (content) => {
+    if (!Array.isArray(content)) return '';
+    return content
+        .filter(chunk => chunk && chunk.type === 'thinking' && Array.isArray(chunk.thinking))
+        .flatMap(chunk => chunk.thinking)
+        .filter(inner => inner && inner.type === 'text' && typeof inner.text === 'string')
+        .map(inner => inner.text)
+        .join('');
+};
+
+/**
+ * Checks if a model supports the reasoning_effort parameter.
+ * @param {string} model - The model name
+ * @returns {boolean}
+ */
+const supportsReasoning = (model) => {
+    if (!model) return false;
+    return REASONING_CAPABLE_MODELS.has(model);
+};
+
+/**
+ * Builds the reasoning_effort parameter for a given model and context.
+ * Returns the appropriate reasoning_effort value, or undefined if the model
+ * doesn't support reasoning (to avoid API errors).
+ * @param {string} model - The model being called
+ * @param {string} effortLevel - Desired effort level ("high", "medium", etc.)
+ * @returns {string|undefined} - The reasoning_effort value or undefined
+ */
+const buildReasoningEffort = (model, effortLevel) => {
+    if (!supportsReasoning(model)) return undefined;
+    if (!effortLevel || effortLevel === 'none') return undefined;
+    return effortLevel;
+};
 /**
  * Detects the language of a given text
  * @param {string} text - The text to detect the language for
@@ -724,7 +849,8 @@ const detectLanguage = async (text, apiKey = DETECT_API_KEY) => {
             max_tokens: 10
         }, 3, apiKey);
 
-        let langCode = response.data.choices[0].message.content.trim().toLowerCase();
+        let langCode = extractTextFromContent(response.data.choices[0].message.content).trim().toLowerCase();
+        logThinkingTrace(response.data.choices[0].message.content, 'detect');
         // Clean up the language code (remove quotes, punctuation, etc.)
         langCode = langCode.replace(/[^\w]/g, '');
         if ((!langCode || langCode === 'en' || langCode === 'und' || langCode === 'id' || langCode === 'ms' || langCode === 'pt') && isRomanUrdu(normalizedText)) {
@@ -752,11 +878,19 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
             return text;
         }
 
-        // Enable thinking mode (tone understanding) automatically for ministral-14b-latest model
+        // Determine the effective model for this call
         const effectiveModel = modelOverride || TRANSLATION_MODEL;
-        if (THINKING_MODE_ENABLED && effectiveModel === 'ministral-14b-latest') {
-            useToneUnderstanding = true;
-            console.log('🧠 Thinking mode enabled for ministral-14b-latest model');
+
+        // Determine reasoning_effort for this translation call.
+        // - Tone understanding (preserving emotion/sarcasm/elongation) gets the
+        //   dedicated tone reasoning level (defaults to "high").
+        // - Regular translation uses the default reasoning level (defaults to "high").
+        const reasoningEffortForCall = useToneUnderstanding
+            ? buildReasoningEffort(effectiveModel, REASONING_EFFORT_TONE)
+            : buildReasoningEffort(effectiveModel, REASONING_EFFORT);
+
+        if (reasoningEffortForCall) {
+            console.log(`🧠 Thinking mode (reasoning_effort=${reasoningEffortForCall}) enabled for ${effectiveModel}${useToneUnderstanding ? ' [tone]' : ''}`);
         }
 
         // Normalize elongated text before translation
@@ -837,7 +971,7 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         }
 
         // Create appropriate system prompt based on tone understanding setting
-        let systemContent = `You are a professional native translator. Translate text accurately while preserving meaning and same style. Give complete accurate translation and complete meaningful sentences.
+        let systemContent = `You are a professional native translator. Translate text accurately while preserving meaning and same style. Use tone to understand word meaning better and adjust the translation accordingly. Give complete accurate translation and complete meaningful sentences.
 
 CRITICAL GRAMMATICAL RULES:
 - Preserve the grammatical subject-object relationships exactly as in the source
@@ -860,6 +994,13 @@ FORMATTING & CONTENT RULES:
 - Preserve capitalization patterns (ALL CAPS, Title Case, camelCase, StudlyCaps) and repeated punctuation (e.g., "!!!", "??").
 - Do not reorder sentences, list items, or segments; maintain original sequence and segmentation.
 - Return the complete sentence in the desired translation language with correct terminal punctuation appropriate to that language (., !, ?, etc.).
+
+COMPLETE TRANSLATION RULE (MANDATORY):
+- Translate EVERY word of the source into the target language. Do NOT leave any source-language words untranslated.
+- Terms of endearment, slang, interjections, and casual expressions MUST be translated to their natural, culturally correct equivalent in the target language.
+- Never keep a common word in the source language just because it is widely used there. Always provide the full native translation.
+- Only the following may remain unchanged in the source language: URLs, emails, @mentions, #hashtags, inline code, numbers/digits, and proper names (personal names, brand names, place names — which should be transliterated to the target script).
+- The output MUST read as if written natively by a speaker of the target language with zero foreign words remaining.
 
 CRITICAL SPACING & LINK RULES:
 - Preserve ALL spacing around links: if a link is on a new line in source, keep it on a new line in translation
@@ -1086,11 +1227,21 @@ For Korean translations, you MUST add cute chatting elements:
             random_seed: stableRandomSeed(processedText + ':' + targetLangName),
             // Stop when model tries to add notes/explanations
             stop: STOP_SEQUENCES,
-            // Dynamically set max_tokens but cap it to avoid hitting hard limits
-            max_tokens: Math.min(4096, Math.max(120, Math.ceil(normalizedText.length * 1.2))) // Lower floor for short inputs
+            // Dynamically set max_tokens but cap it to avoid hitting hard limits.
+            // When reasoning_effort is active, the thinking trace consumes output
+            // tokens BEFORE the answer, so raise the floor to avoid truncating
+            // the final translation (thinking + answer must fit).
+            max_tokens: reasoningEffortForCall
+                ? Math.min(8192, Math.max(2048, Math.ceil(normalizedText.length * 2)))
+                : Math.min(8192, Math.max(512, Math.ceil(normalizedText.length * 2))),
+            // 🧠 Thinking mode: set reasoning_effort to "high" for auto-translation
+            // to maximize translation quality (context, nuance, tone preservation).
+            // Only sent for models that support it (see buildReasoningEffort).
+            ...(reasoningEffortForCall ? { reasoning_effort: reasoningEffortForCall } : {})
         }, 3, apiKey);
 
-        let translation = response.data.choices[0].message.content.trim();
+        let translation = extractTextFromContent(response.data.choices[0].message.content).trim();
+        logThinkingTrace(response.data.choices[0].message.content, 'single');
 
         // Remove quotes if they exist around the translation
         if ((translation.startsWith('"') && translation.endsWith('"')) || 
@@ -1128,9 +1279,12 @@ For Korean translations, you MUST add cute chatting elements:
                     temperature: 0.1,
                     random_seed: stableRandomSeed(processedText + ':' + targetLangName + ':emoji-retry'),
                     stop: STOP_SEQUENCES,
-                    max_tokens: Math.min(4096, Math.max(120, Math.ceil(normalizedText.length * 1.2)))
+                    max_tokens: Math.min(8192, Math.max(2048, Math.ceil(normalizedText.length * 2))),
+                    // Keep thinking on for the emoji-retry path too
+                    reasoning_effort: buildReasoningEffort('mistral-small-latest', REASONING_EFFORT)
                 }, 3, apiKey);
-                let retryTranslation = retryResponse.data.choices[0].message.content.trim();
+                let retryTranslation = extractTextFromContent(retryResponse.data.choices[0].message.content).trim();
+                logThinkingTrace(retryResponse.data.choices[0].message.content, 'emoji-retry');
                 if ((retryTranslation.startsWith('"') && retryTranslation.endsWith('"')) ||
                     (retryTranslation.startsWith("'") && retryTranslation.endsWith("'"))) {
                     retryTranslation = retryTranslation.slice(1, -1);
@@ -1167,9 +1321,11 @@ For Korean translations, you MUST add cute chatting elements:
                     top_p: 0.95,
                     random_seed: stableRandomSeed(processedText + ':' + targetLangName + ':anti-rep'),
                     stop: STOP_SEQUENCES,
-                    max_tokens: Math.min(4096, Math.max(120, Math.ceil(normalizedText.length * 1.2)))
+                    max_tokens: Math.min(8192, Math.max(2048, Math.ceil(normalizedText.length * 2))),
+                    reasoning_effort: buildReasoningEffort(modelOverride || TRANSLATION_MODEL, REASONING_EFFORT)
                 }, 3, apiKey);
-                let retry = retryResponse.data.choices[0].message.content.trim();
+                let retry = extractTextFromContent(retryResponse.data.choices[0].message.content).trim();
+                logThinkingTrace(retryResponse.data.choices[0].message.content, 'anti-repetition');
                 if ((retry.startsWith('"') && retry.endsWith('"')) || (retry.startsWith("'") && retry.endsWith("'"))) {
                     retry = retry.slice(1, -1);
                 }
@@ -1293,8 +1449,38 @@ const translateTextToMultipleLanguages = async (
             detected = await detectLanguage(normalizedText);
         }
         
-        // Check if any target language matches source - skip those
-        const languagesToTranslate = targetLanguages.filter(lang => lang !== detected);
+        // Check if any target language matches source - skip those.
+        // NOTE: detected is a language CODE (e.g. "en") but targets may be full
+        // names (e.g. "english") — normalize both before comparing so we don't
+        // waste a call translating source->source (which returns the same word).
+        // We build a small local name->code map here (kept before the big
+        // languageMap declaration further down to avoid TDZ reference errors).
+        const languagesToTranslate = targetLanguages.filter(lang => {
+            const raw = String(lang).toLowerCase();
+            // Common full-name -> code normalizations (keep small & fast)
+            const NAME_TO_CODE = {
+                english: 'en', spanish: 'es', french: 'fr', german: 'de',
+                italian: 'it', portuguese: 'pt', 'portuguese (brazil)': 'pt-br',
+                korean: 'ko', japanese: 'ja', chinese: 'zh', hindi: 'hi',
+                bengali: 'bn', punjabi: 'pa', tamil: 'ta', telugu: 'te',
+                marathi: 'mr', urdu: 'ur', arabic: 'ar', persian: 'fa',
+                turkish: 'tr', russian: 'ru', ukrainian: 'uk', polish: 'pl',
+                dutch: 'nl', swedish: 'sv', thai: 'th', vietnamese: 'vi',
+                indonesian: 'id', malay: 'ms', hebrew: 'he', greek: 'el',
+                hungarian: 'hu', czech: 'cs', romanian: 'ro', bulgarian: 'bg',
+                serbian: 'sr', croatian: 'hr', slovak: 'sk', slovenian: 'sl',
+                lithuanian: 'lt', latvian: 'lv', estonian: 'et', swahili: 'sw',
+                afrikaans: 'af', nepali: 'ne', sinhala: 'si', burmese: 'my',
+                khmer: 'km', lao: 'lo', amharic: 'am', odia: 'or', assamese: 'as',
+                gujarati: 'gu', kannada: 'kn', malayalam: 'ml', sindhi: 'sd',
+                pashto: 'ps', kurdish: 'ku', turkmen: 'tk', uzbek: 'uz',
+                kazakh: 'kk', kyrgyz: 'ky', tajik: 'tg', mongolian: 'mn',
+                tibetan: 'bo', filipino: 'fil', 'chinese (simplified)': 'zh',
+                'chinese (traditional)': 'zh-tw', taiwanese: 'zh-tw'
+            };
+            const langCode = (NAME_TO_CODE[raw] || raw).toLowerCase();
+            return langCode !== String(detected).toLowerCase();
+        });
         if (languagesToTranslate.length === 0) {
             // All target languages = source language, return original
             targetLanguages.forEach(lang => {
@@ -1374,7 +1560,14 @@ FORMATTING & CONTENT RULES:
 - Preserve markup and placeholders (Markdown/HTML tags, variables like {name}, {{var}})
 - Preserve capitalization patterns (ALL CAPS, Title Case, camelCase)
 - Do not reorder sentences or list items; maintain original sequence
-- Return complete sentences with correct terminal punctuation`;
+- Return complete sentences with correct terminal punctuation
+
+COMPLETE TRANSLATION RULE (MANDATORY — applies to EVERY target language):
+- Translate EVERY word of the source into EACH target language. Do NOT leave any source-language words untranslated in any translation.
+- Terms of endearment, slang, interjections, and casual expressions MUST be translated to their natural, culturally correct equivalent in EACH target language.
+- Never keep a common word in the source language just because it is widely used there. Always provide the full native translation.
+- Only the following may remain unchanged in the source language: URLs, emails, @mentions, #hashtags, inline code, numbers/digits, and proper names (personal names, brand names, place names — which should be transliterated to the target script).
+- Each output MUST read as if written natively by a speaker of that target language with zero foreign words remaining.`;
 
         if (useToneUnderstanding) {
             systemContent += `\n\nADVANCED TONE PRESERVATION:
@@ -1409,8 +1602,17 @@ FORMATTING & CONTENT RULES:
         
         // Make single API call for all languages
         const languageCodesStr = languagesToTranslate.join(', ');
+        const batchModel = modelOverride || TRANSLATION_MODEL;
+        const batchReasoningEffort = useToneUnderstanding
+            ? buildReasoningEffort(batchModel, REASONING_EFFORT_TONE)
+            : buildReasoningEffort(batchModel, REASONING_EFFORT_BATCH);
+
+        if (batchReasoningEffort) {
+            console.log(`🧠 Thinking mode (reasoning_effort=${batchReasoningEffort}) enabled for ${batchModel} [batch]${useToneUnderstanding ? ' [tone]' : ''}`);
+        }
+
         const response = await postMistralWithRetry({
-            model: modelOverride || TRANSLATION_MODEL,
+            model: batchModel,
             messages: [
                 {
                     role: 'system',
@@ -1428,10 +1630,44 @@ SOURCE_TEXT_END`
             temperature: 0.3,
             top_p: 0.95,
             random_seed: stableRandomSeed(processedText + ':batch:' + languageCodesStr),
-            max_tokens: Math.min(4096, Math.max(500, Math.ceil(normalizedText.length * languagesToTranslate.length * 1.5)))
+            // Raise max_tokens for batch. When thinking (reasoning_effort) is active
+            // the thinking trace consumes output tokens BEFORE the JSON answer — a
+            // low floor causes truncation mid-thinking and an empty response
+            // ("Invalid batch-translation: empty response"). 4096 floor covers
+            // thinking + up to 5 language answers for typical messages.
+            max_tokens: batchReasoningEffort
+                ? Math.min(8192, Math.max(4096, Math.ceil(normalizedText.length * languagesToTranslate.length * 2)))
+                : Math.min(8192, Math.max(1000, Math.ceil(normalizedText.length * languagesToTranslate.length * 2))),
+            // 🧠 Thinking mode for batch translation
+            ...(batchReasoningEffort ? { reasoning_effort: batchReasoningEffort } : {})
         }, 3, apiKey);
         
-        const resultText = response.data.choices[0].message.content.trim();
+        let resultText = extractTextFromContent(response.data.choices[0].message.content).trim();
+        logThinkingTrace(response.data.choices[0].message.content, 'batch');
+
+        // Resilience: if thinking (reasoning_effort) was active and the response came
+        // back empty (generation truncated inside the thinking trace → no text chunk),
+        // retry ONCE without reasoning to obtain the JSON answer.
+        if (!resultText && batchReasoningEffort) {
+            console.warn(`⚠️ [Translation] Batch empty response with reasoning active — retrying without reasoning${contextSuffix}`);
+            try {
+                const noReasoningResponse = await postMistralWithRetry({
+                    model: batchModel,
+                    messages: [
+                        { role: 'system', content: systemContent },
+                        { role: 'user', content: `Translate to language codes [${languageCodesStr}]:\n\nSOURCE_TEXT_START\n${processedText}\nSOURCE_TEXT_END` }
+                    ],
+                    temperature: 0.3,
+                    top_p: 0.95,
+                    random_seed: stableRandomSeed(processedText + ':batch:noreasoning:' + languageCodesStr),
+                    max_tokens: Math.min(8192, Math.max(4000, Math.ceil(normalizedText.length * languagesToTranslate.length * 2)))
+                }, 3, apiKey);
+                resultText = extractTextFromContent(noReasoningResponse.data.choices[0].message.content).trim();
+                logThinkingTrace(noReasoningResponse.data.choices[0].message.content, 'batch-no-reasoning-retry');
+            } catch (retryErr) {
+                console.warn(`⚠️ [Translation] No-reasoning retry failed${contextSuffix}:`, retryErr?.message || retryErr);
+            }
+        }
 
         // Parse JSON response (with recovery for malformed control characters)
         const parsed = parseModelJsonObject(resultText, `batch-translation:${translationContext || 'generic'}`);
@@ -1657,7 +1893,8 @@ CRITICAL RULES:
             }
         );
 
-        const result = response.data.choices[0].message.content;
+        const result = extractTextFromContent(response.data.choices[0].message.content);
+        logThinkingTrace(response.data.choices[0].message.content, 'vision');
         console.log('🔍 Mistral vision response:', result);
 
         // Try to parse JSON response

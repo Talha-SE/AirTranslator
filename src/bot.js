@@ -1490,14 +1490,14 @@ client.on(Events.InteractionCreate, async interaction => {
                     const flag = getLanguageFlag(targetLang);
                     const langName = getLanguageDisplayName(targetLang);
 
-                    // Translate using Mistral Small 2506
+                    // Translate using Mistral Small (supports reasoning_effort / thinking)
                     const translatedContent = await translateText(
                         broadcastData.content,
                         targetLang,
                         'english',
                         false,
                         undefined,
-                        'mistral-small-2506'
+                        'mistral-small-latest'
                     );
 
                     // Re-build flag buttons so user can translate to another language
@@ -1550,7 +1550,7 @@ client.on(Events.InteractionCreate, async interaction => {
                             'english',
                             false,
                             undefined,
-                            'mistral-small-2506'
+                            'mistral-small-latest'
                         );
                         containerComponents.push({ type: 10, content: `**${translatedTitle}**` });
                     }
