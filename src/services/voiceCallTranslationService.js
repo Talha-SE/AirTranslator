@@ -177,6 +177,35 @@ const VAD_MIN_SPEECH_RATIO = 0.15;
 const TURN_BASED_FLUSH_INTERVAL_MS = 30000; // 30s
 
 // ==============================
+// Input audio volume boost
+// ==============================
+// Quiet Discord mics can be hard for Gemini to understand. Boost the 16 kHz
+// input PCM before it is base64-sent (applied once in doSendToGemini, which
+// both the force-flush and utterance-end paths route through). 1.8x is a safe
+// gain; raise it if Gemini still struggles with very quiet speakers.
+const INPUT_AUDIO_GAIN = 1.8;
+
+/**
+ * Amplify 16-bit mono PCM samples by a gain factor with soft clipping so loud
+ * samples don't distort harshly. Returns a NEW Buffer (input untouched).
+ * @param {Buffer} pcm - 16-bit little-endian mono PCM
+ * @param {number} gain - multiplier (e.g. 1.8)
+ * @returns {Buffer}
+ */
+function amplifyPcm(pcm, gain) {
+  if (!pcm || pcm.length === 0 || !gain || gain === 1) return pcm;
+  const out = Buffer.alloc(pcm.length);
+  for (let i = 0; i < pcm.length; i += 2) {
+    let s = pcm.readInt16LE(i) * gain;
+    // Soft clip keeps loud input clean instead of hard clipping
+    if (s > 32767) s = 32767;
+    else if (s < -32768) s = -32768;
+    out.writeInt16LE(Math.round(s), i);
+  }
+  return out;
+}
+
+// ==============================
 // Active Connections Map & Start Locks
 // ==============================
 const activeConnections = new Map();
@@ -1609,7 +1638,14 @@ async function doSendToGemini(state, pcmBuffer) {
       await connectGeminiSession(state);
     }
 
-    const audioBase64 = pcmBuffer.toString('base64');
+    // Boost input volume so Gemini hears quiet speakers clearly (soft-clipped).
+    // Applied here — the single choke point for ALL input audio (force-flush
+    // and utterance-end both route through doSendToGemini).
+    const boosted = INPUT_AUDIO_GAIN && INPUT_AUDIO_GAIN !== 1
+      ? amplifyPcm(pcmBuffer, INPUT_AUDIO_GAIN)
+      : pcmBuffer;
+
+    const audioBase64 = boosted.toString('base64');
 
     // Use 'audio' key — NOT 'media' (media causes WebSocket close 1011)
     state.geminiSession.sendRealtimeInput({
@@ -1619,7 +1655,7 @@ async function doSendToGemini(state, pcmBuffer) {
       },
     });
 
-    state.totalAudioSent += pcmBuffer.length;
+    state.totalAudioSent += boosted.length;
   } catch (error) {
     log.error(`❌ Gemini Live send error: ${error.message}`);
     state.geminiSession = null;
