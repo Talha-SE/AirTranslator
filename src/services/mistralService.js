@@ -1449,38 +1449,8 @@ const translateTextToMultipleLanguages = async (
             detected = await detectLanguage(normalizedText);
         }
         
-        // Check if any target language matches source - skip those.
-        // NOTE: detected is a language CODE (e.g. "en") but targets may be full
-        // names (e.g. "english") — normalize both before comparing so we don't
-        // waste a call translating source->source (which returns the same word).
-        // We build a small local name->code map here (kept before the big
-        // languageMap declaration further down to avoid TDZ reference errors).
-        const languagesToTranslate = targetLanguages.filter(lang => {
-            const raw = String(lang).toLowerCase();
-            // Common full-name -> code normalizations (keep small & fast)
-            const NAME_TO_CODE = {
-                english: 'en', spanish: 'es', french: 'fr', german: 'de',
-                italian: 'it', portuguese: 'pt', 'portuguese (brazil)': 'pt-br',
-                korean: 'ko', japanese: 'ja', chinese: 'zh', hindi: 'hi',
-                bengali: 'bn', punjabi: 'pa', tamil: 'ta', telugu: 'te',
-                marathi: 'mr', urdu: 'ur', arabic: 'ar', persian: 'fa',
-                turkish: 'tr', russian: 'ru', ukrainian: 'uk', polish: 'pl',
-                dutch: 'nl', swedish: 'sv', thai: 'th', vietnamese: 'vi',
-                indonesian: 'id', malay: 'ms', hebrew: 'he', greek: 'el',
-                hungarian: 'hu', czech: 'cs', romanian: 'ro', bulgarian: 'bg',
-                serbian: 'sr', croatian: 'hr', slovak: 'sk', slovenian: 'sl',
-                lithuanian: 'lt', latvian: 'lv', estonian: 'et', swahili: 'sw',
-                afrikaans: 'af', nepali: 'ne', sinhala: 'si', burmese: 'my',
-                khmer: 'km', lao: 'lo', amharic: 'am', odia: 'or', assamese: 'as',
-                gujarati: 'gu', kannada: 'kn', malayalam: 'ml', sindhi: 'sd',
-                pashto: 'ps', kurdish: 'ku', turkmen: 'tk', uzbek: 'uz',
-                kazakh: 'kk', kyrgyz: 'ky', tajik: 'tg', mongolian: 'mn',
-                tibetan: 'bo', filipino: 'fil', 'chinese (simplified)': 'zh',
-                'chinese (traditional)': 'zh-tw', taiwanese: 'zh-tw'
-            };
-            const langCode = (NAME_TO_CODE[raw] || raw).toLowerCase();
-            return langCode !== String(detected).toLowerCase();
-        });
+        // Check if any target language matches source - skip those
+        const languagesToTranslate = targetLanguages.filter(lang => lang !== detected);
         if (languagesToTranslate.length === 0) {
             // All target languages = source language, return original
             targetLanguages.forEach(lang => {
