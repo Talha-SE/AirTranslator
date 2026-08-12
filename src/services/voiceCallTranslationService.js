@@ -507,6 +507,8 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       remainingMinutes,
       freeUsageAutoStopTimer: null,
       freeUsageWarningTimer: null,
+      /** Counter for gating verbose per-message Gemini debug logs (prevents log flooding) */
+      geminiMessageCount: 0,
     };
 
     // Subscribe audio player to connection
@@ -1041,7 +1043,7 @@ async function setupUserStream(state, userId, source = 'direct') {
               log.debug(`📊 ${username}: VAD rms=${dbg.rms?.toFixed(6) || 'N/A'} peak=${dbg.peakAmplitude?.toFixed(6) || 'N/A'} speech=${vadResult.isSpeech} frames=${dbg.samplesProcessed} chunk=${(downsampled.length / 1024).toFixed(1)}KB`);
             }
             
-            if (vadResult.isSpeech) {
+            if (vadResult.isSpeech || vadResult.hadSpeechThisChunk) {
               streamInfo.hasSpeechBeenDetected = true;
               streamInfo.consecutiveNoiseFrames = 0;
             } else {
@@ -1140,7 +1142,7 @@ async function setupUserStream(state, userId, source = 'direct') {
         for (let offset = 0; offset < downsampled.length; offset += CHUNK_SIZE) {
           const chunk = downsampled.subarray(offset, Math.min(offset + CHUNK_SIZE, downsampled.length));
           const vadResult = streamInfo.userVAD.processChunk(chunk);
-          if (vadResult.isSpeech) {
+          if (vadResult.isSpeech || vadResult.hadSpeechThisChunk) {
             streamInfo.hasSpeechBeenDetected = true;
             log.debug(`🎤 ${username}: VAD detected speech in final utterance (rms=${vadResult.rms?.toFixed(6)}, frames: speech=${vadResult.totalSpeechFrames}, noise=${vadResult.totalNoiseFrames})`);
             break;
@@ -1393,9 +1395,16 @@ async function connectGeminiSession(state) {
       },
       onmessage: (message) => {
         try {
-          // Debug: log all incoming messages to diagnose response issues
+          // Gate verbose per-message logging to prevent console flooding.
+          // With thinking enabled, Gemini streams many serverContent messages;
+          // log the first few, then summarize every 100th so the log stays readable
+          // while still surfacing unusual message types (toolCall, turnComplete) immediately.
+          state.geminiMessageCount = (state.geminiMessageCount || 0) + 1;
           const msgType = message?.serverContent ? 'serverContent' : message?.toolCall ? 'toolCall' : message?.setupComplete ? 'setupComplete' : 'other';
-          log.debug(`📨 Gemini message: type=${msgType} keys=${Object.keys(message || {}).join(',')}`);
+          const isUnusualType = msgType !== 'serverContent' || !!message?.serverContent?.turnComplete;
+          if (state.geminiMessageCount <= 3 || isUnusualType || state.geminiMessageCount % 100 === 0) {
+            log.debug(`📨 Gemini message (#${state.geminiMessageCount}): type=${msgType} keys=${Object.keys(message || {}).join(',')}`);
+          }
 
           // Streaming mode: process each audio part immediately instead of batching at turnComplete
           const modelTurn = message?.serverContent?.modelTurn;

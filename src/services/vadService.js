@@ -13,10 +13,10 @@
 // ==============================
 
 /** RMS energy threshold below which audio is considered silence/noise */
-const VAD_SILENCE_THRESHOLD = 0.005;
+const VAD_SILENCE_THRESHOLD = 0.002;
 
 /** RMS energy threshold above which audio is considered speech */
-const VAD_SPEECH_THRESHOLD = 0.025;
+const VAD_SPEECH_THRESHOLD = 0.012;
 
 /** Number of consecutive frames needed to confirm speech start */
 const VAD_MIN_SPEECH_FRAMES = 2;
@@ -148,6 +148,11 @@ async function createUserVAD(userId, username) {
       let lastRMS = 0;
       let lastPeak = 0;
       let framesProcessed = 0;
+      // Count frames in THIS chunk that exceeded the speech threshold.
+      // This fixes a bug where brief speech bursts get deactivated by trailing
+      // silence WITHIN the same chunk (8 consecutive noise frames → isActive=false),
+      // causing real speech to be reported as isSpeech=false at chunk end.
+      let chunkSpeechFrames = 0;
       while (speechState.sampleBuffer.length >= VAD_FRAME_SAMPLES) {
         const frame = speechState.sampleBuffer.subarray(0, VAD_FRAME_SAMPLES);
         speechState.sampleBuffer = speechState.sampleBuffer.subarray(VAD_FRAME_SAMPLES);
@@ -155,15 +160,20 @@ async function createUserVAD(userId, username) {
         lastRMS = rms;
         lastPeak = peak;
         framesProcessed++;
+        if (rms >= VAD_SPEECH_THRESHOLD) chunkSpeechFrames++;
       }
       
       // Log EVERY chunk with raw PCM stats for debugging
       const maxSample = Math.max(...Array.from(float32).map(Math.abs));
       const avgAbs = Array.from(float32).reduce((s, v) => s + Math.abs(v), 0) / float32.length;
-      console.log(`[VAD ${username}] chunk=${pcmBuffer.length}B frames=${framesProcessed} rms=${lastRMS.toFixed(6)} peak=${lastPeak.toFixed(6)} maxSample=${maxSample.toFixed(6)} avgAbs=${avgAbs.toFixed(6)} speech=${speechState.isActive} speechFrames=${speechState.totalSpeechFrames} noiseFrames=${speechState.totalNoiseFrames}`);
+      console.log(`[VAD ${username}] chunk=${pcmBuffer.length}B frames=${framesProcessed} rms=${lastRMS.toFixed(6)} peak=${lastPeak.toFixed(6)} maxSample=${maxSample.toFixed(6)} avgAbs=${avgAbs.toFixed(6)} speech=${speechState.isActive} speechFrames=${speechState.totalSpeechFrames} noiseFrames=${speechState.totalNoiseFrames} chunkSpeech=${chunkSpeechFrames}`);
       
       return {
         isSpeech: speechState.isActive || speechState.speechProbability >= VAD_SPEECH_THRESHOLD,
+        // TRUE if ANY frame in this chunk exceeded the speech threshold.
+        // More reliable than end-state for catching brief speech bursts.
+        hadSpeechThisChunk: chunkSpeechFrames >= VAD_MIN_SPEECH_FRAMES,
+        speechFramesThisChunk: chunkSpeechFrames,
         probability: speechState.speechProbability,
         consecutiveNoise: speechState.consecutiveNoiseFrames,
         consecutiveSpeech: speechState.consecutiveSpeechFrames,

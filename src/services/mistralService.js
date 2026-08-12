@@ -626,7 +626,7 @@ const analyzeToneContext = (text) => {
  * @param {string} [apiKey] - Optional custom API key
  */
 const RETRY_MODELS = {
-        alternate: 'mistral-small-latest',
+        alternate: 'mistral-small-2506',
 };
 
 const postMistralWithRetry = async (payload, maxRetries = 3, apiKey = MISTRAL_API_KEY) => {
@@ -698,10 +698,10 @@ const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 // supports the `reasoning_effort` parameter (Mistral's "thinking" mode).
 // See: https://docs.mistral.ai/capabilities/reasoning/
 //const TRANSLATION_MODEL = 'devstral-small-latest';
-//const TRANSLATION_MODEL = 'mistral-medium-latest';
+const TRANSLATION_MODEL = 'mistral-medium-latest';
 //const TRANSLATION_MODEL = 'mistral-small-2506';   // ← DEPRECATED (Mistral Small 3.2)
 //const TRANSLATION_MODEL = 'glm-5-2';
-const TRANSLATION_MODEL = 'mistral-small-latest';   // ← ACTIVE: supports reasoning_effort (thinking)
+//const TRANSLATION_MODEL = 'mistral-small-latest'; 
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Thinking / Reasoning configuration
@@ -714,9 +714,9 @@ const TRANSLATION_MODEL = 'mistral-small-latest';   // ← ACTIVE: supports reas
 //
 // We set reasoning_effort to "high" for auto-translation to maximize translation
 // quality (context awareness, tone preservation, nuance capture).
-const REASONING_EFFORT = process.env.MISTRAL_REASONING_EFFORT || 'high'; // high for auto-translation
-const REASONING_EFFORT_TONE = process.env.MISTRAL_REASONING_EFFORT_TONE || 'high'; // tone-understanding path
-const REASONING_EFFORT_BATCH = process.env.MISTRAL_REASONING_EFFORT_BATCH || 'high'; // batch multi-lang path
+const REASONING_EFFORT = process.env.MISTRAL_REASONING_EFFORT || 'none'; // high for auto-translation
+const REASONING_EFFORT_TONE = process.env.MISTRAL_REASONING_EFFORT_TONE || 'none'; // tone-understanding path
+const REASONING_EFFORT_BATCH = process.env.MISTRAL_REASONING_EFFORT_BATCH || 'none'; // batch multi-lang path
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Thinking trace logging
