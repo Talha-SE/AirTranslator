@@ -834,7 +834,7 @@ const detectLanguage = async (text, apiKey = DETECT_API_KEY) => {
         if (cached) return cached;
         
         const response = await postMistralWithRetry({
-            model: 'mistral-tiny-latest',
+            model: 'ministral-3b-2512',
             messages: [
                 {
                     role: 'system',
