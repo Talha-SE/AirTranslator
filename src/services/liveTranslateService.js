@@ -235,15 +235,17 @@ async function connectTranslateSession(state) {
 
   const genAI = getGenAIClient();
 
+  // Exactly the fields supported by gemini-3.5-live-translate-preview
+  // (per https://ai.google.dev/gemini-api/docs/live-api/live-translate):
+  // responseModalities + transcription toggles + translationConfig.
+  // Sending any other Live field (mediaResolution, contextWindowCompression,
+  // systemInstruction, tools…) makes the server close the socket with 1007.
   const config = {
     responseModalities: ['AUDIO'],
-    mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+    inputAudioTranscription: {},
+    outputAudioTranscription: {},
     translationConfig: {
       targetLanguageCode: toBcp47(state.targetLanguage),
-    },
-    contextWindowCompression: {
-      triggerTokens: '0',
-      slidingWindow: { targetTokens: '0' },
     },
   };
 
@@ -307,7 +309,7 @@ async function connectTranslateSession(state) {
         }
       },
       onclose: (event) => {
-        log.warn(`🔌 Live Translate WS closed (code: ${event?.code || 'unknown'})`);
+        log.warn(`🔌 Live Translate WS closed (code: ${event?.code || 'unknown'}${event?.reason ? ` — ${event.reason}` : ''})`);
         state.session = null;
         if (state.isRunning && !state.isReconnecting) {
           state.isReconnecting = true;
