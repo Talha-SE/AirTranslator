@@ -309,12 +309,22 @@ async function connectTranslateSession(state) {
         }
       },
       onclose: (event) => {
-        log.warn(`🔌 Live Translate WS closed (code: ${event?.code || 'unknown'}${event?.reason ? ` — ${event.reason}` : ''})`);
+        const code = event?.code;
+        log.warn(`🔌 Live Translate WS closed (code: ${code || 'unknown'}${event?.reason ? ` — ${event.reason}` : ''})`);
         state.session = null;
-        if (state.isRunning && !state.isReconnecting) {
-          state.isReconnecting = true;
-          reconnectTranslateSession(state).catch(() => {});
+        if (!state.isRunning || state.isReconnecting) return;
+        if (code === 1007) {
+          // 1007 = invalid setup payload. This is a configuration error, not a
+          // transient one — reconnecting with the same payload just loops. Stop
+          // the session immediately so the log shows one clear failure instead
+          // of 3 silent retries.
+          log.error('❌ Live Translate rejected the setup payload (1007). Not retrying — this needs a code/config fix.');
+          if (event?.reason) log.error(`   ↳ Gemini reason: ${event.reason}`);
+          stopTranslation(state.guildId, state.client).catch(() => {});
+          return;
         }
+        state.isReconnecting = true;
+        reconnectTranslateSession(state).catch(() => {});
       },
     },
   });
