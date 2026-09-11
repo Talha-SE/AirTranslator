@@ -41,6 +41,9 @@ const { Readable, Transform, PassThrough } = require('stream');
 const VoiceCallTranslation = require('../models/VoiceCallTranslation');
 const { createUserVAD, VAD_SPEECH_THRESHOLD } = require('./vadService');
 const { SampleRate: SampleRateStream } = require('libsamplerate');
+// gemini-3.5-live-translate-preview runs through its own direct-stream service
+// (liveTranslateService.js) — the turn-based models below are completely untouched.
+const liveTranslateService = require('./liveTranslateService');
 
 // ==============================
 // Cached GoogleGenAI Client (reused across reconnects)
@@ -128,6 +131,8 @@ const GEMINI_VOICES = {
 
 const DEFAULT_VOICE = 'Aoede';
 const DEFAULT_MODEL = FLASH_MODEL_ID;
+/** Handled by liveTranslateService.js — continuous direct stream, no VAD/instructions */
+const LIVE_TRANSLATE_MODEL_ID = 'gemini-3.5-live-translate-preview';
 const OPUS_FRAME_DURATION_MS = 20;
 const PCM_SAMPLE_RATE = 48000;
 const DISCORD_FRAME_SIZE = 960; // 20ms at 48kHz
@@ -436,6 +441,22 @@ function getLanguageName(langCode) {
  */
 async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetLanguage, modelId, client, voiceName, remainingMinutes = null) {
   const log = getLogger(guildId);
+
+  // ROUTE: gemini-3.5-live-translate-preview → direct-stream service (works differently:
+  // continuous translation, no VAD, no system instructions, model auto-detects source language)
+  if (modelId === LIVE_TRANSLATE_MODEL_ID) {
+    // A turn-based session may still own this guild — block double-start
+    if (activeConnections.has(guildId)) {
+      return { success: false, error: 'Translation already active for this guild' };
+    }
+    return liveTranslateService.startTranslation(
+      guildId, voiceChannelId, sourceLanguage, targetLanguage, modelId, client, voiceName, remainingMinutes
+    );
+  }
+  // Turn-based models: if a Live Translate session owns this guild, block double-start
+  if (liveTranslateService.isTranslationActive(guildId)) {
+    return { success: false, error: 'Translation already active for this guild' };
+  }
   
   // Prevent concurrent starts for the same guild (race condition guard)
   if (startLocks.has(guildId)) {
@@ -1848,6 +1869,11 @@ async function recordDailyUsage(guildId, elapsedMinutes) {
  */
 async function stopTranslation(guildId, client) {
   const log = getLogger(guildId);
+
+  // ROUTE: if the session belongs to the direct Live Translate service, delegate stop
+  if (liveTranslateService.isTranslationActive(guildId)) {
+    return liveTranslateService.stopTranslation(guildId, client);
+  }
   
   try {
     const state = activeConnections.get(guildId);
@@ -2013,7 +2039,7 @@ async function stopTranslation(guildId, client) {
  * Check if translation is active for a guild
  */
 function isTranslationActive(guildId) {
-  return activeConnections.has(guildId);
+  return activeConnections.has(guildId) || liveTranslateService.isTranslationActive(guildId);
 }
 
 /**
@@ -2022,7 +2048,7 @@ function isTranslationActive(guildId) {
  */
 function isConnectionHealthy(guildId) {
   const state = activeConnections.get(guildId);
-  if (!state) return false;
+  if (!state) return liveTranslateService.isConnectionHealthy(guildId);
   const status = state.connection?.state?.status;
   return status === VoiceConnectionStatus.Ready || status === VoiceConnectionStatus.Connecting;
 }
@@ -2033,7 +2059,7 @@ function isConnectionHealthy(guildId) {
 function getTranslationStatus(guildId) {
   const state = activeConnections.get(guildId);
   if (!state) {
-    return { active: false };
+    return liveTranslateService.getTranslationStatus(guildId);
   }
   
   return {
@@ -2077,6 +2103,8 @@ async function cleanupAll() {
       // Ignore cleanup errors
     }
   }
+  // Also clean up any direct Live Translate sessions
+  await liveTranslateService.cleanupAll().catch(() => {});
 }
 
 // Register cleanup on process exit
@@ -2099,4 +2127,5 @@ module.exports = {
   DEFAULT_MODEL,
   FLASH_MODEL_ID,
   NATIVE_AUDIO_MODEL_ID,
+  LIVE_TRANSLATE_MODEL_ID,
 };

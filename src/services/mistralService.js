@@ -625,21 +625,71 @@ const analyzeToneContext = (text) => {
  * @param {number} maxRetries - maximum retry attempts
  * @param {string} [apiKey] - Optional custom API key
  */
-const RETRY_MODELS = {
-        alternate: 'mistral-small-2506',
+// ─────────────────────────────────────────────────────────────────────────────
+// NVIDIA fallback (alternate retry model for auto-translation text)
+// Nemotron-3-Super is a TEXT-ONLY, OpenAI-compatible endpoint at a DIFFERENT
+// base URL (https://integrate.api.nvidia.com/v1/) using a DIFFERENT API key
+// (set NVIDIA_API_KEY in .env). It CANNOT do image/vision, so the image OCR
+// path (analyzeAndTranslateImage) intentionally stays on Mistral vision.
+// ─────────────────────────────────────────────────────────────────────────────
+const NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
+const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || '';
+const NVIDIA_FALLBACK_MODEL = 'nvidia/nemotron-3-super-120b-a12b';
+// NVIDIA-hosted vision model — retry/fallback for image OCR (flag reactions).
+// Replaces the omni model, which sits on a heavily-throttled 16-request worker
+// and returns 500/503 under load. llama-3.2-11b-vision accepts `image_url`
+// content (as a base64 data URL) on the same OpenAI-compatible endpoint.
+const NVIDIA_VISION_MODEL = 'meta/llama-3.2-11b-vision-instruct';
+
+// Download a remote image URL and convert it to a base64 data URL. Required
+// because NVIDIA's llama-3.2-vision does not accept remote https image URLs.
+const imageUrlToDataUrl = async (url) => {
+    if (typeof url === 'string' && url.startsWith('data:')) return url;
+    const res = await axiosMistral.get(url, { responseType: 'arraybuffer', timeout: 30000 });
+    const mime = res.headers['content-type'] || 'image/jpeg';
+    return `data:${mime};base64,${Buffer.from(res.data).toString('base64')}`;
 };
 
-const postMistralWithRetry = async (payload, maxRetries = 3, apiKey = MISTRAL_API_KEY) => {
+// Build a clean OpenAI-compatible payload for NVIDIA. Strips Mistral-only
+// fields (reasoning_effort, random_seed) that the NVIDIA endpoint rejects and
+// maps random_seed -> the OpenAI-standard `seed` param.
+const buildNvidiaPayload = (p) => {
+    const out = {
+        model: p.model,
+        messages: p.messages,
+        temperature: typeof p.temperature === 'number' ? p.temperature : 0.1,
+        max_tokens: p.max_tokens,
+    };
+    if (p.top_p != null) out.top_p = p.top_p;
+    if (Array.isArray(p.stop) && p.stop.length) out.stop = p.stop;
+    if (p.random_seed != null) out.seed = p.random_seed;
+    return out;
+};
+
+const RETRY_MODELS = {
+        alternate: NVIDIA_FALLBACK_MODEL,
+};
+
+// `alternateModel` lets callers (e.g. flag translation) pick their own retry
+// fallback; defaults to the global auto-translation alternate (Nemotron super).
+const postMistralWithRetry = async (payload, maxRetries = 3, apiKey = MISTRAL_API_KEY, alternateModel = RETRY_MODELS.alternate) => {
     let attempt = 0;
     let originalModel = payload.model;
     let hasTriedAlternate = false;
     
     while (true) {
         try {
-            const inflightKey = `${apiKey}|${payload.model}|${stableRandomSeed(JSON.stringify(payload.messages))}|${payload.max_tokens}`;
-            return await withKeySemaphore(apiKey, () => withInflight(inflightKey, () => axiosMistral.post(mistralAPIUrl, payload, {
+            // Route to NVIDIA when the active model is an NVIDIA-hosted model
+            // (model IDs are always "org/name", e.g. nvidia/…, meta/…). Mistral
+            // model IDs have no slash, so they keep the Mistral base URL + key.
+            const useNvidia = typeof payload.model === 'string' && payload.model.includes('/');
+            const requestUrl = useNvidia ? NVIDIA_API_URL : mistralAPIUrl;
+            const requestKey = useNvidia ? NVIDIA_API_KEY : apiKey;
+            const requestBody = useNvidia ? buildNvidiaPayload(payload) : payload;
+            const inflightKey = `${requestKey}|${payload.model}|${stableRandomSeed(JSON.stringify(payload.messages))}|${payload.max_tokens}`;
+            return await withKeySemaphore(requestKey, () => withInflight(inflightKey, () => axiosMistral.post(requestUrl, requestBody, {
                 headers: {
-                    'Authorization': `Bearer ${apiKey}`,
+                    'Authorization': `Bearer ${requestKey}`,
                     'Content-Type': 'application/json'
                 }
             })));
@@ -648,7 +698,6 @@ const postMistralWithRetry = async (payload, maxRetries = 3, apiKey = MISTRAL_AP
             
             // If this is the first retry, switch to alternate model if available
             if (!hasTriedAlternate) {
-                const alternateModel = RETRY_MODELS.alternate;
                 if (alternateModel && alternateModel !== payload.model) {
                     console.warn(`Mistral request failed with model ${payload.model} (status ${status || 'network'}). Trying alternate model (${alternateModel})`);
                     payload.model = alternateModel;
@@ -659,8 +708,8 @@ const postMistralWithRetry = async (payload, maxRetries = 3, apiKey = MISTRAL_AP
                 hasTriedAlternate = true;
             }
 
-            // Retry on 429 and transient 5xx (e.g., 502/503/504). Network errors (no status) are also retried.
-            const retriableStatuses = new Set([429, 502, 503, 504]);
+            // Retry on 429 and transient 5xx (e.g., 500/502/503/504). Network errors (no status) are also retried.
+            const retriableStatuses = new Set([429, 500, 502, 503, 504]);
             if (attempt >= maxRetries || (status && !retriableStatuses.has(status))) {
                 // Restore original model before throwing error
                 payload.model = originalModel;
@@ -871,7 +920,7 @@ const detectLanguage = async (text, apiKey = DETECT_API_KEY) => {
     }
 };
 
-const translateText = async (text, targetLanguage, sourceLanguage = null, useToneUnderstanding = false, apiKey = MISTRAL_API_KEY, modelOverride = null) => {
+const translateText = async (text, targetLanguage, sourceLanguage = null, useToneUnderstanding = false, apiKey = MISTRAL_API_KEY, modelOverride = null, alternateModel = null) => {
     try {
         // If target language is "auto", we don't need to translate
         if (targetLanguage === AUTO_DETECT_LANGUAGE) {
@@ -1238,7 +1287,7 @@ For Korean translations, you MUST add cute chatting elements:
             // to maximize translation quality (context, nuance, tone preservation).
             // Only sent for models that support it (see buildReasoningEffort).
             ...(reasoningEffortForCall ? { reasoning_effort: reasoningEffortForCall } : {})
-        }, 3, apiKey);
+        }, 3, apiKey, alternateModel || undefined);
 
         let translation = extractTextFromContent(response.data.choices[0].message.content).trim();
         logThinkingTrace(response.data.choices[0].message.content, 'single');
@@ -1807,12 +1856,11 @@ SOURCE_TEXT_END`
 const analyzeAndTranslateImage = async (imageUrl, targetLanguage, apiKey = MISTRAL_API_KEY) => {
     try {
         console.log(`🖼️ Extracting and translating text from image to ${targetLanguage}`);
-        
-        const response = await axiosMistral.post(
-            'https://api.mistral.ai/v1/chat/completions',
-            {
-                model: 'mistral-small-latest', // Using Mistral Medium model for better vision capabilities
-                messages: [
+
+        // Shared OpenAI-compatible multimodal messages. Both Mistral vision and
+        // the NVIDIA omni model accept this `image_url` content format, so the
+        // same payload works for the primary call and the retry/fallback.
+        const visionMessages = [
                     {
                         role: 'user',
                         content: [
@@ -1851,17 +1899,42 @@ CRITICAL RULES:
                             }
                         ]
                     }
-                ],
-                max_tokens: 1000,
-                temperature: 0.1 // Low temperature for precise text extraction
-            },
-            {
-                headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                    'Content-Type': 'application/json'
-                }
+        ];
+
+        const buildVisionPayload = (model, messages = visionMessages) => ({
+            model,
+            messages,
+            max_tokens: 1000,
+            temperature: 0.1, // Low temperature for precise text extraction
+        });
+
+        // Primary: Mistral vision (accepts a remote image URL).
+        // Retry/fallback: NVIDIA vision model — llama-3.2-vision requires the
+        // image as a base64 data URL, so we fetch + encode it first.
+        let response;
+        try {
+            response = await axiosMistral.post(
+                mistralAPIUrl,
+                buildVisionPayload('mistral-small-latest'),
+                { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }
+            );
+        } catch (primaryErr) {
+            const status = primaryErr.response?.status;
+            console.warn(`⚠️ [Vision] Mistral image analysis failed (status ${status || 'network'}). Retrying with NVIDIA vision (${NVIDIA_VISION_MODEL})...`);
+            if (!NVIDIA_API_KEY) {
+                console.error('❌ [Vision] NVIDIA_API_KEY not set — cannot use vision fallback.');
+                throw primaryErr;
             }
-        );
+            const dataUrl = await imageUrlToDataUrl(imageUrl);
+            const nvMessages = JSON.parse(JSON.stringify(visionMessages));
+            const imgPart = nvMessages[0].content.find((c) => c.type === 'image_url');
+            if (imgPart) imgPart.image_url.url = dataUrl;
+            response = await axiosMistral.post(
+                NVIDIA_API_URL,
+                buildVisionPayload(NVIDIA_VISION_MODEL, nvMessages),
+                { headers: { 'Authorization': `Bearer ${NVIDIA_API_KEY}`, 'Content-Type': 'application/json' } }
+            );
+        }
 
         const result = extractTextFromContent(response.data.choices[0].message.content);
         logThinkingTrace(response.data.choices[0].message.content, 'vision');

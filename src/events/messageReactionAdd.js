@@ -9,7 +9,9 @@ const { translateText, detectLanguage, analyzeAndTranslateImage, translateTextTo
 const { getPersonalTranslationSettings, recordPersonalTranslation, getToneSettings, getServerSetups } = require('../services/databaseService');
 const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 
-const FLAG_TRANSLATION_MODEL = 'mistral-large-latest';
+const FLAG_TRANSLATION_MODEL = 'mistral-medium-latest';
+// NVIDIA-hosted vision model used as the retry fallback for flag translation.
+const FLAG_RETRY_ALTERNATE_MODEL = 'meta/llama-3.2-11b-vision-instruct';
 const monetizationService = require('../services/monetizationService');
 const analyticsService = require('../services/analyticsService');
 const { maybeSendUnlimitedUsageOffer } = require('../services/unlimitedUsageCampaignService');
@@ -529,7 +531,7 @@ async function messageReactionAdd(client, reaction, user) {
                 // Use unified translation system with same tone setting as auto-translation
                 const toneSettings = message.guild ? await getToneSettings(message.guild.id, message.channel.id) : false;
                 console.log(`🔄 Personal buddy translating content from ${detectedLanguage} to ${targetLanguage}`);
-                const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, toneSettings, undefined, FLAG_TRANSLATION_MODEL);
+                const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, toneSettings, undefined, FLAG_TRANSLATION_MODEL, FLAG_RETRY_ALTERNATE_MODEL);
                 
                 if (!translation || translation.trim().length === 0) {
                     console.log('❌ Personal translation failed or returned empty result');
@@ -759,7 +761,7 @@ async function messageReactionAdd(client, reaction, user) {
         // Use unified translation system with same tone setting as auto-translation
         const toneSettings = await getToneSettings(message.guild.id, message.channel.id);
         console.log(`🔄 Translating content from ${detectedLanguage} to ${targetLanguage} using unified system`);
-        const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, toneSettings, undefined, FLAG_TRANSLATION_MODEL);
+        const translation = await translateText(contentToTranslate, targetLanguage, detectedLanguage, toneSettings, undefined, FLAG_TRANSLATION_MODEL, FLAG_RETRY_ALTERNATE_MODEL);
         
         if (!translation || translation.trim().length === 0) {
             console.log('❌ Translation failed or returned empty result');
