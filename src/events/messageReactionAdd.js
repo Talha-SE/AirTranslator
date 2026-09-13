@@ -9,7 +9,9 @@ const { translateText, detectLanguage, analyzeAndTranslateImage, translateTextTo
 const { getPersonalTranslationSettings, recordPersonalTranslation, getToneSettings, getServerSetups } = require('../services/databaseService');
 const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 
-const FLAG_TRANSLATION_MODEL = 'mistral-medium-latest';
+// 'mistral-medium-latest' was returning 429 (paid-tier quota). Flag translation
+// now uses the open-weight Ministral 3 14B (vision+text), confirmed working.
+const FLAG_TRANSLATION_MODEL = 'ministral-14b-latest';
 // NVIDIA-hosted vision model used as the retry fallback for flag translation.
 const FLAG_RETRY_ALTERNATE_MODEL = 'meta/llama-3.2-11b-vision-instruct';
 const monetizationService = require('../services/monetizationService');
@@ -23,78 +25,6 @@ const VOTE_BONUS_AMOUNT = 30; // Free translations to grant
 // Helper function to get language flag emoji
 function getLanguageFlag(langCode) {
     return getMappedLanguageFlag(langCode);
-    const lang = langCode.toLowerCase();
-    
-    // Map of language codes and full names to flags
-    const flags = {
-        'en': '🇬🇧', 'english': '🇬🇧',
-        'es': '🇪🇸', 'spanish': '🇪🇸',
-        'fr': '🇫🇷', 'french': '🇫🇷',
-        'de': '🇩🇪', 'german': '🇩🇪',
-        'it': '🇮🇹', 'italian': '🇮🇹',
-        'pt': '🇵🇹', 'portuguese': '🇵🇹',
-        'ja': '🇯🇵', 'japanese': '🇯🇵',
-        'ko': '🇰🇷', 'korean': '🇰🇷',
-        'zh': '🇨🇳', 'chinese': '🇨🇳', 'chinese (simplified)': '🇨🇳', 'chinese (traditional)': '🇹🇼',
-        'ru': '🇷🇺', 'russian': '🇷🇺',
-        'ar': '🇸🇦', 'arabic': '🇸🇦',
-        'hi': '🇮🇳', 'hindi': '🇮🇳',
-        'tr': '🇹🇷', 'turkish': '🇹🇷',
-        'nl': '🇳🇱', 'dutch': '🇳🇱',
-        'pl': '🇵🇱', 'polish': '🇵🇱',
-        'sv': '🇸🇪', 'swedish': '🇸🇪',
-        'fi': '🇫🇮', 'finnish': '🇫🇮',
-        'no': '🇳🇴', 'norwegian': '🇳🇴',
-        'da': '🇩🇰', 'danish': '🇩🇰',
-        'cs': '🇨🇿', 'czech': '🇨🇿',
-        'el': '🇬🇷', 'greek': '🇬🇷',
-        'he': '🇮🇱', 'hebrew': '🇮🇱',
-        'th': '🇹🇭', 'thai': '🇹🇭',
-        'vi': '🇻🇳', 'vietnamese': '🇻🇳',
-        'id': '🇮🇩', 'indonesian': '🇮🇩',
-        'ms': '🇲🇾', 'malay': '🇲🇾',
-        'fil': '🇵🇭', 'filipino': '🇵🇭', 'tagalog': '🇵🇭',
-        'uk': '🇺🇦', 'ukrainian': '🇺🇦',
-        'ro': '🇷🇴', 'romanian': '🇷🇴',
-        'hu': '🇭🇺', 'hungarian': '🇭🇺',
-        'bg': '🇧🇬', 'bulgarian': '🇧🇬',
-        'hr': '🇭🇷', 'croatian': '🇭🇷',
-        'sr': '🇷🇸', 'serbian': '🇷🇸',
-        'sk': '🇸🇰', 'slovak': '🇸🇰',
-        'sl': '🇸🇮', 'slovenian': '🇸🇮',
-        'et': '🇪🇪', 'estonian': '🇪🇪',
-        'lv': '🇱🇻', 'latvian': '🇱🇻',
-        'lt': '🇱🇹', 'lithuanian': '🇱🇹',
-        'ur': '🇵🇰', 'urdu': '🇵🇰',
-        'fa': '🇮🇷', 'persian': '🇮🇷',
-        'bn': '🇧🇩', 'bengali': '🇧🇩',
-        'ta': '🇮🇳', 'tamil': '🇮🇳',
-        'te': '🇮🇳', 'telugu': '🇮🇳',
-        'mr': '🇮🇳', 'marathi': '🇮🇳',
-        'gu': '🇮🇳', 'gujarati': '🇮🇳',
-        'kn': '🇮🇳', 'kannada': '🇮🇳',
-        'ml': '🇮🇳', 'malayalam': '🇮🇳',
-        'pa': '🇮🇳', 'punjabi': '🇮🇳',
-        'af': '🇿🇦', 'afrikaans': '🇿🇦',
-        'sq': '🇦🇱', 'albanian': '🇦🇱',
-        'am': '🇪🇹', 'amharic': '🇪🇹',
-        'hy': '🇦🇲', 'armenian': '🇦🇲',
-        'az': '🇦🇿', 'azerbaijani': '🇦🇿',
-        'eu': '🇪🇸', 'basque': '🇪🇸',
-        'be': '🇧🇾', 'belarusian': '🇧🇾',
-        'bs': '🇧🇦', 'bosnian': '🇧🇦',
-        'ca': '🇪🇸', 'catalan': '🇪🇸',
-        'ga': '🇮🇪', 'irish': '🇮🇪',
-        'cy': '🏴󠁧󠁢󠁷󠁬󠁳󠁿', 'welsh': '🏴󠁧󠁢󠁷󠁬󠁳󠁿',
-        'ka': '🇬🇪', 'georgian': '🇬🇪',
-        'is': '🇮🇸', 'icelandic': '🇮🇸',
-        'mk': '🇲🇰', 'macedonian': '🇲🇰',
-        'mn': '🇲🇳', 'mongolian': '🇲🇳',
-        'ne': '🇳🇵', 'nepali': '🇳🇵',
-        'ps': '🇦🇫', 'pashto': '🇦🇫',
-        'sw': '🇰🇪', 'swahili': '🇰🇪'
-    };
-    return flags[lang] || '🌐';
 }
 
 function buildTrackedPricingUrl({ serverId, serverName, userId, username, source = 'discord_flag_limit_dm' }) {
