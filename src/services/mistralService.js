@@ -667,7 +667,9 @@ const buildNvidiaPayload = (p) => {
 };
 
 const RETRY_MODELS = {
-        alternate: NVIDIA_FALLBACK_MODEL,
+        // Auto-translation retry/fallback model (used when the primary
+        // ministral-14b-latest returns 429/5xx). NVIDIA-hosted, OpenAI-compatible.
+        alternate: NVIDIA_VISION_MODEL,
 };
 
 // `alternateModel` lets callers (e.g. flag translation) pick their own retry
@@ -747,7 +749,12 @@ const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 // supports the `reasoning_effort` parameter (Mistral's "thinking" mode).
 // See: https://docs.mistral.ai/capabilities/reasoning/
 //const TRANSLATION_MODEL = 'devstral-small-latest';
-const TRANSLATION_MODEL = 'mistral-medium-latest';
+// 'mistral-medium-latest' was returning 429 on every key (paid-tier quota
+// exhausted). Switched auto-translation to the open-weight Ministral 3 14B,
+// which the test sweep (test_all_models.js) confirmed returns 200. Vision+text
+// capable and the best quality of the currently-free models.
+const TRANSLATION_MODEL = 'ministral-14b-latest';
+//const TRANSLATION_MODEL = 'mistral-medium-latest'; // ← was here (429, paid tier)
 //const TRANSLATION_MODEL = 'mistral-small-2506';   // ← DEPRECATED (Mistral Small 3.2)
 //const TRANSLATION_MODEL = 'glm-5-2';
 //const TRANSLATION_MODEL = 'mistral-small-latest'; 
