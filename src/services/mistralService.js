@@ -674,7 +674,7 @@ const RETRY_MODELS = {
 
 // `alternateModel` lets callers (e.g. flag translation) pick their own retry
 // fallback; defaults to the global auto-translation alternate (Nemotron super).
-const postMistralWithRetry = async (payload, maxRetries = 3, apiKey = MISTRAL_API_KEY, alternateModel = RETRY_MODELS.alternate) => {
+const postMistralWithRetry = async (payload, maxRetries = 7, apiKey = MISTRAL_API_KEY, alternateModel = RETRY_MODELS.alternate) => {
     let attempt = 0;
     let originalModel = payload.model;
     let hasTriedAlternate = false;
@@ -727,9 +727,9 @@ const postMistralWithRetry = async (payload, maxRetries = 3, apiKey = MISTRAL_AP
                     retryAfterMs = parsed * 1000;
                 }
             }
-            const jitter = Math.random() * 500;
-            const expBackoff = (2 ** attempt) * 1000 + jitter;
-            const backoff = Math.min(120000, Math.max(retryAfterMs, expBackoff));
+            const jitter = Math.random() * 300;
+            const expBackoff = (2 ** attempt) * 50 + jitter;
+            const backoff = Math.min(60000, Math.max(retryAfterMs, expBackoff));
             console.warn(`Mistral request failed (${payload.model}) (status ${status}). Retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})`);
             await sleep(backoff);
             attempt++;
@@ -959,13 +959,9 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         if (noEmojiText.length === 0) return text; // emojis only
         if (/^[\d\s\p{P}]+$/u.test(noEmojiText)) return text; // only digits/punct
 
-        // If no source language is provided and target isn't auto, detect the language
-        if (!sourceLanguage && targetLanguage !== AUTO_DETECT_LANGUAGE) {
-            sourceLanguage = await detectLanguage(normalizedText);
-        }
-
-        // If the detected source language is the same as the target, no translation needed
-        if (sourceLanguage && sourceLanguage === targetLanguage) {
+        // Skip separate language detection - let the translation model handle it
+        // If source language is explicitly provided and matches target, no translation needed
+        if (sourceLanguage && sourceLanguage !== AUTO_DETECT_LANGUAGE && sourceLanguage === targetLanguage) {
             return text;
         }
 
@@ -1459,20 +1455,13 @@ const translateTextToMultipleLanguages = async (
     
     // If only one language, use the regular single translation
     if (targetLanguages.length === 1) {
-        let detected = sourceLanguage;
-        try {
-            if (!detected) {
-                detected = await detectLanguage(text);
-            }
-        } catch (_) {
-            detected = sourceLanguage;
-        }
-        
+        // Skip separate language detection - let the translation model handle it
+        // Pass sourceLanguage as-is (can be null/auto for auto-detection by model)
         try {
             translations[targetLanguages[0]] = await translateText(
                 text,
                 targetLanguages[0],
-                detected,
+                sourceLanguage,
                 useToneUnderstanding,
                 apiKey,
                 modelOverride
@@ -1501,14 +1490,13 @@ const translateTextToMultipleLanguages = async (
             return translations;
         }
         
-        // Detect source language if not provided
+        // Skip separate language detection - let the translation model handle it
+        // If source language is explicitly provided, filter it out from targets
         let detected = sourceLanguage;
-        if (!detected) {
-            detected = await detectLanguage(normalizedText);
-        }
+        const languagesToTranslate = detected && detected !== AUTO_DETECT_LANGUAGE
+            ? targetLanguages.filter(lang => lang !== detected)
+            : targetLanguages;
         
-        // Check if any target language matches source - skip those
-        const languagesToTranslate = targetLanguages.filter(lang => lang !== detected);
         if (languagesToTranslate.length === 0) {
             // All target languages = source language, return original
             targetLanguages.forEach(lang => {
@@ -1789,14 +1777,8 @@ SOURCE_TEXT_END`
         console.warn(`⚠️ [Translation] Batch failed${contextSuffix}, falling back to individual calls:`, error?.message || error);
         
         // FALLBACK: Individual translations if batch fails
+        // Skip separate language detection - let the translation model handle it
         let detected = sourceLanguage;
-        try {
-            if (!detected) {
-                detected = await detectLanguage(text);
-            }
-        } catch (_) {
-            detected = sourceLanguage;
-        }
         
         await Promise.all(
             targetLanguages.map(async (targetLanguage) => {

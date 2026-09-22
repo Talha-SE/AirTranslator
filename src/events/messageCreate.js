@@ -1,6 +1,6 @@
 const { getSetupsByChannelId, getToneSettings, updateServerConfig, shouldUseThreadTranslation, getServerSetups } = require('../services/databaseService');
 const { getPersonalTranslationSettings, recordPersonalTranslation } = require('../services/databaseService');
-const { translateText, detectLanguage, translateTextToMultipleLanguages } = require('../services/mistralService');
+const { translateText, translateTextToMultipleLanguages } = require('../services/mistralService');
 const monetizationService = require('../services/monetizationService');
 const fastq = require('fastq');
 const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
@@ -42,96 +42,8 @@ function getLanguageDisplayName(language) {
 // Helper function to get language flag emoji
 function getLanguageFlag(langCode) {
     return getMappedLanguageFlag(langCode);
-    const lang = langCode.toLowerCase();
-    
-    // Map of language codes and full names to flags
-    const flags = {
-        'en': '🇬🇧', 'english': '🇬🇧',
-        'es': '🇪🇸', 'spanish': '🇪🇸',
-        'fr': '🇫🇷', 'french': '🇫🇷',
-        'de': '🇩🇪', 'german': '🇩🇪',
-        'it': '🇮🇹', 'italian': '🇮🇹',
-        'pt': '🇵🇹', 'portuguese': '🇵🇹',
-        'ja': '🇯🇵', 'japanese': '🇯🇵',
-        'ko': '🇰🇷', 'korean': '🇰🇷',
-        'zh': '🇨🇳', 'chinese': '🇨🇳', 'chinese (simplified)': '🇨🇳', 'chinese (traditional)': '🇹🇼',
-        'ru': '🇷🇺', 'russian': '🇷🇺',
-        'ar': '🇸🇦', 'arabic': '🇸🇦',
-        'hi': '🇮🇳', 'hindi': '🇮🇳',
-        'tr': '🇹🇷', 'turkish': '🇹🇷',
-        'nl': '🇳🇱', 'dutch': '🇳🇱',
-        'pl': '🇵🇱', 'polish': '🇵🇱',
-        'sv': '🇸🇪', 'swedish': '🇸🇪',
-        'fi': '🇫🇮', 'finnish': '🇫🇮',
-        'no': '🇳🇴', 'norwegian': '🇳🇴',
-        'da': '🇩🇰', 'danish': '🇩🇰',
-        'cs': '🇨🇿', 'czech': '🇨🇿',
-        'el': '🇬🇷', 'greek': '🇬🇷',
-        'he': '🇮🇱', 'hebrew': '🇮🇱',
-        'th': '🇹🇭', 'thai': '🇹🇭',
-        'vi': '🇻🇳', 'vietnamese': '🇻🇳',
-        'id': '🇮🇩', 'indonesian': '🇮🇩',
-        'ms': '🇲🇾', 'malay': '🇲🇾',
-        'fil': '🇵🇭', 'filipino': '🇵🇭', 'tagalog': '🇵🇭',
-        'uk': '🇺🇦', 'ukrainian': '🇺🇦',
-        'ro': '🇷🇴', 'romanian': '🇷🇴',
-        'hu': '🇭🇺', 'hungarian': '🇭🇺',
-        'bg': '🇧🇬', 'bulgarian': '🇧🇬',
-        'hr': '🇭🇷', 'croatian': '🇭🇷',
-        'sr': '🇷🇸', 'serbian': '🇷🇸',
-        'sk': '🇸🇰', 'slovak': '🇸🇰',
-        'sl': '🇸🇮', 'slovenian': '🇸🇮',
-        'et': '🇪🇪', 'estonian': '🇪🇪',
-        'lv': '🇱🇻', 'latvian': '🇱🇻',
-        'lt': '🇱🇹', 'lithuanian': '🇱🇹',
-        'ur': '🇵🇰', 'urdu': '🇵🇰',
-        'fa': '🇮🇷', 'persian': '🇮🇷',
-        'bn': '🇧🇩', 'bengali': '🇧🇩',
-        'ta': '🇮🇳', 'tamil': '🇮🇳',
-        'te': '🇮🇳', 'telugu': '🇮🇳',
-        'mr': '🇮🇳', 'marathi': '🇮🇳',
-        'gu': '🇮🇳', 'gujarati': '🇮🇳',
-        'kn': '🇮🇳', 'kannada': '🇮🇳',
-        'ml': '🇮🇳', 'malayalam': '🇮🇳',
-        'pa': '🇮🇳', 'punjabi': '🇮🇳',
-        'af': '🇿🇦', 'afrikaans': '🇿🇦',
-        'sq': '🇦🇱', 'albanian': '🇦🇱',
-        'am': '🇪🇹', 'amharic': '🇪🇹',
-        'hy': '🇦🇲', 'armenian': '🇦🇲',
-        'az': '🇦🇿', 'azerbaijani': '🇦🇿',
-        'eu': '🇪🇸', 'basque': '🇪🇸',
-        'be': '🇧🇾', 'belarusian': '🇧🇾',
-        'bs': '🇧🇦', 'bosnian': '🇧🇦',
-        'ca': '🇪🇸', 'catalan': '🇪🇸',
-        'ga': '🇮🇪', 'irish': '🇮🇪',
-        'cy': '🏴󠁧󠁢󠁷󠁬󠁳󠁿', 'welsh': '🏴󠁧󠁢󠁷󠁬󠁳󠁿',
-        'ka': '🇬🇪', 'georgian': '🇬🇪',
-        'is': '🇮🇸', 'icelandic': '🇮🇸',
-        'mk': '🇲🇰', 'macedonian': '🇲🇰',
-        'mn': '🇲🇳', 'mongolian': '🇲🇳',
-        'ne': '🇳🇵', 'nepali': '🇳🇵',
-        'ps': '🇦🇫', 'pashto': '🇦🇫',
-        'sw': '🇰🇪', 'swahili': '🇰🇪'
-    };
-    return flags[lang] || '🌐';
 }
 
-function buildTrackedPricingUrl({ serverId, serverName, userId, username, source = 'discord_limit_dm' }) {
-    const isDev = process.env.NODE_ENV !== 'production';
-    const websiteBaseUrl = isDev ? 'http://localhost:5173' : 'https://airtranslator.brevios.com';
-    const params = new URLSearchParams({
-        source,
-        origin: 'discord-bot',
-        provider: 'patreon',
-        medium: 'button',
-        serverId: String(serverId || ''),
-        serverName: String(serverName || ''),
-        userId: String(userId || ''),
-        username: String(username || ''),
-        clickId: `clk_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
-    });
-    return `${websiteBaseUrl}/patreon-redirect?${params.toString()}`;
-}
 
 function buildDashboardUrl() {
     const raw = (process.env.DASHBOARD_URL || 'https://airtranslator.brevios.com').trim();
@@ -680,17 +592,13 @@ async function translateAndReply(message, languages, options = {}) {
         // Check if this channel should use thread-based translation
         const useThreadTranslation = await shouldUseThreadTranslation(message.guild.id, message.channel.id);
         
-        // Detect the language only once for efficiency
-        const detectedLanguage = await detectLanguage(message.content);
-        console.log(`Detected language: ${detectedLanguage} for message: "${message.content.substring(0, 30)}${message.content.length > 30 ? '...' : ''}"`);
-
+        // Skip separate language detection - let the translation model handle it
         // Track languages we've already translated to in this channel to avoid duplicates
         const alreadyTranslatedTo = new Set();
         
-        // Process all translations in parallel
+        // Process all translations in parallel - pass null for sourceLanguage to let model auto-detect
         const targetLanguagesArray = languages.filter(language => 
-            language !== AUTO_DETECT_LANGUAGE && 
-            language.toLowerCase() !== detectedLanguage.toLowerCase() &&
+            language !== AUTO_DETECT_LANGUAGE &&
             !alreadyTranslatedTo.has(language.toLowerCase())
         );
         
@@ -714,7 +622,7 @@ async function translateAndReply(message, languages, options = {}) {
                     const result = await translateTextToMultipleLanguages(
                         message.content,
                         targetLanguagesArray,
-                        detectedLanguage,
+                        null, // Let model auto-detect source language
                         toneSettings,
                         apiKey
                     );
@@ -744,9 +652,10 @@ async function translateAndReply(message, languages, options = {}) {
         });
         
         // Record analytics for successful translations
+        // Note: detectedLanguage is no longer explicitly detected - model handles it internally
         for (const [language, translation] of Object.entries(translations)) {
             if (translation && translation.length > 0) {
-                analyticsService.recordTranslation(detectedLanguage, language, message.channel.id, message.author.id);
+                analyticsService.recordTranslation('auto', language, message.channel.id, message.author.id);
                 console.log(`✅ Translated to ${language} for message`);
             }
         }
@@ -797,7 +706,7 @@ async function translateAndReply(message, languages, options = {}) {
                 const containerPayload = buildAutoTranslationContainer({
                     translations: containerTranslations,
                     authorName: i === 0 ? message.author.displayName : null,
-                    detectedLanguage,
+                    detectedLanguage: 'auto',
                     isLastChunk: i === chunks.length - 1,
                     buttons: containerButtons,
                 });
