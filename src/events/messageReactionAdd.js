@@ -9,9 +9,8 @@ const { translateText, detectLanguage, analyzeAndTranslateImage, translateTextTo
 const { getPersonalTranslationSettings, recordPersonalTranslation, getToneSettings, getServerSetups } = require('../services/databaseService');
 const { AUTO_DETECT_LANGUAGE } = require('../utils/constants');
 
-// 'mistral-medium-latest' was returning 429 (paid-tier quota). Flag translation
-// now uses the open-weight Ministral 3 14B (vision+text), confirmed working.
-const FLAG_TRANSLATION_MODEL = 'ministral-14b-latest';
+// Flag translation now uses NVIDIA Nemotron-3-Nano-Omni (text-only, OpenAI-compatible).
+const FLAG_TRANSLATION_MODEL = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning';
 // NVIDIA-hosted vision model used as the retry fallback for flag translation.
 const FLAG_RETRY_ALTERNATE_MODEL = 'meta/llama-3.2-11b-vision-instruct';
 const monetizationService = require('../services/monetizationService');

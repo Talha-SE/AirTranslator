@@ -4,14 +4,28 @@ const { translateText, translateTextToMultipleLanguages } = require('./mistralSe
 class TranslationQueueService {
     constructor() {
         this.maxRetries = 3;
+        // Use NVIDIA API keys for translation (main model is now NVIDIA)
+        // Fallback to Mistral keys if NVIDIA keys not set
         this.apiKeys = [
-            process.env.MISTRAL_API_KEY, // Primary API key
-            process.env.MISTRAL_API_KEY_2, // Secondary API key
-            process.env.MISTRAL_API_KEY_3,
-            process.env.MISTRAL_API_KEY_4,
-            process.env.MISTRAL_API_KEY_5,
-            process.env.MISTRAL_API_KEY_6
+            process.env.NVIDIA_API_KEY,
+            process.env.NVIDIA_API_KEY,
+            process.env.NVIDIA_API_KEY,
+            process.env.NVIDIA_API_KEY,
+            process.env.NVIDIA_API_KEY,
+            process.env.NVIDIA_API_KEY
         ].filter(Boolean);
+        
+        // Fallback to Mistral keys if no NVIDIA keys configured
+        if (this.apiKeys.length === 0) {
+            this.apiKeys = [
+                process.env.MISTRAL_API_KEY,
+                process.env.MISTRAL_API_KEY_2,
+                process.env.MISTRAL_API_KEY_3,
+                process.env.MISTRAL_API_KEY_4,
+                process.env.MISTRAL_API_KEY_5,
+                process.env.MISTRAL_API_KEY_6
+            ].filter(Boolean);
+        }
         this.currentApiIndex = 0;
     }
 

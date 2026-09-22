@@ -634,7 +634,7 @@ const analyzeToneContext = (text) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || '';
-const NVIDIA_FALLBACK_MODEL = 'nvidia/nemotron-3-super-120b-a12b';
+const NVIDIA_FALLBACK_MODEL = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning';
 // NVIDIA-hosted vision model — retry/fallback for image OCR (flag reactions).
 // Replaces the omni model, which sits on a heavily-throttled 16-request worker
 // and returns 500/503 under load. llama-3.2-11b-vision accepts `image_url`
@@ -668,8 +668,8 @@ const buildNvidiaPayload = (p) => {
 
 const RETRY_MODELS = {
         // Auto-translation retry/fallback model (used when the primary
-        // ministral-14b-latest returns 429/5xx). NVIDIA-hosted, OpenAI-compatible.
-        alternate: NVIDIA_VISION_MODEL,
+        // NVIDIA Nemotron-3-Super returns 429/5xx). NVIDIA-hosted, OpenAI-compatible.
+        alternate: NVIDIA_FALLBACK_MODEL,
 };
 
 // `alternateModel` lets callers (e.g. flag translation) pick their own retry
@@ -753,11 +753,13 @@ const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 // exhausted). Switched auto-translation to the open-weight Ministral 3 14B,
 // which the test sweep (test_all_models.js) confirmed returns 200. Vision+text
 // capable and the best quality of the currently-free models.
-const TRANSLATION_MODEL = 'ministral-14b-latest';
+//const TRANSLATION_MODEL = 'ministral-14b-latest';
 //const TRANSLATION_MODEL = 'mistral-medium-latest'; // ← was here (429, paid tier)
 //const TRANSLATION_MODEL = 'mistral-small-2506';   // ← DEPRECATED (Mistral Small 3.2)
 //const TRANSLATION_MODEL = 'glm-5-2';
 //const TRANSLATION_MODEL = 'mistral-small-latest'; 
+// Using NVIDIA model for main translation (auto text translation only)
+const TRANSLATION_MODEL = process.env.NVIDIA_MODEL || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning'; 
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Thinking / Reasoning configuration
