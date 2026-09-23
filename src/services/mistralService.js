@@ -958,12 +958,8 @@ const translateText = async (text, targetLanguage, sourceLanguage = null, useTon
         if (noEmojiText.length === 0) return text; // emojis only
         if (/^[\d\s\p{P}]+$/u.test(noEmojiText)) return text; // only digits/punct
 
-        // If no source language is provided and target isn't auto, detect the language
-        if (!sourceLanguage && targetLanguage !== AUTO_DETECT_LANGUAGE) {
-            sourceLanguage = await detectLanguage(normalizedText);
-        }
-
-        // If the detected source language is the same as the target, no translation needed
+        // Skip separate language detection - let the translation model handle it.
+        // If the source language is the same as the target, no translation needed.
         if (sourceLanguage && sourceLanguage === targetLanguage) {
             return text;
         }
@@ -1458,14 +1454,8 @@ const translateTextToMultipleLanguages = async (
     
     // If only one language, use the regular single translation
     if (targetLanguages.length === 1) {
-        let detected = sourceLanguage;
-        try {
-            if (!detected) {
-                detected = await detectLanguage(text);
-            }
-        } catch (_) {
-            detected = sourceLanguage;
-        }
+        // Skip separate language detection - let the translation model handle it
+        const detected = sourceLanguage;
         
         try {
             translations[targetLanguages[0]] = await translateText(
@@ -1500,14 +1490,14 @@ const translateTextToMultipleLanguages = async (
             return translations;
         }
         
-        // Detect source language if not provided
+        // Skip separate language detection - let the translation model handle it
+        // If source language is explicitly provided, filter it out from targets
         let detected = sourceLanguage;
-        if (!detected) {
-            detected = await detectLanguage(normalizedText);
-        }
         
         // Check if any target language matches source - skip those
-        const languagesToTranslate = targetLanguages.filter(lang => lang !== detected);
+        const languagesToTranslate = detected
+            ? targetLanguages.filter(lang => lang !== detected)
+            : targetLanguages;
         if (languagesToTranslate.length === 0) {
             // All target languages = source language, return original
             targetLanguages.forEach(lang => {
@@ -1788,14 +1778,8 @@ SOURCE_TEXT_END`
         console.warn(`⚠️ [Translation] Batch failed${contextSuffix}, falling back to individual calls:`, error?.message || error);
         
         // FALLBACK: Individual translations if batch fails
+        // Skip separate language detection - let the translation model handle it
         let detected = sourceLanguage;
-        try {
-            if (!detected) {
-                detected = await detectLanguage(text);
-            }
-        } catch (_) {
-            detected = sourceLanguage;
-        }
         
         await Promise.all(
             targetLanguages.map(async (targetLanguage) => {
