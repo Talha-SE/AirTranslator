@@ -753,7 +753,7 @@ const mistralAPIUrl = 'https://api.mistral.ai/v1/chat/completions';
 // exhausted). Switched auto-translation to codestral-2501, which the latency
 // sweep (test_latency_mistral.js) confirmed is the fastest (~470ms) with clean
 // translation-only output.
-const TRANSLATION_MODEL = 'codestral-2501';
+const TRANSLATION_MODEL = 'codestral-2508';
 //const TRANSLATION_MODEL = 'ministral-14b-latest'; // ← was here (slower ~1350ms, adds commentary)
 //const TRANSLATION_MODEL = 'mistral-medium-latest'; // ← was here (429, paid tier)
 //const TRANSLATION_MODEL = 'mistral-small-2506';   // ← DEPRECATED (Mistral Small 3.2)
@@ -1644,7 +1644,7 @@ ${processedText}
 SOURCE_TEXT_END`
                 }
             ],
-            temperature: 0.1,
+            temperature: 0.2,
             top_p: 0.1,
             random_seed: stableRandomSeed(processedText + ':batch:' + languageCodesStr),
             // Raise max_tokens for batch. When thinking (reasoning_effort) is active
