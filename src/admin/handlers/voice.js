@@ -89,10 +89,12 @@ async function getVctServers(req, res) {
             const guild = client ? client.guilds.cache.get(record.guildId) : null;
             const liveStatus = voiceCallTranslationService.getTranslationStatus(record.guildId);
             const serverDoc = serverMap.get(record.guildId);
-            const isPremium = serverDoc?.monetization?.isExempt === true;
+            const isExempt = serverDoc?.monetization?.isExempt === true;
+            const isExpired = serverDoc?.monetization?.exemptUntil && new Date(serverDoc.monetization.exemptUntil).getTime() < Date.now();
+            const isPremium = isExempt && !isExpired;
 
             const dailyMinutesUsed = record.dailyUsageDate === today ? (record.dailyMinutesUsed || 0) : 0;
-            const dailyRemaining = isPremium ? null : Math.max(0, 60 - dailyMinutesUsed);
+            const dailyRemaining = isPremium ? null : 0;
 
             return {
                 guildId: record.guildId,

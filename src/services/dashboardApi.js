@@ -534,7 +534,7 @@ router.get('/servers/:serverId', async (req, res) => {
           voiceChannelId: null,
           sourceLanguage: 'auto',
           targetLanguage: null,
-          model: 'gemini-3.1-flash-live-preview',
+          model: 'gemini-3.8-live',
           voice: 'Aoede',
         };
       }
@@ -941,20 +941,28 @@ router.get('/servers/:serverId/voice-call-translation', async (req, res) => {
         voiceChannelId: null,
         sourceLanguage: 'auto',
         targetLanguage: null,
-        model: 'gemini-3.1-flash-live-preview',
+        model: 'gemini-3.8-live',
         voice: 'Aoede',
       };
     }
+
+    const serverDoc = await require('../models/Server').findOne({ serverId }).lean();
+    const isExempt = serverDoc?.monetization?.isExempt === true;
+    const isExpired = serverDoc?.monetization?.exemptUntil && new Date(serverDoc.monetization.exemptUntil).getTime() < Date.now();
+    const isPremium = isExempt && !isExpired;
 
     // Add live status from active connections
     const liveStatus = voiceCallTranslationService.getTranslationStatus(serverId);
 
     const hasConfig = settings.voiceChannelId && settings.targetLanguage;
-    console.log(`[BOT API] 📋 Fetched VCT settings for ${serverId}: enabled=${settings.enabled}, configured=${hasConfig}, live=${liveStatus.active ? '🟢' : '🔴'}`);
+    console.log(`[BOT API] 📋 Fetched VCT settings for ${serverId}: enabled=${settings.enabled}, configured=${hasConfig}, isPremium=${isPremium}, live=${liveStatus.active ? '🟢' : '🔴'}`);
 
     res.json({
       ...(settings.toObject ? settings.toObject() : settings),
       isActive: liveStatus.active || settings.isActive || false,
+      isPremium,
+      isExpired: Boolean(isExpired),
+      exemptUntil: serverDoc?.monetization?.exemptUntil || null,
     });
   } catch (error) {
     console.error(`[BOT API] ❌ Error fetching voice call translation settings for ${serverId}:`, error);
@@ -966,6 +974,19 @@ router.get('/servers/:serverId/voice-call-translation', async (req, res) => {
 router.post('/servers/:serverId/voice-call-translation', async (req, res) => {
   try {
     const { serverId } = req.params;
+    const serverDoc = await require('../models/Server').findOne({ serverId }).lean();
+    const isExempt = serverDoc?.monetization?.isExempt === true;
+    const isExpired = serverDoc?.monetization?.exemptUntil && new Date(serverDoc.monetization.exemptUntil).getTime() < Date.now();
+    const isPremium = isExempt && !isExpired;
+
+    if (!isPremium) {
+      return res.status(403).json({
+        error: isExpired
+          ? 'Voice Call Translation is paused because your server’s Premium subscription has expired. Please renew on Patreon.'
+          : 'Voice Call Translation is an exclusive Premium feature. Please upgrade your server to enable it.'
+      });
+    }
+
     const {
       enabled,
       voiceChannelId,
@@ -992,7 +1013,7 @@ router.post('/servers/:serverId/voice-call-translation', async (req, res) => {
       voiceChannelId: voiceChannelId || null,
       sourceLanguage: sourceLanguage || 'auto',
       targetLanguage: targetLanguage || null,
-      model: model || 'gemini-3.1-flash-live-preview',
+      model: model || 'gemini-3.8-live',
       voice: voice || 'Aoede',
       updatedBy: req.userSession?.user?.id || 'dashboard',
     };
@@ -1026,11 +1047,22 @@ router.post('/servers/:serverId/voice-call-translation/start', async (req, res) 
       return res.status(503).json({ error: 'Bot not ready' });
     }
 
-    // Premium gate — VCT requires premium (isExempt)
+    // Premium gate — VCT requires premium (isExempt) and not expired
     const serverDoc = await require('../models/Server').findOne({ serverId });
-    if (!serverDoc?.monetization?.isExempt) {
+    const isExempt = serverDoc?.monetization?.isExempt === true;
+    const isExpired = serverDoc?.monetization?.exemptUntil && new Date(serverDoc.monetization.exemptUntil).getTime() < Date.now();
+    const isPremium = isExempt && !isExpired;
+
+    if (!isPremium) {
       console.warn(`[BOT API] ⚠️ Voice call translation blocked — premium required (server: ${serverId}, user: ${username})`);
-      return res.status(403).json({ error: 'Voice Call Translation requires a premium subscription. Please upgrade at https://www.patreon.com/c/tsio/membership' });
+      if (voiceCallTranslationService.isTranslationActive(serverId)) {
+        await voiceCallTranslationService.stopTranslation(serverId, client).catch(() => {});
+      }
+      return res.status(403).json({
+        error: isExpired
+          ? 'Voice Call Translation is paused because this server’s Premium subscription has expired. Please renew at https://www.patreon.com/c/tsio/membership'
+          : 'Voice Call Translation requires an active Premium subscription. Please upgrade at https://www.patreon.com/c/tsio/membership'
+      });
     }
 
     // Get the saved settings
@@ -1058,14 +1090,14 @@ router.post('/servers/:serverId/voice-call-translation/start', async (req, res) 
 
     const voiceChannelName = client.channels?.cache?.get(settings.voiceChannelId)?.name || settings.voiceChannelId;
     console.log(`[BOT API] 🎤 Starting voice call translation for server ${serverId} (requested by ${username})`);
-    console.log(`[BOT API] 📋 Config: Channel=${voiceChannelName}, Source=${settings.sourceLanguage || 'auto'}, Target=${settings.targetLanguage}, Model=${settings.model || 'gemini-3.1-flash-live-preview'}, Voice=${settings.voice || 'Aoede'}`);
+    console.log(`[BOT API] 📋 Config: Channel=${voiceChannelName}, Source=${settings.sourceLanguage || 'auto'}, Target=${settings.targetLanguage}, Model=${settings.model || 'gemini-3.8-live'}, Voice=${settings.voice || 'Aoede'}`);
 
     const result = await voiceCallTranslationService.startTranslation(
       serverId,
       settings.voiceChannelId,
       settings.sourceLanguage || 'auto',
       settings.targetLanguage,
-      settings.model || 'gemini-3.1-flash-live-preview',
+      settings.model || 'gemini-3.8-live',
       client,
       settings.voice || 'Aoede'
     );

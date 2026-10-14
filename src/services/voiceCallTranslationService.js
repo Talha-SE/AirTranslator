@@ -38,6 +38,8 @@ try {
 const { GoogleGenAI } = require('@google/genai');
 const { pipeline: streamPipeline } = require('stream/promises');
 const { Readable, Transform, PassThrough } = require('stream');
+const { EmbedBuilder } = require('discord.js');
+const Server = require('../models/Server');
 const VoiceCallTranslation = require('../models/VoiceCallTranslation');
 const { createUserVAD, VAD_SPEECH_THRESHOLD } = require('./vadService');
 const { SampleRate: SampleRateStream } = require('libsamplerate');
@@ -61,13 +63,31 @@ function getGenAIClient() {
 // ==============================
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
-// Models — gemini-3.1-flash-live-preview & gemini-2.5-flash-native-audio (turn-based)
+// Models — gemini-3.8-live, gemini-3.8-live-extended-thinking, gemini-3.1-flash-live-preview & gemini-2.5-flash-native-audio (turn-based)
+const GEMINI_38_LIVE_MODEL_ID = 'gemini-3.8-live';
+const GEMINI_38_EXTENDED_THINKING_MODEL_ID = 'gemini-3.8-live-extended-thinking';
 const FLASH_MODEL_ID = 'gemini-3.1-flash-live-preview';
 const NATIVE_AUDIO_MODEL_ID = 'gemini-2.5-flash-native-audio-preview-12-2025';
 const GEMINI_INPUT_RATE = 16000;  // Gemini accepts 16kHz input
 const GEMINI_OUTPUT_RATE = 24000; // Gemini outputs translated audio at 24kHz
 
 const GEMINI_LIVE_MODELS = {
+  [GEMINI_38_LIVE_MODEL_ID]: {
+    modelId: GEMINI_38_LIVE_MODEL_ID,
+    label: 'Gemini 3.8 Live',
+    sampleRate: GEMINI_INPUT_RATE,
+    encoding: 'LINEAR16',
+    supportsBidi: true,
+    isTurnBased: true, // ultra-low latency conversational live model
+  },
+  [GEMINI_38_EXTENDED_THINKING_MODEL_ID]: {
+    modelId: GEMINI_38_EXTENDED_THINKING_MODEL_ID,
+    label: 'Gemini 3.8 Live Extended Thinking',
+    sampleRate: GEMINI_INPUT_RATE,
+    encoding: 'LINEAR16',
+    supportsBidi: true,
+    isTurnBased: true, // live model with extended background reasoning
+  },
   [FLASH_MODEL_ID]: {
     modelId: FLASH_MODEL_ID,
     label: 'Flash Live',
@@ -130,7 +150,7 @@ const GEMINI_VOICES = {
 };
 
 const DEFAULT_VOICE = 'Aoede';
-const DEFAULT_MODEL = FLASH_MODEL_ID;
+const DEFAULT_MODEL = GEMINI_38_LIVE_MODEL_ID;
 /** Handled by liveTranslateService.js — continuous direct stream, no VAD/instructions */
 const LIVE_TRANSLATE_MODEL_ID = 'gemini-3.5-live-translate-preview';
 const OPUS_FRAME_DURATION_MS = 20;
@@ -489,6 +509,22 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
   startLocks.set(guildId, true);
 
   try {
+    // Verify server has active premium (isExempt and not expired)
+    const serverDoc = await Server.findOne({ serverId: guildId }).lean();
+    const isExempt = serverDoc?.monetization?.isExempt === true;
+    const isExpired = serverDoc?.monetization?.exemptUntil && new Date(serverDoc.monetization.exemptUntil).getTime() < Date.now();
+    const isPremium = isExempt && !isExpired;
+
+    if (!isPremium) {
+      log.warn(`🚫 Voice translation blocked: Server ${guildId} is not Premium (isExempt=${isExempt}, isExpired=${!!isExpired})`);
+      return {
+        success: false,
+        error: isExpired
+          ? 'Voice Call Translation is paused because this server’s Premium subscription has expired. Please renew on Patreon.'
+          : 'Voice Call Translation is an exclusive Premium feature. Please upgrade your server to use this feature.'
+      };
+    }
+
     const guild = await client.guilds.fetch(guildId);
     if (!guild) {
       return { success: false, error: 'Guild not found' };
@@ -607,6 +643,28 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
       if (!state.isRunning) return;
       const inactiveTime = Date.now() - state.lastActivityTime;
       try {
+        // Verify server is still premium — if subscription expired or was revoked, stop immediately
+        const serverDoc = await Server.findOne({ serverId: guildId }).lean();
+        const isExempt = serverDoc?.monetization?.isExempt === true;
+        const isExpired = serverDoc?.monetization?.exemptUntil && new Date(serverDoc.monetization.exemptUntil).getTime() < Date.now();
+        if (!isExempt || isExpired) {
+          log.warn(`👑 Premium expired or revoked during active call for server ${guildId} — terminating translation`);
+          const channel = client.guilds.cache.get(guildId)?.channels.cache.get(state.voiceChannelId);
+          if (channel) {
+            const expiredEmbed = new EmbedBuilder()
+              .setColor(0xF59E0B)
+              .setTitle('👑 Voice Translation Stopped: Premium Required')
+              .setDescription(
+                'Voice Call Translation has been stopped because this server is no longer on an active Premium plan.\n\n' +
+                'To continue using real-time voice translation, please renew your Premium subscription at [Patreon](https://www.patreon.com/c/tsio/membership).'
+              )
+              .setTimestamp();
+            try { await channel.send({ embeds: [expiredEmbed] }); } catch (e) { /* ignore */ }
+          }
+          await stopTranslation(guildId, client);
+          return;
+        }
+
         const guild = await client.guilds.fetch(guildId).catch(() => null);
         if (!guild) return;
         const channel = guild.channels.cache.get(state.voiceChannelId);
@@ -1381,6 +1439,64 @@ function buildTranslationSystemInstruction(sourceLanguage, targetLanguage) {
 }
 
 /**
+ * Build the config for gemini-3.8-live.
+ * Ultra-low latency flagship conversational live translation model.
+ * Uses speechConfig + low thinkingLevel + contextWindowCompression + systemInstruction.
+ */
+function buildGemini38LiveConfig(state, systemInstruction) {
+  const voiceName = state.voiceName || DEFAULT_VOICE || 'Aoede';
+  return {
+    responseModalities: ['AUDIO'],
+    mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+    temperature: 0.0,
+    systemInstruction: { parts: [{ text: systemInstruction }] },
+    speechConfig: {
+      voiceConfig: {
+        prebuiltVoiceConfig: {
+          voiceName,
+        },
+      },
+    },
+    thinkingConfig: {
+      thinkingLevel: 'low',
+    },
+    contextWindowCompression: {
+      triggerTokens: '104857',
+      slidingWindow: { targetTokens: '52428' },
+    },
+  };
+}
+
+/**
+ * Build the config for gemini-3.8-live-extended-thinking.
+ * Live translation model with extended background reasoning for complex idioms and nuanced conversations.
+ * Uses speechConfig + high thinkingLevel + contextWindowCompression + systemInstruction.
+ */
+function buildGemini38ExtendedThinkingConfig(state, systemInstruction) {
+  const voiceName = state.voiceName || DEFAULT_VOICE || 'Aoede';
+  return {
+    responseModalities: ['AUDIO'],
+    mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+    temperature: 0.0,
+    systemInstruction: { parts: [{ text: systemInstruction }] },
+    speechConfig: {
+      voiceConfig: {
+        prebuiltVoiceConfig: {
+          voiceName,
+        },
+      },
+    },
+    thinkingConfig: {
+      thinkingLevel: 'high',
+    },
+    contextWindowCompression: {
+      triggerTokens: '104857',
+      slidingWindow: { targetTokens: '52428' },
+    },
+  };
+}
+
+/**
  * Build the config for gemini-3.1-flash-live-preview.
  * This model uses speechConfig + contextWindowCompression + systemInstruction.
  * It listens, detects silence, and returns translated audio as a turn.
@@ -1445,6 +1561,8 @@ function buildNativeAudioConfig(state, systemInstruction) {
 async function connectGeminiSession(state) {
   const log = getLogger(state.guildId);
   const model = GEMINI_LIVE_MODELS[state.modelId] || GEMINI_LIVE_MODELS[DEFAULT_MODEL];
+  const isGemini38Extended = state.modelId === GEMINI_38_EXTENDED_THINKING_MODEL_ID;
+  const isGemini38Live = state.modelId === GEMINI_38_LIVE_MODEL_ID;
   const isFlash = state.modelId === FLASH_MODEL_ID;
   const isNativeAudio = state.modelId === NATIVE_AUDIO_MODEL_ID;
 
@@ -1459,7 +1577,13 @@ async function connectGeminiSession(state) {
 
   // Build config based on model type (system instruction embedded at config level)
   let config;
-  if (isNativeAudio) {
+  if (isGemini38Extended) {
+    config = buildGemini38ExtendedThinkingConfig(state, systemInstruction);
+    log.info(`📖 Using Gemini 3.8 Live Extended Thinking config (voice: ${state.voiceName || 'Aoede'})`);
+  } else if (isGemini38Live) {
+    config = buildGemini38LiveConfig(state, systemInstruction);
+    log.info(`📖 Using Gemini 3.8 Live config (voice: ${state.voiceName || 'Aoede'})`);
+  } else if (isNativeAudio) {
     config = buildNativeAudioConfig(state, systemInstruction);
     log.info(`📖 Using Native Audio config (voice: ${state.voiceName || 'Aoede'})`);
   } else {
@@ -1596,7 +1720,13 @@ async function connectGeminiSession(state) {
 
   log.info(`📝 System instruction set: ${getLanguageName(state.sourceLanguage)} ↔ ${getLanguageName(state.targetLanguage)}`);
 
-  const modeLabel = isNativeAudio ? 'Native Audio batch' : 'Flash Live turn-based';
+  const modeLabel = isGemini38Extended
+    ? 'Gemini 3.8 Live Extended Thinking'
+    : isGemini38Live
+    ? 'Gemini 3.8 Live'
+    : isNativeAudio
+    ? 'Native Audio batch'
+    : 'Flash Live turn-based';
   log.success(`✅ Gemini Live session established (${modeLabel} mode)`);
   return session;
 }
@@ -2125,6 +2255,8 @@ module.exports = {
   GEMINI_LIVE_MODELS,
   DEFAULT_VOICE,
   DEFAULT_MODEL,
+  GEMINI_38_LIVE_MODEL_ID,
+  GEMINI_38_EXTENDED_THINKING_MODEL_ID,
   FLASH_MODEL_ID,
   NATIVE_AUDIO_MODEL_ID,
   LIVE_TRANSLATE_MODEL_ID,

@@ -677,26 +677,13 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             if (voiceCallTranslationService.isTranslationActive(guild.id)) return;
 
             const serverDoc = await Server.findOne({ serverId: guild.id }).lean();
-            const isPremium = serverDoc?.monetization?.isExempt === true;
+            const isExempt = serverDoc?.monetization?.isExempt === true;
+            const isExpired = serverDoc?.monetization?.exemptUntil && new Date(serverDoc.monetization.exemptUntil).getTime() < Date.now();
+            const isPremium = isExempt && !isExpired;
 
-            // Check daily free limit for non-premium
-            let remainingMinutes = null;
             if (!isPremium) {
-                const now = new Date();
-                const today = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
-                let vctDoc = await VoiceCallTranslation.findOne({ guildId: guild.id });
-                if (vctDoc) {
-                    if (vctDoc.dailyUsageDate !== today) {
-                        vctDoc.dailyMinutesUsed = 0;
-                        vctDoc.dailyUsageDate = today;
-                        await vctDoc.save();
-                    }
-                    if (vctDoc.dailyMinutesUsed >= 60) {
-                        logger.info(`[VCT Auto-Join] ⏰ Free limit reached for guild ${guild.id} — skipping auto-start`);
-                        return;
-                    }
-                    remainingMinutes = 60 - vctDoc.dailyMinutesUsed;
-                }
+                logger.info(`[VCT Auto-Join] 🚫 Server ${guild.id} (${guild.name}) is not Premium — skipping VCT auto-start`);
+                return;
             }
 
             logger.info(`[VCT Auto-Join] 🎤 First user joined — auto-starting VCT in "${voiceChannel.name}" (${guild.name})`);
@@ -706,10 +693,10 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 targetChannelId,
                 vctSettings.sourceLanguage || 'auto',
                 vctSettings.targetLanguage,
-                vctSettings.model || 'gemini-3.1-flash-live-preview',
+                vctSettings.model || 'gemini-3.8-live',
                 client,
                 vctSettings.voice || 'Aoede',
-                remainingMinutes
+                null
             );
         }
 
@@ -740,11 +727,23 @@ setInterval(async () => {
             if (!connection) continue;
             
             // Check if VCT is currently active (bot is in a voice channel for VCT)
-            const { isTranslationActive } = require('./services/voiceCallTranslationService');
+            const { isTranslationActive, stopTranslation } = require('./services/voiceCallTranslationService');
             const vctActive = isTranslationActive(guild.id);
             
-            // Case 1: VCT is actively running - keep connection alive
+            // Case 1: VCT is actively running - check if server is still premium
             if (vctActive) {
+                const Server = require('./models/Server');
+                const serverDoc = await Server.findOne({ serverId: guild.id }).lean();
+                const isExempt = serverDoc?.monetization?.isExempt === true;
+                const isExpired = serverDoc?.monetization?.exemptUntil && new Date(serverDoc.monetization.exemptUntil).getTime() < Date.now();
+                const isPremium = isExempt && !isExpired;
+
+                if (!isPremium) {
+                    logger.warn(`[PeriodicCheck] 👑 Premium expired or revoked for server ${guild.id} — stopping active VCT`);
+                    await stopTranslation(guild.id, client);
+                    continue;
+                }
+
                 logger.info('[PeriodicCheck] ✅ VCT active - keeping voice connection alive', { guildId: guild.id });
                 continue;
             }

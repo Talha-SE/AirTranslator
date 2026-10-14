@@ -92,9 +92,41 @@ module.exports = {
         }
 
         const serverDoc = await Server.findOne({ serverId: guild.id });
-        const isPremium = serverDoc?.monetization?.isExempt === true;
+        const isExempt = serverDoc?.monetization?.isExempt === true;
+        const isExpired = serverDoc?.monetization?.exemptUntil && new Date(serverDoc.monetization.exemptUntil).getTime() < Date.now();
+        const isPremium = isExempt && !isExpired;
 
         let settings = await VoiceCallTranslation.findOne({ guildId: guild.id });
+
+        if (!isPremium) {
+            // Stop translation if somehow active
+            if (voiceCallTranslationService.isTranslationActive(guild.id)) {
+                await voiceCallTranslationService.stopTranslation(guild.id, interaction.client).catch(() => {});
+            }
+
+            const hadSetup = settings && settings.voiceChannelId && settings.targetLanguage;
+            const embed = new EmbedBuilder()
+                .setColor(0xF59E0B)
+                .setTitle('👑 Premium Feature: Voice Call Translation')
+                .setDescription(
+                    hadSetup
+                        ? `Voice Call Translation is an **exclusive Premium feature**.\n\n` +
+                          `⚠️ **Access Paused**: Voice call translation is configured for this server, but this server is currently on the **Free tier** (or its Premium / Extended subscription has expired).\n\n` +
+                          `✨ **Upgrade to Premium** to unlock unlimited, real-time voice call translation across all Gemini Live AI models:\n` +
+                          `• [Upgrade to Premium on Patreon](https://www.patreon.com/c/tsio/membership)\n` +
+                          `• Instant activation upon upgrade`
+                        : `Voice Call Translation is an **exclusive Premium feature**.\n\n` +
+                          `Translate live voice calls in real-time with Google Gemini Live audio-to-audio AI.\n\n` +
+                          `✨ **Upgrade to Premium** to unlock access:\n` +
+                          `• [Upgrade to Premium on Patreon](https://www.patreon.com/c/tsio/membership)\n` +
+                          `• Unlimited voice translation & all Gemini Live models included`
+                )
+                .setFooter({ text: 'Air Translator • Premium Required' })
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+            return;
+        }
 
         if (!settings || !settings.enabled) {
             const embed = new EmbedBuilder()
@@ -161,30 +193,8 @@ module.exports = {
 
         await interaction.deferReply();
 
-        // Daily usage check for non-premium servers
-        let remainingMinutes = null;
-        if (!isPremium) {
-            settings = resetIfNeeded(settings);
-
-            if (settings.dailyMinutesUsed >= FREE_DAILY_LIMIT_MINUTES) {
-                const limitEmbed = new EmbedBuilder()
-                    .setColor(0xFF4444)
-                    .setTitle('⏰ Daily Free Limit Reached')
-                    .setDescription(
-                        `You've used all **${FREE_DAILY_LIMIT_MINUTES} free minutes** of Voice Call Translation today.\n\n` +
-                        '**💡 Options:**\n' +
-                        '• Come back tomorrow — your free minutes reset daily\n' +
-                        '• [Go Premium](https://www.patreon.com/c/tsio/membership) for unlimited access'
-                    )
-                    .setTimestamp();
-
-                await interaction.editReply({ embeds: [limitEmbed] });
-                await settings.save();
-                return;
-            }
-
-            remainingMinutes = FREE_DAILY_LIMIT_MINUTES - settings.dailyMinutesUsed;
-        }
+        // Premium servers have unlimited voice translation
+        const remainingMinutes = null;
 
         const sourceLang = settings.sourceLanguage === 'auto' ? 'Auto-Detect' : settings.sourceLanguage;
         const targetLang = settings.targetLanguage;
@@ -192,7 +202,7 @@ module.exports = {
         let description =
             `Connecting to **${voiceChannel.name}**...\n\n` +
             `🌐 **${sourceLang}** → **${targetLang}**\n` +
-            `🤖 Model: \`${settings.model || 'gemini-3.1-flash-live-preview'}\`\n` +
+            `🤖 Model: \`${settings.model || 'gemini-3.8-live'}\`\n` +
             `🔊 Voice: \`${settings.voice || 'Aoede'}\``;
 
         if (remainingMinutes !== null) {
@@ -213,7 +223,7 @@ module.exports = {
             settings.voiceChannelId,
             settings.sourceLanguage || 'auto',
             settings.targetLanguage,
-            settings.model || 'gemini-3.1-flash-live-preview',
+            settings.model || 'gemini-3.8-live',
             interaction.client,
             settings.voice || 'Aoede',
             remainingMinutes

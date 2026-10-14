@@ -37,11 +37,9 @@ async function call(text, lang) {
 (async () => {
     console.log(`Model: ${MODEL} | top_p: ${TOP_P} | temperature: 0.2\n`);
     const tests = [
-        { text: 'ok', lang: 'Korean' },
-        { text: 'ok', lang: 'Korean' },
-        { text: 'ok', lang: 'Korean' },
-        { text: 'okay', lang: 'Korean' },
-        { text: 'ok', lang: 'Spanish' },
+        { text: 'let me see', lang: 'Korean' },
+        { text: 'let me see', lang: 'Korean' },
+        { text: 'let me see', lang: 'Korean' },
     ];
     for (const t of tests) {
         const r = await call(t.text, t.lang);

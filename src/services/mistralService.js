@@ -1274,8 +1274,8 @@ For Korean translations, you MUST add cute chatting elements:
                 }
             ],
             // Low temperature to reduce creative drift and repetition
-            temperature: 0.1,
-            top_p: 0.1,
+            temperature: 0.2,
+            top_p: 1,
             // Deterministic per input to improve stability across retries
             random_seed: stableRandomSeed(processedText + ':' + targetLangName),
             // Stop when model tries to add notes/explanations

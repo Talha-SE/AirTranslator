@@ -2154,9 +2154,11 @@ async function generateVoiceTab() {
             : '—';
 
         const serverDoc = serverMap.get(record.guildId);
-        const isPremium = serverDoc?.monetization?.isExempt === true;
+        const isExempt = serverDoc?.monetization?.isExempt === true;
+        const isExpired = serverDoc?.monetization?.exemptUntil && new Date(serverDoc.monetization.exemptUntil).getTime() < Date.now();
+        const isPremium = isExempt && !isExpired;
         const dailyMinutesUsed = record.dailyUsageDate === today ? (record.dailyMinutesUsed || 0) : 0;
-        const dailyRemaining = isPremium ? null : Math.max(0, 60 - dailyMinutesUsed);
+        const dailyRemaining = isPremium ? null : 0;
 
         return `
             <tr>
@@ -2173,7 +2175,9 @@ async function generateVoiceTab() {
                 <td style="text-align: center;">
                     ${isPremium
                         ? '<span class="badge badge-success" style="font-size: 11px;">💎 Premium</span>'
-                        : `<span class="badge badge-warning" style="font-size: 11px;">Free ${dailyMinutesUsed}/60m</span>`
+                        : isExpired
+                        ? '<span class="badge badge-warning" style="font-size: 11px;">⚠️ Expired</span>'
+                        : '<span class="badge badge-danger" style="font-size: 11px;">🔒 Free (Blocked)</span>'
                     }
                 </td>
                 <td style="text-align: center;">

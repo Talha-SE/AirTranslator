@@ -39,6 +39,8 @@ const {
 const prism = require('prism-media');
 const { GoogleGenAI } = require('@google/genai');
 const { Readable } = require('stream');
+const { EmbedBuilder } = require('discord.js');
+const Server = require('../models/Server');
 const VoiceCallTranslation = require('../models/VoiceCallTranslation');
 
 // Optional native Opus decoder (falls back to prism-media pure JS)
@@ -538,6 +540,22 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
   let connection = null;
   let state = null;
   try {
+    // Verify server has active premium (isExempt and not expired)
+    const serverDoc = await Server.findOne({ serverId: guildId }).lean();
+    const isExempt = serverDoc?.monetization?.isExempt === true;
+    const isExpired = serverDoc?.monetization?.exemptUntil && new Date(serverDoc.monetization.exemptUntil).getTime() < Date.now();
+    const isPremium = isExempt && !isExpired;
+
+    if (!isPremium) {
+      log.warn(`🚫 Live Translate blocked: Server ${guildId} is not Premium (isExempt=${isExempt}, isExpired=${!!isExpired})`);
+      return {
+        success: false,
+        error: isExpired
+          ? 'Voice Call Translation is paused because this server’s Premium subscription has expired. Please renew on Patreon.'
+          : 'Voice Call Translation is an exclusive Premium feature. Please upgrade your server to use this feature.'
+      };
+    }
+
     const guild = await client.guilds.fetch(guildId);
     if (!guild) return { success: false, error: 'Guild not found' };
 
@@ -610,6 +628,32 @@ async function startTranslation(guildId, voiceChannelId, sourceLanguage, targetL
     // ---- Continuous mic capture ----
     ensureChannelSubscriptions(state);
     state.sweepInterval = setInterval(() => ensureChannelSubscriptions(state), 8000);
+
+    // ---- Periodic Premium Check (stops immediately if premium expires/revoked) ----
+    state.premiumCheckInterval = setInterval(async () => {
+      if (!state.isRunning) return;
+      try {
+        const serverDoc = await Server.findOne({ serverId: guildId }).lean();
+        const isExempt = serverDoc?.monetization?.isExempt === true;
+        const isExpired = serverDoc?.monetization?.exemptUntil && new Date(serverDoc.monetization.exemptUntil).getTime() < Date.now();
+        if (!isExempt || isExpired) {
+          log.warn(`👑 Premium expired or revoked during Live Translate for server ${guildId} — stopping session`);
+          const channel = client.guilds.cache.get(guildId)?.channels.cache.get(voiceChannelId);
+          if (channel) {
+            const expiredEmbed = new EmbedBuilder()
+              .setColor(0xF59E0B)
+              .setTitle('👑 Voice Translation Stopped: Premium Required')
+              .setDescription(
+                'Live Translate has been stopped because this server is no longer on an active Premium plan.\n\n' +
+                'To continue using real-time voice translation, please renew your Premium subscription at [Patreon](https://www.patreon.com/c/tsio/membership).'
+              )
+              .setTimestamp();
+            try { await channel.send({ embeds: [expiredEmbed] }); } catch (e) { /* ignore */ }
+          }
+          await stopTranslation(guildId, client);
+        }
+      } catch (e) { /* ignore monitor errors */ }
+    }, 60000);
 
     const voiceStateHandler = (oldState, newState) => {
       if (oldState.guild.id !== guildId && newState.guild.id !== guildId) return;
@@ -749,6 +793,7 @@ async function stopTranslation(guildId, client) {
     if (state.keepAliveInterval) clearInterval(state.keepAliveInterval);
     if (state.freeUsageAutoStopTimer) clearTimeout(state.freeUsageAutoStopTimer);
     if (state.sweepInterval) clearInterval(state.sweepInterval);
+    if (state.premiumCheckInterval) clearInterval(state.premiumCheckInterval);
     if (state.voiceStateHandler && (client || state.client)) {
       (client || state.client).removeListener('voiceStateUpdate', state.voiceStateHandler);
     }
