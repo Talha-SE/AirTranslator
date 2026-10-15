@@ -1441,7 +1441,7 @@ function buildTranslationSystemInstruction(sourceLanguage, targetLanguage) {
 /**
  * Build the config for gemini-3.8-live.
  * Ultra-low latency flagship conversational live translation model.
- * Uses speechConfig + low thinkingLevel + contextWindowCompression + systemInstruction.
+ * Uses speechConfig + contextWindowCompression + systemInstruction.
  */
 function buildGemini38LiveConfig(state, systemInstruction) {
   const voiceName = state.voiceName || DEFAULT_VOICE || 'Aoede';
@@ -1456,9 +1456,6 @@ function buildGemini38LiveConfig(state, systemInstruction) {
           voiceName,
         },
       },
-    },
-    thinkingConfig: {
-      thinkingLevel: 'low',
     },
     contextWindowCompression: {
       triggerTokens: '104857',
@@ -1704,8 +1701,16 @@ async function connectGeminiSession(state) {
       },
       onclose: (event) => {
         const closeCode = event?.code || 'unknown';
-        log.warn(`🔌 Gemini Live WebSocket closed (code: ${closeCode})`);
+        const closeReason = event?.reason || '';
+        log.warn(`🔌 Gemini Live WebSocket closed (code: ${closeCode}${closeReason ? `, reason: "${closeReason}"` : ''})`);
         state.geminiSession = null;
+        // WS 1007 = policy/schema violation (e.g. invalid setup message or unsupported field).
+        // Reconnecting with the exact same config will fail indefinitely — fail fast and stop the session.
+        if (closeCode === 1007) {
+          log.error(`❌ Gemini Live rejected session configuration (WS 1007: ${closeReason || 'unsupported config'}). Stopping session — will not reconnect with invalid config.`);
+          stopTranslation(state.guildId, state.client).catch(() => {});
+          return;
+        }
         // Attempt reconnection if still running
         if (state.isRunning && !state.isReconnecting) {
           state.isReconnecting = true;
